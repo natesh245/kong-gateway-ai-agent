@@ -271,7 +271,7 @@ export class KongDockerManager {
       if (isHostInstalled) {
         // Option 1: Use Host deck
         const args = await this.getDeckArgs(true);
-        let command = `deck gateway sync -s "${filePath}" ${args.join(' ')}`;
+        let command = `deck gateway sync "${filePath}" ${args.join(' ')}`;
         try {
           const { stdout } = await execAsync(command);
           return stdout || "Sync completed successfully (Host CLI).";
@@ -289,7 +289,7 @@ export class KongDockerManager {
         // Option 2: Use Docker deck
         const dockerFilePath = `/storage/${filename}`;
         const args = await this.getDeckArgs(false);
-        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway sync -s "${dockerFilePath}" ${args.join(' ')}`;
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway sync "${dockerFilePath}" ${args.join(' ')}`;
         
         try {
           const { stdout } = await execAsync(dockerCommand);
@@ -338,7 +338,7 @@ export class KongDockerManager {
         // Option 2: Use Docker deck
         const dockerFilePath = `/storage/${filename}`;
         const args = await this.getDeckArgs(false);
-        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway validate -s "${dockerFilePath}" ${args.join(' ')}`;
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway validate "${dockerFilePath}" ${args.join(' ')}`;
         
         try {
           const { stdout } = await execAsync(dockerCommand);
@@ -485,7 +485,7 @@ export class KongDockerManager {
         // Option 2: Use Docker deck
         const dockerFilePath = `/storage/${filename}`;
         const args = await this.getDeckArgs(false);
-        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway diff -s "${dockerFilePath}" ${args.join(' ')}`;
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway diff "${dockerFilePath}" ${args.join(' ')}`;
         
         try {
           const { stdout, stderr } = await execAsync(dockerCommand);
