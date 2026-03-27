@@ -39,6 +39,7 @@
           "type": "string",
           "enum": [
             "openrouter",
+            "gemini",
             "local"
           ],
           "default": "openrouter",
@@ -48,6 +49,11 @@
           "type": "string",
           "default": "",
           "description": "Your OpenRouter API Key for the LLM agent"
+        },
+        "kongAgent.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Google Gemini API Key for the LLM agent"
         },
         "kongAgent.model": {
           "type": "string",

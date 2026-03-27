@@ -88,6 +88,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('provider', data.provider, vscode.ConfigurationTarget.Global);
                         await config.update('model', data.model, vscode.ConfigurationTarget.Global);
                         await config.update('openRouterApiKey', data.apiKey, vscode.ConfigurationTarget.Global);
+                        await config.update('geminiApiKey', data.geminiApiKey, vscode.ConfigurationTarget.Global);
                         await config.update('storagePath', data.storagePath, vscode.ConfigurationTarget.Global);
                         await config.update('kongMode', data.kongMode, vscode.ConfigurationTarget.Global);
                         
@@ -207,6 +208,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('provider', undefined, vscode.ConfigurationTarget.Global);
                         await config.update('model', undefined, vscode.ConfigurationTarget.Global);
                         await config.update('openRouterApiKey', undefined, vscode.ConfigurationTarget.Global);
+                        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
                         await config.update('storagePath', undefined, vscode.ConfigurationTarget.Global);
                         await config.update('proxyPort', undefined, vscode.ConfigurationTarget.Global);
                         await config.update('adminApiPort', undefined, vscode.ConfigurationTarget.Global);
@@ -229,6 +231,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 provider: config.get('provider'),
                 model: config.get('model'),
                 apiKey: config.get('openRouterApiKey'),
+                geminiApiKey: config.get('geminiApiKey'),
                 storagePath: config.get('storagePath'),
                 kongMode: config.get('kongMode') || 'local',
                 proxyPort: config.get('proxyPort'),
@@ -505,9 +508,10 @@ What can I do for you today?</div>
                 <span class="toggle-icon">▼</span>
             </summary>
             <div class="settings-panel">
-                <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
+                <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="gemini">Gemini</option><option value="local">Ollama</option></select></div>
                 <div class="settings-row"><label>Model</label><input type="text" id="model-input" placeholder="e.g. openai/gpt-4o"/></div>
-                <div class="settings-row" id="api-key-row"><label>API Key</label><input type="password" id="api-key-input"/></div>
+                <div class="settings-row" id="api-key-row"><label>OpenRouter Key</label><input type="password" id="api-key-input"/></div>
+                <div class="settings-row" id="gemini-api-key-row" class="hidden"><label>Gemini Key</label><input type="password" id="gemini-api-key-input"/></div>
                 <div class="settings-row" style="margin-top:8px; background:rgba(255,255,255,0.03); padding:8px; border-radius:8px;">
                     <label style="color:var(--accent); font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px;">
                         <input type="checkbox" id="show-thinking-toggle" checked /> 
@@ -705,7 +709,11 @@ What can I do for you today?</div>
             if (providerSelect) {
                 providerSelect.onchange = (e) => {
                     const apiKeyRow = document.getElementById('api-key-row');
-                    if (apiKeyRow) apiKeyRow.style.display = e.target.value === 'local' ? 'none' : 'flex';
+                    const geminiKeyRow = document.getElementById('gemini-api-key-row');
+                    const provider = e.target.value;
+                    
+                    if (apiKeyRow) apiKeyRow.style.display = provider === 'openrouter' ? 'flex' : 'none';
+                    if (geminiKeyRow) geminiKeyRow.style.display = provider === 'gemini' ? 'flex' : 'none';
                 };
             }
 
@@ -729,6 +737,7 @@ What can I do for you today?</div>
                     provider: document.getElementById('provider-select').value,
                     model: document.getElementById('model-input').value,
                     apiKey: document.getElementById('api-key-input').value,
+                    geminiApiKey: document.getElementById('gemini-api-key-input').value,
                     maxDepth: document.getElementById('max-depth-input').value,
                     storagePath: document.getElementById('storage-input').value,
                     kongMode: document.getElementById('kong-mode-select').value,
@@ -772,10 +781,16 @@ What can I do for you today?</div>
                     if (m.role === 'agent') typing.style.display = 'none';
                     appendMessage(m.role, m.content);
                 } else if (m.type === 'setConfig') {
-                    document.getElementById('provider-select').value = m.provider || 'openrouter';
+                    const provider = m.provider || 'openrouter';
+                    document.getElementById('provider-select').value = provider;
                     document.getElementById('model-input').value = m.model || 'openai/gpt-4o';
                     document.getElementById('api-key-input').value = m.apiKey || '';
+                    document.getElementById('gemini-api-key-input').value = m.geminiApiKey || '';
                     document.getElementById('max-depth-input').value = m.maxDepth || 10;
+
+                    // Trigger visibility toggle
+                    document.getElementById('api-key-row').style.display = provider === 'openrouter' ? 'flex' : 'none';
+                    document.getElementById('gemini-api-key-row').style.display = provider === 'gemini' ? 'flex' : 'none';
                     document.getElementById('storage-input').value = m.storagePath || 'Default';
                     
                     const kongMode = m.kongMode || 'local';

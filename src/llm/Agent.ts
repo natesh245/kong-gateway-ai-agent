@@ -52,11 +52,11 @@ export class Agent {
     private initClient(): boolean {
         const config = vscode.workspace.getConfiguration('kongAgent');
         const provider = config.get<string>('provider') || 'openrouter';
-        const apiKey = config.get<string>('openRouterApiKey');
 
         if (provider === 'openrouter') {
+            const apiKey = config.get<string>('openRouterApiKey');
             if (!apiKey) {
-                vscode.window.showErrorMessage("Kong Agent: OpenRouter API key is missing. Please configure it in the sidebar settings or VS Code settings.");
+                vscode.window.showErrorMessage("Kong Agent: OpenRouter API key is missing. Please configure it in the sidebar settings.");
                 return false;
             }
 
@@ -67,6 +67,17 @@ export class Agent {
                     "HTTP-Referer": "https://vscode-kong-agent.com",
                     "X-Title": "VS Code Kong Agent"
                 }
+            });
+        } else if (provider === 'gemini') {
+            const geminiKey = config.get<string>('geminiApiKey');
+            if (!geminiKey) {
+                vscode.window.showErrorMessage("Kong Agent: Gemini API key is missing. Please configure it in the sidebar settings.");
+                return false;
+            }
+
+            this.openai = new OpenAI({
+                baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+                apiKey: geminiKey
             });
         } else {
             // Local (Ollama)
