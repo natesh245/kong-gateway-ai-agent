@@ -30,9 +30,10 @@ export class Agent {
                 "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
                 "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
                 "**MANDATORY DECLARATIVE WORKFLOW**: When the user asks to create or modify a Service, Route, or Consumer, you MUST follow this sequence:\n" +
-                "1. **Edit File**: First, use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml' in the storage directory. (Only use 'export_live_to_storage_file' if you need to backup the current live state; do NOT use it to save your current reasoned changes).\n" +
-                "2. **Request Review**: Show the changes you made to the file and ask: 'Should I apply these changes to the Kong instance using decK?'\n" +
-                "3. **Sync**: Only after the user approves, use the 'sync_to_kong_using_deck' tool to apply the changes from the file to Kong.\n" +
+                "1. **Edit File**: Use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml'.\n" +
+                "2. **Validate**: Immediately call 'validate_kong_config'. If validation fails, use the error output to fix the YAML and repeat Step 1. Do NOT proceed until validation passes.\n" +
+                "3. **Request Review**: Once validated, show the changes and say: 'The configuration is validated and ready. Should I apply these changes to the Kong instance using decK?'\n" +
+                "4. **Sync**: Only after the user approves, use the 'sync_to_kong_using_deck' tool.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
                 "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image)."
         });
@@ -359,6 +360,20 @@ export class Agent {
                         required: ["filename"]
                     }
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "validate_kong_config",
+                    description: "Uses decK to validate the schema and syntax of a Kong configuration file.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            filename: { type: "string" }
+                        },
+                        required: ["filename"]
+                    }
+                }
             }
         ];
 
@@ -503,6 +518,9 @@ export class Agent {
                             break;
                         case "sync_to_kong_using_deck":
                             functionResult = await this.dockerManager.syncWithDeck(functionArgs.filename);
+                            break;
+                        case "validate_kong_config":
+                            functionResult = await this.dockerManager.validateWithDeck(functionArgs.filename);
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

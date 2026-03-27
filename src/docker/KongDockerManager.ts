@@ -271,6 +271,43 @@ export class KongDockerManager {
     }
   }
 
+  public async validateWithDeck(filename: string): Promise<string> {
+    try {
+      const storagePath = this.getStoragePath();
+      const filePath = path.join(storagePath, filename);
+      const isHostInstalled = await this.isDeckInstalled();
+
+      if (isHostInstalled) {
+        // Option 1: Use Host deck
+        let command = `deck gateway validate "${filePath}"`;
+        try {
+          const { stdout } = await execAsync(command);
+          return stdout || "Configuration is valid.";
+        } catch (e: any) {
+          command = `deck validate -s "${filePath}"`;
+          const { stdout } = await execAsync(command);
+          return stdout || "Configuration is valid (fallback mode).";
+        }
+      } else {
+        // Option 2: Use Docker deck
+        const dockerFilePath = `/storage/${filename}`;
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway validate -s "${dockerFilePath}"`;
+        
+        try {
+          const { stdout } = await execAsync(dockerCommand);
+          return stdout || "Configuration is valid (Dockerized decK).";
+        } catch (e: any) {
+          // Fallback for older decK images
+          const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck validate -s "${dockerFilePath}"`;
+          const { stdout } = await execAsync(fallbackDocker);
+          return stdout || "Configuration is valid (Dockerized fallback).";
+        }
+      }
+    } catch (e: any) {
+      return `Validation failed: ${e.message}`;
+    }
+  }
+
   public updateFileCache(filename: string, content: string) {
     this._fileCache.set(filename, content);
   }
