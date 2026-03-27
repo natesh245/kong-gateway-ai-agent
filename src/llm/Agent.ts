@@ -30,20 +30,20 @@ export class Agent {
                 "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
                 "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
                 "**MANDATORY DECLARATIVE WORKFLOW**: When the user asks to create or modify a Service, Route, or Consumer, you MUST follow this sequence:\n" +
-                "1. **Edit File**: Use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml'.\n" +
-                "2. **Validate**: Call 'validate_kong_config' after EVERY change to 'kong.yml'. If validation fails, show the EXACT details to the user, suggest a fix, and DO NOT proceed to Step 3.\n" +
-                "3. **Preview Diff**: Call 'preview_sync_diff' to compare your file against the live Kong Gateway. You MUST show the output of this tool to the user wrapped in a ' ```diff ' code block.\n" +
-                "4. **Smart Review Request**: \n" +
-                "   - If 'preview_sync_diff' returns 'No differences found' or 'Configuration is in sync', inform the user and STOP.\n" +
-                "   - If there ARE differences, summarize them clearly and then ask: 'The configuration is validated and the diff is above. Should I apply these changes? [APPROVAL_REQUIRED]'\n" +
-                "5. **Sync & Status**: Only AFTER the user gives verbal approval (Yes), use the 'sync_to_kong_using_deck' tool. NEVER call this tool automatically. If the user asks for a 'Review', only validate and diff; do not sync until they say 'Yes' to your diff.\n" +
-                "**APPROVAL BUTTONS**: Whenever you expect the user to say 'Yes' or 'No' for a critical action (sync, reset, install), you MUST include the string '[APPROVAL_REQUIRED]' at the end of your message. This triggers the UI buttons.\n" +
+                "1. **Edit File**: Use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml'. **SKIP THIS STEP** if the user has already manually edited the file and asks for a 'Review'.\n" +
+                "2. **Validate**: Call 'validate_kong_config' after EVERY internal change or manual update. If validation fails, show the details to the user, suggest a fix, but DO NOT call 'write_storage_file' for the fix unless specifically asked.\n" +
+                "3. **Preview Diff**: Call 'preview_sync_diff' to show the exact changes to the user. Wrap this in ' ```diff ' code blocks.\n" +
+                "4. **Smart Review Request**: If differences exist, summarize them and ask for approval using '[APPROVAL_REQUIRED]'.\n" +
+                "5. **Sync**: Only sync after explicit 'Yes' or button click.\n" +
+                "**REVIEWS & MANUAL UPDATES**: When a user asks for a 'Review' of a file, you MUST ALWAYS call 'read_storage_file' first to understand the full context. DO NOT hallucinate content based on diffs alone. Move directly to Step 2 (Validate) and Step 3 (Diff).\n" +
+                "**NO RESET ON CANCEL**: If the user says 'Cancel' or 'No', STOP and confirm. NEVER use 'reset_kong_instance' as a way to 'revert' or 'cancel' a pending configuration change.\n" +
+                "**APPROVAL BUTTONS**: Whenever you expect the user to say 'Yes' or 'No' for a critical action, you MUST include '[APPROVAL_REQUIRED]' at the end of your message.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
-                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation including '[APPROVAL_REQUIRED]' before calling the tool. If you see 'SAFETY_REQUIRED', STOP and ask the user for confirmation.\n" +
-                "**SYNC SAFETY**: Similar to destructive actions, 'sync_to_kong_using_deck' has a safety block. You MUST show the diff and wait for the user to say 'Yes' before calling the sync tool. If you see 'SAFETY_REQUIRED', stop and ask.\n" +
-                "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image).\n" +
-                "**EXPORT VS SYNC**: Calling 'export_live_to_storage_file' (deck dump) is for backup/storage ONLY. It should NOT trigger a sync or a change review flow.\n" +
-                "**GITOPS SYNC**: Your ultimate goal is a GitOps-first workflow. If a Git repository is set up in the storage folder (check via 'git_get_status'), you should favor a 'Commit -> Push -> Sync' flow. If the user has 'Auto-Commit' enabled, tell them you will automatically update their Git repository after a successful sync."
+                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation including '[APPROVAL_REQUIRED]'. If you see 'SAFETY_REQUIRED', STOP and ask. The tool has a code-level block that checks for a recent 'Yes' from the user.\n" +
+                "**SYNC SAFETY**: 'sync_to_kong_using_deck' has a safety block. You MUST show the diff and wait for 'Yes'. If you see 'SAFETY_REQUIRED', stop and ask.\n" +
+                "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed, the tool will fall back to Docker.\n" +
+                "**EXPORT VS SYNC**: Calling 'export_live_to_storage_file' (deck dump) is for backup ONLY. It should NOT trigger a sync or review flow.\n" +
+                "**GITOPS SYNC**: If a Git repository is set up, favor 'Commit -> Push -> Sync'. If Auto-Commit is enabled, update Git after a successful sync."
         });
     }
 
@@ -637,13 +637,20 @@ export class Agent {
                         case "reset_kong_instance":
                             // Extra safety check: verify the user actually gave a "Yes" in the message history 
                             // as their last message before this tool call sequence was initiated.
-                            const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                            const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase();
+                            // We look for a clear, standalone 'yes' or a specific confirmation.
+                            const latestUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                            const userText = (latestUserMsg?.content as string || "").trim().toLowerCase();
                             
-                            if (lastUserContent === 'yes' || lastUserContent.includes('confirm reset') || lastUserContent.includes('proceed with reset')) {
+                            // Stricter check: only allow 'yes' or explicit confirmation phrases
+                            const isConfirmed = userText === 'yes' || 
+                                              userText === 'yes, proceed' || 
+                                              userText.includes('confirm reset') || 
+                                              userText.includes('proceed with reset');
+                            
+                            if (isConfirmed && !userText.includes('no') && !userText.includes('cancel')) {
                                 functionResult = await this.dockerManager.resetWithDeck();
                             } else {
-                                functionResult = "SAFETY_REQUIRED: I cannot execute 'reset_kong_instance' yet. You MUST now stop calling tools and ask the user for explicit confirmation by appending '[APPROVAL_REQUIRED]' to your message. Explain that this will wipe all configuration.";
+                                functionResult = "SAFETY_REQUIRED: I cannot execute 'reset_kong_instance' yet. You MUST stop and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'. Do not suggest a reset unless the user specifically asked for one.";
                             }
                             break;
                         case "preview_sync_diff":
