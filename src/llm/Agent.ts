@@ -16,6 +16,8 @@ export class Agent {
             role: "system",
             content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. " +
                      "You can start or stop the Kong Docker containers, and interact with the Admin API to create routes, services, and consumers. " +
+                     "If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. " +
+                     "You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. " +
                      "Always use the provided tool functions when the user asks you to perform an action on Kong. " +
                      "Be concise and confirm when an action is done."
         });
@@ -141,6 +143,22 @@ export class Agent {
                         required: ["username"]
                     }
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "update_kong_ports",
+                    description: "Updates the configured ports for Kong Proxy, Admin API, and Manager GUI. Use this if the user agrees to switch to suggested ports after a conflict.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            proxy: { type: "number" },
+                            admin: { type: "number" },
+                            manager: { type: "number" }
+                        },
+                        required: ["proxy", "admin", "manager"]
+                    }
+                }
             }
         ];
 
@@ -190,6 +208,13 @@ export class Agent {
                             break;
                         case "create_consumer":
                             functionResult = await this.kongApi.createConsumer(functionArgs.username);
+                            break;
+                        case "update_kong_ports":
+                            const config = vscode.workspace.getConfiguration('kongAgent');
+                            await config.update('proxyPort', functionArgs.proxy, vscode.ConfigurationTarget.Global);
+                            await config.update('adminApiPort', functionArgs.admin, vscode.ConfigurationTarget.Global);
+                            await config.update('managerGuiPort', functionArgs.manager, vscode.ConfigurationTarget.Global);
+                            functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}. You can now try starting Kong again.`;
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

@@ -50,6 +50,21 @@
           "type": "string",
           "default": "openai/gpt-4o",
           "description": "The LLM model name (e.g. openai/gpt-4o or llama3.1)"
+        },
+        "kongAgent.proxyPort": {
+          "type": "number",
+          "default": 8000,
+          "description": "The local port for the Kong Proxy Gateway."
+        },
+        "kongAgent.adminApiPort": {
+          "type": "number",
+          "default": 8001,
+          "description": "The local port for the Kong Admin API."
+        },
+        "kongAgent.managerGuiPort": {
+          "type": "number",
+          "default": 8002,
+          "description": "The local port for the Kong Manager GUI."
         }
       }
     }

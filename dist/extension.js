@@ -19573,12 +19573,12 @@ var castToError = (err) => {
   }
   return new Error(err);
 };
-var readEnv = (env) => {
+var readEnv = (env2) => {
   if (typeof process !== "undefined") {
-    return process.env?.[env]?.trim() ?? void 0;
+    return process.env?.[env2]?.trim() ?? void 0;
   }
   if (typeof Deno !== "undefined") {
-    return Deno.env?.get?.(env)?.trim();
+    return Deno.env?.get?.(env2)?.trim();
   }
   return void 0;
 };
@@ -27153,15 +27153,15 @@ var test = (fn, ...args) => {
     return false;
   }
 };
-var factory = (env) => {
-  env = utils_default.merge.call(
+var factory = (env2) => {
+  env2 = utils_default.merge.call(
     {
       skipUndefined: true
     },
     globalFetchAPI,
-    env
+    env2
   );
-  const { fetch: envFetch, Request: Request3, Response: Response3 } = env;
+  const { fetch: envFetch, Request: Request3, Response: Response3 } = env2;
   const isFetchSupported = envFetch ? isFunction4(envFetch) : typeof fetch === "function";
   const isRequestSupported = isFunction4(Request3);
   const isResponseSupported = isFunction4(Response3);
@@ -27346,14 +27346,14 @@ var factory = (env) => {
 };
 var seedCache = /* @__PURE__ */ new Map();
 var getFetch = (config) => {
-  let env = config && config.env || {};
-  const { fetch: fetch3, Request: Request3, Response: Response3 } = env;
+  let env2 = config && config.env || {};
+  const { fetch: fetch3, Request: Request3, Response: Response3 } = env2;
   const seeds = [Request3, Response3, fetch3];
   let len = seeds.length, i2 = len, seed, target, map = seedCache;
   while (i2--) {
     seed = seeds[i2];
     target = map.get(seed);
-    target === void 0 && map.set(seed, target = i2 ? /* @__PURE__ */ new Map() : factory(env));
+    target === void 0 && map.set(seed, target = i2 ? /* @__PURE__ */ new Map() : factory(env2));
     map = target;
   }
   return target;
@@ -28016,7 +28016,7 @@ var Agent = class {
     this.kongApi = new KongApiClient();
     this.messages.push({
       role: "system",
-      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Docker containers, and interact with the Admin API to create routes, services, and consumers. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
+      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Docker containers, and interact with the Admin API to create routes, services, and consumers. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
     });
   }
   openai = null;
@@ -28134,6 +28134,22 @@ var Agent = class {
             required: ["username"]
           }
         }
+      },
+      {
+        type: "function",
+        function: {
+          name: "update_kong_ports",
+          description: "Updates the configured ports for Kong Proxy, Admin API, and Manager GUI. Use this if the user agrees to switch to suggested ports after a conflict.",
+          parameters: {
+            type: "object",
+            properties: {
+              proxy: { type: "number" },
+              admin: { type: "number" },
+              manager: { type: "number" }
+            },
+            required: ["proxy", "admin", "manager"]
+          }
+        }
       }
     ];
     let response = await this.openai.chat.completions.create({
@@ -28176,6 +28192,13 @@ ${apiStatus}`;
               break;
             case "create_consumer":
               functionResult = await this.kongApi.createConsumer(functionArgs.username);
+              break;
+            case "update_kong_ports":
+              const config = vscode.workspace.getConfiguration("kongAgent");
+              await config.update("proxyPort", functionArgs.proxy, vscode.ConfigurationTarget.Global);
+              await config.update("adminApiPort", functionArgs.admin, vscode.ConfigurationTarget.Global);
+              await config.update("managerGuiPort", functionArgs.manager, vscode.ConfigurationTarget.Global);
+              functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}. You can now try starting Kong again.`;
               break;
             default:
               functionResult = `Error: Unknown function ${functionName}`;
@@ -28512,6 +28535,46 @@ var fs2 = __toESM(require("fs"));
 var path = __toESM(require("path"));
 var import_child_process = require("child_process");
 var import_util5 = require("util");
+
+// src/utils/PortUtil.ts
+var net = __toESM(require("net"));
+var PortUtil = class {
+  /**
+   * Checks if a port is currently in use.
+   */
+  static async isPortInUse(port) {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      server.once("error", (err) => {
+        if (err.code === "EADDRINUSE") {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      });
+      server.once("listening", () => {
+        server.close();
+        resolve(false);
+      });
+      server.listen(port, "127.0.0.1");
+    });
+  }
+  /**
+   * Finds the next available port starting from the given port.
+   */
+  static async findNextAvailablePort(startPort) {
+    let port = startPort;
+    while (await this.isPortInUse(port)) {
+      port++;
+      if (port > 65535) {
+        throw new Error("No available ports found below 65535.");
+      }
+    }
+    return port;
+  }
+};
+
+// src/docker/KongDockerManager.ts
 var execAsync = (0, import_util5.promisify)(import_child_process.exec);
 var KongDockerManager = class {
   constructor(context) {
@@ -28526,16 +28589,43 @@ var KongDockerManager = class {
   }
   async start() {
     try {
+      const config = vscode3.workspace.getConfiguration("kongAgent");
+      const proxyPort = config.get("proxyPort") || 8e3;
+      const adminPort = config.get("adminApiPort") || 8001;
+      const managerPort = config.get("managerGuiPort") || 8002;
+      const conflicts = [];
+      if (await PortUtil.isPortInUse(proxyPort))
+        conflicts.push(proxyPort);
+      if (await PortUtil.isPortInUse(adminPort))
+        conflicts.push(adminPort);
+      if (await PortUtil.isPortInUse(managerPort))
+        conflicts.push(managerPort);
+      if (conflicts.length > 0) {
+        const suggestedProxy = await PortUtil.findNextAvailablePort(proxyPort);
+        const suggestedAdmin = await PortUtil.findNextAvailablePort(adminPort);
+        const suggestedManager = await PortUtil.findNextAvailablePort(managerPort);
+        throw new Error(
+          `PORT_CONFLICT: The following ports are already in use: ${conflicts.join(", ")}. Suggested alternatives: Proxy=${suggestedProxy}, Admin=${suggestedAdmin}, Manager=${suggestedManager}. Please update your settings and try again.`
+        );
+      }
       const storagePath = this.getStoragePath();
       const composePath = path.join(storagePath, "kong-docker-compose.yml");
-      fs2.writeFileSync(composePath, this.composeContent(), "utf8");
+      fs2.writeFileSync(composePath, this.composeContent(proxyPort, adminPort, managerPort), "utf8");
       vscode3.window.showInformationMessage("Kong Agent: Starting Postgres Database...");
       await execAsync("docker-compose -f kong-docker-compose.yml up -d kong-database", { cwd: storagePath });
       vscode3.window.showInformationMessage("Kong Agent: Bootstrapping database...");
       await execAsync("docker-compose -f kong-docker-compose.yml run --rm kong kong migrations bootstrap", { cwd: storagePath });
       vscode3.window.showInformationMessage("Kong Agent: Starting Kong Gateway...");
       await execAsync("docker-compose -f kong-docker-compose.yml up -d kong", { cwd: storagePath });
-      return "Kong Gateway and Postgres Database started successfully (Ports: 8002, 8001).";
+      const successMsg = `Kong Gateway started successfully! Here are your access details:
+
+| Component | URL |
+| :--- | :--- |
+| **Kong Manager (GUI)** | http://localhost:${managerPort} |
+| **Admin API** | http://localhost:${adminPort} |
+| **Proxy Gateway** | http://localhost:${proxyPort} |`;
+      vscode3.env.openExternal(vscode3.Uri.parse(`http://localhost:${managerPort}`));
+      return successMsg;
     } catch (e2) {
       throw new Error(`Failed to start Kong: ${e2.message}`);
     }
@@ -28559,7 +28649,7 @@ ${stdout}`;
       return `Error fetching status: ${e2.message}`;
     }
   }
-  composeContent() {
+  composeContent(proxyPort, adminPort, managerPort) {
     return `version: '3.9'
 x-kong-config: &kong-env
   KONG_DATABASE: postgres
@@ -28571,6 +28661,8 @@ x-kong-config: &kong-env
   KONG_PROXY_ERROR_LOG: /dev/stderr
   KONG_ADMIN_ERROR_LOG: /dev/stderr
   KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
+  KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002, 0.0.0.0:8445 ssl
+  KONG_ADMIN_GUI_URL: http://localhost:${managerPort}
 
 networks:
   kong-net:
@@ -28606,10 +28698,12 @@ services:
     environment:
       <<: *kong-env
     ports:
-      - "8002:8000"
+      - "${proxyPort}:8000"
       - "8443:8443"
-      - "8001:8001"
+      - "${adminPort}:8001"
       - "8444:8444"
+      - "${managerPort}:8002"
+      - "8445:8445"
     networks:
       - kong-net
 `;
