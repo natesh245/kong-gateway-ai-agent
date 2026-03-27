@@ -770,14 +770,14 @@ var require_url_state_machine = __commonJS({
       return url2.replace(/\u0009|\u000A|\u000D/g, "");
     }
     function shortenPath(url2) {
-      const path3 = url2.path;
-      if (path3.length === 0) {
+      const path4 = url2.path;
+      if (path4.length === 0) {
         return;
       }
-      if (url2.scheme === "file" && path3.length === 1 && isNormalizedWindowsDriveLetter(path3[0])) {
+      if (url2.scheme === "file" && path4.length === 1 && isNormalizedWindowsDriveLetter(path4[0])) {
         return;
       }
-      path3.pop();
+      path4.pop();
     }
     function includesCredentials(url2) {
       return url2.username !== "" || url2.password !== "";
@@ -6567,14 +6567,14 @@ __export(fileFromPath_exports, {
   fileFromPathSync: () => fileFromPathSync,
   isFile: () => isFile
 });
-function createFileFromPath(path3, { mtimeMs, size }, filenameOrOptions, options = {}) {
+function createFileFromPath(path4, { mtimeMs, size }, filenameOrOptions, options = {}) {
   let filename;
   if (isPlainObject_default2(filenameOrOptions)) {
     [options, filename] = [filenameOrOptions, void 0];
   } else {
     filename = filenameOrOptions;
   }
-  const file = new FileFromPath({ path: path3, size, lastModified: mtimeMs });
+  const file = new FileFromPath({ path: path4, size, lastModified: mtimeMs });
   if (!filename) {
     filename = file.name;
   }
@@ -6583,13 +6583,13 @@ function createFileFromPath(path3, { mtimeMs, size }, filenameOrOptions, options
     lastModified: file.lastModified
   });
 }
-function fileFromPathSync(path3, filenameOrOptions, options = {}) {
-  const stats = (0, import_fs.statSync)(path3);
-  return createFileFromPath(path3, stats, filenameOrOptions, options);
+function fileFromPathSync(path4, filenameOrOptions, options = {}) {
+  const stats = (0, import_fs.statSync)(path4);
+  return createFileFromPath(path4, stats, filenameOrOptions, options);
 }
-async function fileFromPath2(path3, filenameOrOptions, options) {
-  const stats = await import_fs.promises.stat(path3);
-  return createFileFromPath(path3, stats, filenameOrOptions, options);
+async function fileFromPath2(path4, filenameOrOptions, options) {
+  const stats = await import_fs.promises.stat(path4);
+  return createFileFromPath(path4, stats, filenameOrOptions, options);
 }
 var import_fs, import_path, import_node_domexception, __classPrivateFieldSet4, __classPrivateFieldGet5, _FileFromPath_path, _FileFromPath_start, MESSAGE, FileFromPath;
 var init_fileFromPath = __esm({
@@ -15504,11 +15504,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path3) {
-      if (!path3 || typeof path3 !== "string") {
+    function lookup(path4) {
+      if (!path4 || typeof path4 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path3).toLowerCase().substr(1);
+      var extension2 = extname("x." + path4).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -16613,11 +16613,11 @@ var require_form_data = __commonJS({
     "use strict";
     var CombinedStream = require_combined_stream();
     var util3 = require("util");
-    var path3 = require("path");
+    var path4 = require("path");
     var http3 = require("http");
     var https2 = require("https");
     var parseUrl = require("url").parse;
-    var fs4 = require("fs");
+    var fs5 = require("fs");
     var Stream2 = require("stream").Stream;
     var crypto2 = require("crypto");
     var mime = require_mime_types();
@@ -16684,7 +16684,7 @@ var require_form_data = __commonJS({
         if (value.end != void 0 && value.end != Infinity && value.start != void 0) {
           callback(null, value.end + 1 - (value.start ? value.start : 0));
         } else {
-          fs4.stat(value.path, function(err, stat) {
+          fs5.stat(value.path, function(err, stat) {
             if (err) {
               callback(err);
               return;
@@ -16741,11 +16741,11 @@ var require_form_data = __commonJS({
     FormData5.prototype._getContentDisposition = function(value, options) {
       var filename;
       if (typeof options.filepath === "string") {
-        filename = path3.normalize(options.filepath).replace(/\\/g, "/");
+        filename = path4.normalize(options.filepath).replace(/\\/g, "/");
       } else if (options.filename || value && (value.name || value.path)) {
-        filename = path3.basename(options.filename || value && (value.name || value.path));
+        filename = path4.basename(options.filename || value && (value.name || value.path));
       } else if (value && value.readable && hasOwn2(value, "httpVersion")) {
-        filename = path3.basename(value.client._httpMessage.path || "");
+        filename = path4.basename(value.client._httpMessage.path || "");
       }
       if (filename) {
         return 'filename="' + filename + '"';
@@ -17523,6 +17523,8 @@ var vscode4 = __toESM(require("vscode"));
 
 // src/webview/ChatViewProvider.ts
 var vscode2 = __toESM(require("vscode"));
+var path2 = __toESM(require("path"));
+var fs3 = __toESM(require("fs"));
 
 // node_modules/openai/internal/qs/formats.mjs
 var default_format = "RFC3986";
@@ -18278,13 +18280,13 @@ var MultipartBody = class {
 // node_modules/openai/_shims/node-runtime.mjs
 var import_web = require("node:stream/web");
 var fileFromPathWarned = false;
-async function fileFromPath3(path3, ...args) {
+async function fileFromPath3(path4, ...args) {
   const { fileFromPath: _fileFromPath } = await Promise.resolve().then(() => (init_fileFromPath(), fileFromPath_exports));
   if (!fileFromPathWarned) {
-    console.warn(`fileFromPath is deprecated; use fs.createReadStream(${JSON.stringify(path3)}) instead`);
+    console.warn(`fileFromPath is deprecated; use fs.createReadStream(${JSON.stringify(path4)}) instead`);
     fileFromPathWarned = true;
   }
-  return await _fileFromPath(path3, ...args);
+  return await _fileFromPath(path4, ...args);
 }
 var defaultHttpAgent = new import_agentkeepalive.default({ keepAlive: true, timeout: 5 * 60 * 1e3 });
 var defaultHttpsAgent = new import_agentkeepalive.default.HttpsAgent({ keepAlive: true, timeout: 5 * 60 * 1e3 });
@@ -19079,29 +19081,29 @@ var APIClient = class {
   defaultIdempotencyKey() {
     return `stainless-node-retry-${uuid4()}`;
   }
-  get(path3, opts) {
-    return this.methodRequest("get", path3, opts);
+  get(path4, opts) {
+    return this.methodRequest("get", path4, opts);
   }
-  post(path3, opts) {
-    return this.methodRequest("post", path3, opts);
+  post(path4, opts) {
+    return this.methodRequest("post", path4, opts);
   }
-  patch(path3, opts) {
-    return this.methodRequest("patch", path3, opts);
+  patch(path4, opts) {
+    return this.methodRequest("patch", path4, opts);
   }
-  put(path3, opts) {
-    return this.methodRequest("put", path3, opts);
+  put(path4, opts) {
+    return this.methodRequest("put", path4, opts);
   }
-  delete(path3, opts) {
-    return this.methodRequest("delete", path3, opts);
+  delete(path4, opts) {
+    return this.methodRequest("delete", path4, opts);
   }
-  methodRequest(method, path3, opts) {
+  methodRequest(method, path4, opts) {
     return this.request(Promise.resolve(opts).then(async (opts2) => {
       const body = opts2 && isBlobLike(opts2?.body) ? new DataView(await opts2.body.arrayBuffer()) : opts2?.body instanceof DataView ? opts2.body : opts2?.body instanceof ArrayBuffer ? new DataView(opts2.body) : opts2 && ArrayBuffer.isView(opts2?.body) ? new DataView(opts2.body.buffer) : opts2?.body;
-      return { method, path: path3, ...opts2, body };
+      return { method, path: path4, ...opts2, body };
     }));
   }
-  getAPIList(path3, Page2, opts) {
-    return this.requestAPIList(Page2, { method: "get", path: path3, ...opts });
+  getAPIList(path4, Page2, opts) {
+    return this.requestAPIList(Page2, { method: "get", path: path4, ...opts });
   }
   calculateContentLength(body) {
     if (typeof body === "string") {
@@ -19120,10 +19122,10 @@ var APIClient = class {
   }
   buildRequest(inputOptions, { retryCount = 0 } = {}) {
     const options = { ...inputOptions };
-    const { method, path: path3, query, headers = {} } = options;
+    const { method, path: path4, query, headers = {} } = options;
     const body = ArrayBuffer.isView(options.body) || options.__binaryRequest && typeof options.body === "string" ? options.body : isMultipartBody(options.body) ? options.body.body : options.body ? JSON.stringify(options.body, null, 2) : null;
     const contentLength = this.calculateContentLength(body);
-    const url2 = this.buildURL(path3, query);
+    const url2 = this.buildURL(path4, query);
     if ("timeout" in options)
       validatePositiveInteger("timeout", options.timeout);
     options.timeout = options.timeout ?? this.timeout;
@@ -19239,8 +19241,8 @@ var APIClient = class {
     const request = this.makeRequest(options, null);
     return new PagePromise(this, request, Page2);
   }
-  buildURL(path3, query) {
-    const url2 = isAbsoluteURL(path3) ? new URL(path3) : new URL(this.baseURL + (this.baseURL.endsWith("/") && path3.startsWith("/") ? path3.slice(1) : path3));
+  buildURL(path4, query) {
+    const url2 = isAbsoluteURL(path4) ? new URL(path4) : new URL(this.baseURL + (this.baseURL.endsWith("/") && path4.startsWith("/") ? path4.slice(1) : path4));
     const defaultQuery = this.defaultQuery();
     if (!isEmptyObj(defaultQuery)) {
       query = { ...defaultQuery, ...query };
@@ -24693,10 +24695,10 @@ function isVisitable(thing) {
 function removeBrackets(key) {
   return utils_default.endsWith(key, "[]") ? key.slice(0, -2) : key;
 }
-function renderKey(path3, key, dots) {
-  if (!path3)
+function renderKey(path4, key, dots) {
+  if (!path4)
     return key;
-  return path3.concat(key).map(function each(token, i2) {
+  return path4.concat(key).map(function each(token, i2) {
     token = removeBrackets(token);
     return !dots && i2 ? "[" + token + "]" : token;
   }).join(dots ? "." : "");
@@ -24750,13 +24752,13 @@ function toFormData(obj, formData, options) {
     }
     return value;
   }
-  function defaultVisitor(value, key, path3) {
+  function defaultVisitor(value, key, path4) {
     let arr = value;
     if (utils_default.isReactNative(formData) && utils_default.isReactNativeBlob(value)) {
-      formData.append(renderKey(path3, key, dots), convertValue(value));
+      formData.append(renderKey(path4, key, dots), convertValue(value));
       return false;
     }
-    if (value && !path3 && typeof value === "object") {
+    if (value && !path4 && typeof value === "object") {
       if (utils_default.endsWith(key, "{}")) {
         key = metaTokens ? key : key.slice(0, -2);
         value = JSON.stringify(value);
@@ -24775,7 +24777,7 @@ function toFormData(obj, formData, options) {
     if (isVisitable(value)) {
       return true;
     }
-    formData.append(renderKey(path3, key, dots), convertValue(value));
+    formData.append(renderKey(path4, key, dots), convertValue(value));
     return false;
   }
   const stack = [];
@@ -24784,17 +24786,17 @@ function toFormData(obj, formData, options) {
     convertValue,
     isVisitable
   });
-  function build(value, path3) {
+  function build(value, path4) {
     if (utils_default.isUndefined(value))
       return;
     if (stack.indexOf(value) !== -1) {
-      throw Error("Circular reference detected in " + path3.join("."));
+      throw Error("Circular reference detected in " + path4.join("."));
     }
     stack.push(value);
     utils_default.forEach(value, function each(el, key) {
-      const result = !(utils_default.isUndefined(el) || el === null) && visitor.call(formData, el, utils_default.isString(key) ? key.trim() : key, path3, exposedHelpers);
+      const result = !(utils_default.isUndefined(el) || el === null) && visitor.call(formData, el, utils_default.isString(key) ? key.trim() : key, path4, exposedHelpers);
       if (result === true) {
-        build(el, path3 ? path3.concat(key) : [key]);
+        build(el, path4 ? path4.concat(key) : [key]);
       }
     });
     stack.pop();
@@ -25006,7 +25008,7 @@ var platform_default = {
 // node_modules/axios/lib/helpers/toURLEncodedForm.js
 function toURLEncodedForm(data, options) {
   return toFormData_default(data, new platform_default.classes.URLSearchParams(), {
-    visitor: function(value, key, path3, helpers) {
+    visitor: function(value, key, path4, helpers) {
       if (platform_default.isNode && utils_default.isBuffer(value)) {
         this.append(key, value.toString("base64"));
         return false;
@@ -25036,12 +25038,12 @@ function arrayToObject(arr) {
   return obj;
 }
 function formDataToJSON(formData) {
-  function buildPath(path3, value, target, index) {
-    let name = path3[index++];
+  function buildPath(path4, value, target, index) {
+    let name = path4[index++];
     if (name === "__proto__")
       return true;
     const isNumericKey = Number.isFinite(+name);
-    const isLast = index >= path3.length;
+    const isLast = index >= path4.length;
     name = !name && utils_default.isArray(target) ? target.length : name;
     if (isLast) {
       if (utils_default.hasOwnProp(target, name)) {
@@ -25054,7 +25056,7 @@ function formDataToJSON(formData) {
     if (!target[name] || !utils_default.isObject(target[name])) {
       target[name] = [];
     }
-    const result = buildPath(path3, value, target[name], index);
+    const result = buildPath(path4, value, target[name], index);
     if (result && utils_default.isArray(target[name])) {
       target[name] = arrayToObject(target[name]);
     }
@@ -26440,9 +26442,9 @@ var http_default = isHttpAdapterSupported && function httpAdapter(config) {
       auth = urlUsername + ":" + urlPassword;
     }
     auth && headers.delete("authorization");
-    let path3;
+    let path4;
     try {
-      path3 = buildURL(
+      path4 = buildURL(
         parsed.pathname + parsed.search,
         config.params,
         config.paramsSerializer
@@ -26460,7 +26462,7 @@ var http_default = isHttpAdapterSupported && function httpAdapter(config) {
       false
     );
     const options = {
-      path: path3,
+      path: path4,
       method,
       headers: headers.toJSON(),
       agents: { http: config.httpAgent, https: config.httpsAgent },
@@ -26711,15 +26713,15 @@ var isURLSameOrigin_default = platform_default.hasStandardBrowserEnv ? /* @__PUR
 var cookies_default = platform_default.hasStandardBrowserEnv ? (
   // Standard browser envs support document.cookie
   {
-    write(name, value, expires, path3, domain, secure, sameSite) {
+    write(name, value, expires, path4, domain, secure, sameSite) {
       if (typeof document === "undefined")
         return;
       const cookie = [`${name}=${encodeURIComponent(value)}`];
       if (utils_default.isNumber(expires)) {
         cookie.push(`expires=${new Date(expires).toUTCString()}`);
       }
-      if (utils_default.isString(path3)) {
-        cookie.push(`path=${path3}`);
+      if (utils_default.isString(path4)) {
+        cookie.push(`path=${path4}`);
       }
       if (utils_default.isString(domain)) {
         cookie.push(`domain=${domain}`);
@@ -28340,11 +28342,42 @@ var ChatViewProvider = class {
     this._extensionUri = _extensionUri;
     this.context = context;
     this.dockerManager = dockerManager;
-    this.agent = new Agent(context, dockerManager);
+    this._agent = new Agent(context, dockerManager);
+    this._setupWatcher();
   }
   static viewType = "kongAgentChat";
   _view;
-  agent;
+  _agent;
+  _watcher;
+  _debounceTimer;
+  _setupWatcher() {
+    if (this._watcher) {
+      this._watcher.dispose();
+    }
+    const config = vscode2.workspace.getConfiguration("kongAgent");
+    const storagePath = config.get("storagePath");
+    if (storagePath && fs3.existsSync(storagePath)) {
+      this._watcher = vscode2.workspace.createFileSystemWatcher(
+        new vscode2.RelativePattern(storagePath, "**/*.{yml,yaml,json}")
+      );
+      this._watcher.onDidChange((uri) => this._handleFileChange(uri));
+      this._watcher.onDidCreate((uri) => this._handleFileChange(uri));
+    }
+  }
+  _handleFileChange(uri) {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+    }
+    this._debounceTimer = setTimeout(() => {
+      if (this._view) {
+        const filename = path2.basename(uri.fsPath);
+        this._view.webview.postMessage({
+          type: "fileChanged",
+          filename
+        });
+      }
+    }, 2e3);
+  }
   resolveWebviewView(webviewView, context, _token) {
     this._view = webviewView;
     webviewView.webview.options = {
@@ -28357,7 +28390,7 @@ var ChatViewProvider = class {
       switch (data.type) {
         case "prompt": {
           webviewView.webview.postMessage({ type: "addMessage", role: "user", content: data.value });
-          await this.agent.processMessage(data.value, (content) => {
+          await this._agent.processMessage(data.value, (content) => {
             webviewView.webview.postMessage({ type: "addMessage", role: "agent", content });
           });
           break;
@@ -28368,6 +28401,7 @@ var ChatViewProvider = class {
           await config.update("model", data.model, vscode2.ConfigurationTarget.Global);
           await config.update("openRouterApiKey", data.apiKey, vscode2.ConfigurationTarget.Global);
           await config.update("storagePath", data.storagePath, vscode2.ConfigurationTarget.Global);
+          this._setupWatcher();
           break;
         }
         case "selectFolder": {
@@ -28381,6 +28415,7 @@ var ChatViewProvider = class {
             const folderPath = result[0].fsPath;
             const config = vscode2.workspace.getConfiguration("kongAgent");
             await config.update("storagePath", folderPath, vscode2.ConfigurationTarget.Global);
+            this._setupWatcher();
             this._updateWebviewConfig();
           }
           break;
@@ -28450,6 +28485,7 @@ var ChatViewProvider = class {
             line-height: 1.4;
             animation: fadeIn 0.3s ease-out forwards;
             word-wrap: break-word;
+            white-space: pre-wrap;
         }
 
         .message.user {
@@ -28465,6 +28501,31 @@ var ChatViewProvider = class {
             border: 1px solid rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             border-left: 4px solid #F51A56; /* Kong Red */
+        }
+
+        .notification-toast {
+            background: var(--vscode-notifications-background);
+            color: var(--vscode-notifications-foreground);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 8px 16px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            border: 1px solid var(--vscode-widget-border);
+        }
+
+        .notification-toast b { font-size: 12px; }
+        .notification-toast button {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 6px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 11px;
+            width: 100%;
         }
 
         .input-container {
@@ -28531,7 +28592,7 @@ var ChatViewProvider = class {
             box-shadow: 0 0 0 2px rgba(46, 134, 171, 0.3);
         }
 
-        button {
+        #send {
             background: linear-gradient(135deg, #F51A56, #d90f46);
             color: white;
             border: none;
@@ -28542,13 +28603,8 @@ var ChatViewProvider = class {
             transition: transform 0.1s ease, box-shadow 0.1s ease;
         }
 
-        button:active {
-            transform: scale(0.95);
-        }
-        
-        button:hover {
-            box-shadow: 0 4px 10px rgba(245, 26, 86, 0.4);
-        }
+        #send:active { transform: scale(0.95); }
+        #send:hover { box-shadow: 0 4px 10px rgba(245, 26, 86, 0.4); }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
@@ -28562,10 +28618,18 @@ var ChatViewProvider = class {
 </head>
 <body>
     <div class="header">\u{1F98D} Kong Agent</div>
+    
+    <div id="notification" class="notification-toast">
+        <span>Detected manual changes in <b id="changed-filename">file.yml</b></span>
+        <button id="review-btn">\u{1F50D} Review Changes</button>
+    </div>
+
     <div class="chat-container" id="chat">
         <div class="message agent">Hello! I am your Kong Gateway Agent. I can start your local Kong via Docker, create routes, and configure services. How can I assist you today?</div>
     </div>
+    
     <div class="typing" id="typing">Kong Agent is thinking...</div>
+    
     <div class="input-container">
         <div class="settings-panel">
             <div class="settings-row">
@@ -28610,6 +28674,10 @@ var ChatViewProvider = class {
         const storageInput = document.getElementById('storage-input');
         const browseBtn = document.getElementById('browse-btn');
         const apiKeyRow = document.getElementById('api-key-row');
+        
+        const notification = document.getElementById('notification');
+        const changedFilenameDisplay = document.getElementById('changed-filename');
+        const reviewBtn = document.getElementById('review-btn');
 
         function updateConfig() {
             vscode.postMessage({
@@ -28619,8 +28687,6 @@ var ChatViewProvider = class {
                 model: modelInput.value,
                 storagePath: storageInput.value
             });
-            
-            // Toggle visibility of API key row
             apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
         }
 
@@ -28632,12 +28698,20 @@ var ChatViewProvider = class {
              vscode.postMessage({ type: 'selectFolder' });
         });
 
+        reviewBtn.addEventListener('click', () => {
+            const filename = changedFilenameDisplay.innerText;
+            vscode.postMessage({ 
+                type: 'prompt', 
+                value: "I just manually updated " + filename + ". Please read it, review my changes, and let me know if I should fix anything."
+            });
+            notification.style.display = 'none';
+        });
+
         function appendMessage(role, content) {
             const div = document.createElement('div');
             div.className = 'message ' + role;
             div.innerText = content;
             chat.appendChild(div);
-            // Auto scroll down to latest message
             chat.scrollTop = chat.scrollHeight;
         }
 
@@ -28668,6 +28742,10 @@ var ChatViewProvider = class {
                     storageInput.value = message.storagePath || 'Using Default Global Storage';
                     apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
                     break;
+                case 'fileChanged':
+                    notification.style.display = 'flex';
+                    changedFilenameDisplay.innerText = message.filename;
+                    break;
             }
         });
     </script>
@@ -28678,8 +28756,8 @@ var ChatViewProvider = class {
 
 // src/docker/KongDockerManager.ts
 var vscode3 = __toESM(require("vscode"));
-var fs3 = __toESM(require("fs"));
-var path2 = __toESM(require("path"));
+var fs4 = __toESM(require("fs"));
+var path3 = __toESM(require("path"));
 var import_child_process = require("child_process");
 var import_util5 = require("util");
 
@@ -28731,8 +28809,8 @@ var KongDockerManager = class {
     const config = vscode3.workspace.getConfiguration("kongAgent");
     const customPath = config.get("storagePath");
     const storagePath = customPath || this.context.globalStorageUri.fsPath;
-    if (!fs3.existsSync(storagePath)) {
-      fs3.mkdirSync(storagePath, { recursive: true });
+    if (!fs4.existsSync(storagePath)) {
+      fs4.mkdirSync(storagePath, { recursive: true });
     }
     return storagePath;
   }
@@ -28758,8 +28836,8 @@ var KongDockerManager = class {
         );
       }
       const storagePath = this.getStoragePath();
-      const composePath = path2.join(storagePath, "kong-docker-compose.yml");
-      fs3.writeFileSync(composePath, this.composeContent(proxyPort, adminPort, managerPort), "utf8");
+      const composePath = path3.join(storagePath, "kong-docker-compose.yml");
+      fs4.writeFileSync(composePath, this.composeContent(proxyPort, adminPort, managerPort), "utf8");
       const doc = await vscode3.workspace.openTextDocument(composePath);
       await vscode3.window.showTextDocument(doc);
       vscode3.window.showInformationMessage("Kong Agent: Starting Postgres Database...");

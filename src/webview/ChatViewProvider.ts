@@ -1,18 +1,59 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 import { Agent } from '../llm/Agent';
 import { KongDockerManager } from '../docker/KongDockerManager';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kongAgentChat';
     private _view?: vscode.WebviewView;
-    private agent: Agent;
+    private _agent: Agent;
+    private _watcher?: vscode.FileSystemWatcher;
+    private _debounceTimer?: NodeJS.Timeout;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
         private context: vscode.ExtensionContext,
         private dockerManager: KongDockerManager
     ) {
-        this.agent = new Agent(context, dockerManager);
+        this._agent = new Agent(context, dockerManager);
+        this._setupWatcher();
+    }
+
+    private _setupWatcher() {
+        if (this._watcher) {
+            this._watcher.dispose();
+        }
+
+        const config = vscode.workspace.getConfiguration('kongAgent');
+        const storagePath = config.get<string>('storagePath');
+
+        if (storagePath && fs.existsSync(storagePath)) {
+            // Watch for .yml, .yaml, .json files
+            this._watcher = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(storagePath, '**/*.{yml,yaml,json}')
+            );
+
+            this._watcher.onDidChange(uri => this._handleFileChange(uri));
+            this._watcher.onDidCreate(uri => this._handleFileChange(uri));
+        }
+    }
+
+    private _handleFileChange(uri: vscode.Uri) {
+        if (this._debounceTimer) {
+            clearTimeout(this._debounceTimer);
+        }
+
+        this._debounceTimer = setTimeout(() => {
+            if (this._view) {
+                const filename = path.basename(uri.fsPath);
+                
+                this._view.webview.postMessage({
+                    type: 'fileChanged',
+                    filename: filename
+                });
+            }
+        }, 2000); // 2 second debounce
     }
 
     public resolveWebviewView(
@@ -37,7 +78,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'prompt':
                     {
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: data.value });
-                        await this.agent.processMessage(data.value, (content: string) => {
+                        await this._agent.processMessage(data.value, (content: string) => {
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'agent', content });
                         });
                         break;
@@ -49,6 +90,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('model', data.model, vscode.ConfigurationTarget.Global);
                         await config.update('openRouterApiKey', data.apiKey, vscode.ConfigurationTarget.Global);
                         await config.update('storagePath', data.storagePath, vscode.ConfigurationTarget.Global);
+                        this._setupWatcher(); // Refresh watcher on new path
                         break;
                     }
                 case 'selectFolder':
@@ -64,6 +106,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             const folderPath = result[0].fsPath;
                             const config = vscode.workspace.getConfiguration('kongAgent');
                             await config.update('storagePath', folderPath, vscode.ConfigurationTarget.Global);
+                            this._setupWatcher(); // Refresh watcher
                             // Notify webview to update UI
                             this._updateWebviewConfig();
                         }
@@ -136,6 +179,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             line-height: 1.4;
             animation: fadeIn 0.3s ease-out forwards;
             word-wrap: break-word;
+            white-space: pre-wrap;
         }
 
         .message.user {
@@ -151,6 +195,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             border: 1px solid rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             border-left: 4px solid #F51A56; /* Kong Red */
+        }
+
+        .notification-toast {
+            background: var(--vscode-notifications-background);
+            color: var(--vscode-notifications-foreground);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 8px 16px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            border: 1px solid var(--vscode-widget-border);
+        }
+
+        .notification-toast b { font-size: 12px; }
+        .notification-toast button {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 6px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 11px;
+            width: 100%;
         }
 
         .input-container {
@@ -217,7 +286,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             box-shadow: 0 0 0 2px rgba(46, 134, 171, 0.3);
         }
 
-        button {
+        #send {
             background: linear-gradient(135deg, #F51A56, #d90f46);
             color: white;
             border: none;
@@ -228,13 +297,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             transition: transform 0.1s ease, box-shadow 0.1s ease;
         }
 
-        button:active {
-            transform: scale(0.95);
-        }
-        
-        button:hover {
-            box-shadow: 0 4px 10px rgba(245, 26, 86, 0.4);
-        }
+        #send:active { transform: scale(0.95); }
+        #send:hover { box-shadow: 0 4px 10px rgba(245, 26, 86, 0.4); }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
@@ -248,10 +312,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
     <div class="header">🦍 Kong Agent</div>
+    
+    <div id="notification" class="notification-toast">
+        <span>Detected manual changes in <b id="changed-filename">file.yml</b></span>
+        <button id="review-btn">🔍 Review Changes</button>
+    </div>
+
     <div class="chat-container" id="chat">
         <div class="message agent">Hello! I am your Kong Gateway Agent. I can start your local Kong via Docker, create routes, and configure services. How can I assist you today?</div>
     </div>
+    
     <div class="typing" id="typing">Kong Agent is thinking...</div>
+    
     <div class="input-container">
         <div class="settings-panel">
             <div class="settings-row">
@@ -296,6 +368,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const storageInput = document.getElementById('storage-input');
         const browseBtn = document.getElementById('browse-btn');
         const apiKeyRow = document.getElementById('api-key-row');
+        
+        const notification = document.getElementById('notification');
+        const changedFilenameDisplay = document.getElementById('changed-filename');
+        const reviewBtn = document.getElementById('review-btn');
 
         function updateConfig() {
             vscode.postMessage({
@@ -305,8 +381,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 model: modelInput.value,
                 storagePath: storageInput.value
             });
-            
-            // Toggle visibility of API key row
             apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
         }
 
@@ -318,12 +392,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
              vscode.postMessage({ type: 'selectFolder' });
         });
 
+        reviewBtn.addEventListener('click', () => {
+            const filename = changedFilenameDisplay.innerText;
+            vscode.postMessage({ 
+                type: 'prompt', 
+                value: "I just manually updated " + filename + ". Please read it, review my changes, and let me know if I should fix anything."
+            });
+            notification.style.display = 'none';
+        });
+
         function appendMessage(role, content) {
             const div = document.createElement('div');
             div.className = 'message ' + role;
             div.innerText = content;
             chat.appendChild(div);
-            // Auto scroll down to latest message
             chat.scrollTop = chat.scrollHeight;
         }
 
@@ -353,6 +435,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     modelInput.value = message.model || 'openai/gpt-4o';
                     storageInput.value = message.storagePath || 'Using Default Global Storage';
                     apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
+                    break;
+                case 'fileChanged':
+                    notification.style.display = 'flex';
+                    changedFilenameDisplay.innerText = message.filename;
                     break;
             }
         });
