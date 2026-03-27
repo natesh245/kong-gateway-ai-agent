@@ -89,6 +89,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('model', data.model, vscode.ConfigurationTarget.Global);
                         await config.update('openRouterApiKey', data.apiKey, vscode.ConfigurationTarget.Global);
                         await config.update('storagePath', data.storagePath, vscode.ConfigurationTarget.Global);
+                        await config.update('kongMode', data.kongMode, vscode.ConfigurationTarget.Global);
                         
                         if (data.proxyPort) await config.update('proxyPort', parseInt(data.proxyPort), vscode.ConfigurationTarget.Global);
                         if (data.adminPort) await config.update('adminApiPort', parseInt(data.adminPort), vscode.ConfigurationTarget.Global);
@@ -96,6 +97,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (data.databasePort) await config.update('databasePort', parseInt(data.databasePort), vscode.ConfigurationTarget.Global);
                         if (data.maxDepth) await config.update('maxToolDepth', parseInt(data.maxDepth), vscode.ConfigurationTarget.Global);
                         
+                        await config.update('remoteAdminApiUrl', data.remoteAdminUrl, vscode.ConfigurationTarget.Global);
+                        await config.update('remoteProxyBaseUrl', data.remoteProxyUrl, vscode.ConfigurationTarget.Global);
+                        await config.update('remoteManagerGuiUrl', data.remoteManagerUrl, vscode.ConfigurationTarget.Global);
+
                         this.dockerManager.initializeCache();
                         this._setupWatcher();
                         break;
@@ -203,10 +208,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 model: config.get('model'),
                 apiKey: config.get('openRouterApiKey'),
                 storagePath: config.get('storagePath'),
+                kongMode: config.get('kongMode') || 'local',
                 proxyPort: config.get('proxyPort'),
                 adminPort: config.get('adminApiPort'),
                 managerPort: config.get('managerGuiPort'),
                 databasePort: config.get('databasePort') || 5432,
+                remoteAdminUrl: config.get('remoteAdminApiUrl'),
+                remoteProxyUrl: config.get('remoteProxyBaseUrl'),
+                remoteManagerUrl: config.get('remoteManagerGuiUrl'),
                 maxDepth: config.get('maxToolDepth') || 10,
                 files: await this.dockerManager.listStorageFiles()
             });
@@ -355,6 +364,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         .file-item button:hover { background: rgba(245, 26, 86, 0.1); }
 
+        .section-header { 
+            font-size: 9px; color: #666; text-transform: uppercase; 
+            margin: 12px 0 6px 0; font-weight: 600; letter-spacing: 0.5px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .section-header::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.05); }
+
+        .hidden { display: none !important; }
+
         .reset-btn {
             background: none; border: 1px solid rgba(255,255,255,0.1); color: #888;
             padding: 8px; border-radius: 8px; font-size: 10px; cursor: pointer;
@@ -415,24 +433,40 @@ What can I do for you today?</div>
                 <span class="toggle-icon">▼</span>
             </summary>
             <div class="settings-panel">
-                <div class="settings-row"><label>Provider</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
+                <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
                 <div class="settings-row" id="api-key-row"><label>API Key</label><input type="password" id="api-key-input"/></div>
                 <div class="settings-row"><label>Max Depth</label><input type="number" id="max-depth-input" value="10" title="Max Tool Depth"/></div>
+                
+                <div class="section-header">GitOps & Storage</div>
                 <div class="settings-row"><label>Storage</label><div style="display:flex;gap:4px;flex:1;"><input type="text" id="storage-input" readonly/><button id="browse-btn" style="background:var(--vscode-button-secondaryBackground);padding:4px 8px;font-size:10px;border:none;border-radius:4px;cursor:pointer;">Browse</button></div></div>
-                <div class="ports-grid">
-                    <div class="port-card" id="proxy-card"><label>Proxy Port</label><input type="number" id="proxy-port-input" value="8000"/></div>
-                    <div class="port-card" id="admin-card"><label>Admin Port</label><input type="number" id="admin-port-input" value="8001"/></div>
-                    <div class="port-card" id="manager-card"><label>Manager Port</label><input type="number" id="manager-port-input" value="8002"/></div>
-                    <div class="port-card" id="db-card"><label>Postgres Port</label><input type="number" id="db-port-input" value="5432"/></div>
+                
+                <div class="section-header">Kong Instance</div>
+                <div class="settings-row"><label>Mode</label><select id="kong-mode-select"><option value="local">Local (Docker)</option><option value="remote">Remote (URL)</option></select></div>
+
+                <div id="local-settings">
+                    <div class="ports-grid">
+                        <div class="port-card" id="proxy-card"><label>Proxy Port</label><input type="number" id="proxy-port-input" value="8000"/></div>
+                        <div class="port-card" id="admin-card"><label>Admin Port</label><input type="number" id="admin-port-input" value="8001"/></div>
+                        <div class="port-card" id="manager-card"><label>Manager Port</label><input type="number" id="manager-port-input" value="8002"/></div>
+                        <div class="port-card" id="db-card"><label>Postgres Port</label><input type="number" id="db-port-input" value="5432"/></div>
+                    </div>
+                </div>
+
+                <div id="remote-settings" class="hidden">
+                    <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+                        <div class="settings-row"><label title="Admin API">Admin URL</label><input type="text" id="remote-admin-input" placeholder="http://kong:8001"/></div>
+                        <div class="settings-row"><label title="Proxy URL">Proxy URL</label><input type="text" id="remote-proxy-input" placeholder="http://kong:8000"/></div>
+                        <div class="settings-row"><label title="Manager URL">Manager URL</label><input type="text" id="remote-manager-input" placeholder="http://kong:8002"/></div>
+                    </div>
                 </div>
                 
                 <div class="managed-files" id="file-list-container">
-                    <div style="font-size:9px; color:#666; text-transform:uppercase; margin-bottom:4px; font-weight:600;">Managed Files</div>
+                    <div class="section-header">Managed Files</div>
                     <div id="file-list"></div>
                 </div>
 
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button id="check-ports-btn" style="flex:1; background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:10px;">🔍 Check Availability</button>
+                <div style="display:flex; gap:6px; margin-top:12px;">
+                    <button id="check-ports-btn" style="flex:1; background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:10px;">🔍 Check Local</button>
                     <button id="save-config-btn" style="flex:2; background:var(--accent); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:11px; font-weight:600;">Save Configuration</button>
                 </div>
                 <button class="reset-btn" id="reset-config-btn">Reset to Default Settings</button>
@@ -498,6 +532,24 @@ What can I do for you today?</div>
                 input.onkeypress = (e) => { if (e.key === 'Enter') sendBtn.click(); };
             }
 
+            const providerSelect = document.getElementById('provider-select');
+            if (providerSelect) {
+                providerSelect.onchange = (e) => {
+                    const apiKeyRow = document.getElementById('api-key-row');
+                    if (apiKeyRow) apiKeyRow.style.display = e.target.value === 'local' ? 'none' : 'flex';
+                };
+            }
+
+            const kongModeSelect = document.getElementById('kong-mode-select');
+            if (kongModeSelect) {
+                kongModeSelect.onchange = (e) => {
+                    const isLocal = e.target.value === 'local';
+                    document.getElementById('local-settings').classList.toggle('hidden', !isLocal);
+                    document.getElementById('remote-settings').classList.toggle('hidden', isLocal);
+                    document.getElementById('check-ports-btn').classList.toggle('hidden', !isLocal);
+                };
+            }
+
             const browseBtn = document.getElementById('browse-btn');
             if (browseBtn) browseBtn.onclick = () => vscode.postMessage({ type: 'selectFolder' });
 
@@ -509,10 +561,14 @@ What can I do for you today?</div>
                     apiKey: document.getElementById('api-key-input').value,
                     maxDepth: document.getElementById('max-depth-input').value,
                     storagePath: document.getElementById('storage-input').value,
+                    kongMode: document.getElementById('kong-mode-select').value,
                     proxyPort: document.getElementById('proxy-port-input').value,
                     adminPort: document.getElementById('admin-port-input').value,
                     managerPort: document.getElementById('manager-port-input').value,
-                    databasePort: document.getElementById('db-port-input').value
+                    databasePort: document.getElementById('db-port-input').value,
+                    remoteAdminUrl: document.getElementById('remote-admin-input').value,
+                    remoteProxyUrl: document.getElementById('remote-proxy-input').value,
+                    remoteManagerUrl: document.getElementById('remote-manager-input').value
                 });
             };
 
@@ -541,10 +597,21 @@ What can I do for you today?</div>
                     document.getElementById('api-key-input').value = m.apiKey || '';
                     document.getElementById('max-depth-input').value = m.maxDepth || 10;
                     document.getElementById('storage-input').value = m.storagePath || 'Default';
+                    
+                    const kongMode = m.kongMode || 'local';
+                    document.getElementById('kong-mode-select').value = kongMode;
+                    document.getElementById('local-settings').classList.toggle('hidden', kongMode !== 'local');
+                    document.getElementById('remote-settings').classList.toggle('hidden', kongMode === 'local');
+                    document.getElementById('check-ports-btn').classList.toggle('hidden', kongMode !== 'local');
+
                     document.getElementById('proxy-port-input').value = m.proxyPort || 8000;
                     document.getElementById('admin-port-input').value = m.adminPort || 8001;
                     document.getElementById('manager-port-input').value = m.managerPort || 8002;
                     document.getElementById('db-port-input').value = m.databasePort || 5432;
+
+                    document.getElementById('remote-admin-input').value = m.remoteAdminUrl || '';
+                    document.getElementById('remote-proxy-input').value = m.remoteProxyUrl || '';
+                    document.getElementById('remote-manager-input').value = m.remoteManagerUrl || '';
                     
                     if (m.files) {
                         const list = document.getElementById('file-list');

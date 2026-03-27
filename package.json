@@ -79,6 +79,30 @@
           "default": 10,
           "description": "Maximum tool call depth per message to prevent loops."
         },
+        "kongAgent.kongMode": {
+          "type": "string",
+          "enum": [
+            "local",
+            "remote"
+          ],
+          "default": "local",
+          "description": "The Kong instance type (Local Docker vs Remote URL)."
+        },
+        "kongAgent.remoteAdminApiUrl": {
+          "type": "string",
+          "default": "http://localhost:8001",
+          "description": "The Admin API URL for the remote Kong instance."
+        },
+        "kongAgent.remoteProxyBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "The Proxy Base URL for the remote Kong instance."
+        },
+        "kongAgent.remoteManagerGuiUrl": {
+          "type": "string",
+          "default": "http://localhost:8002",
+          "description": "The Manager GUI URL for the remote Kong instance."
+        },
         "kongAgent.storagePath": {
           "type": "string",
           "default": "",
