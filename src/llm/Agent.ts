@@ -29,10 +29,12 @@ export class Agent {
                 "If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. " +
                 "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
                 "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
-                "When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. " +
-                "**APPLY CHANGES**: When you detect a manual update to 'kong.yml' (via a user review prompt), you should offer to 'Apply these changes to Kong'. " +
-                "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image), ensuring the GitOps workflow works even without local installations. " +
-                "Be concise and confirm when an action is done."
+                "**MANDATORY DECLARATIVE WORKFLOW**: When the user asks to create or modify a Service, Route, or Consumer, you MUST follow this sequence:\n" +
+                "1. **Edit File**: First, use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml' in the storage directory. (Only use 'export_live_to_storage_file' if you need to backup the current live state; do NOT use it to save your current reasoned changes).\n" +
+                "2. **Request Review**: Show the changes you made to the file and ask: 'Should I apply these changes to the Kong instance using decK?'\n" +
+                "3. **Sync**: Only after the user approves, use the 'sync_to_kong_using_deck' tool to apply the changes from the file to Kong.\n" +
+                "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
+                "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image)."
         });
     }
 
@@ -121,7 +123,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "create_service",
-                    description: "Create a Service in Kong. Use when the user wants to proxy an upstream URL.",
+                    description: "Create a Service in Kong. ONLY use this for 'Direct API creation'. Otherwise, favor editing kong.yml and syncing via decK.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -136,7 +138,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "create_route",
-                    description: "Create a Route for a specific service in Kong.",
+                    description: "Create a Route for a specific service in Kong. ONLY use this for 'Direct API creation'. Otherwise, favor editing kong.yml and syncing via decK.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -155,7 +157,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "create_consumer",
-                    description: "Create a Consumer in Kong.",
+                    description: "Create a Consumer in Kong. ONLY use this for 'Direct API creation'. Otherwise, favor editing kong.yml and syncing via decK.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -278,8 +280,8 @@ export class Agent {
             {
                 type: "function",
                 function: {
-                    name: "sync_to_storage_file",
-                    description: "Exports the current Kong configuration (Services, Routes) to 'kong.yml' in the storage directory to ensure persistence and GitOps compatibility."
+                    name: "export_live_to_storage_file",
+                    description: "Downloads the current live Kong configuration (Services, Routes) and saves it as 'kong.yml' in the storage directory."
                 }
             },
             {
@@ -389,10 +391,18 @@ export class Agent {
                 try {
                     switch (functionName) {
                         case "start_kong":
-                            functionResult = await this.dockerManager.start();
+                            if (vscode.workspace.getConfiguration('kongAgent').get('kongMode') === 'remote') {
+                                functionResult = "Error: Docker lifecycle management (Start) is not available for Remote Kong instances.";
+                            } else {
+                                functionResult = await this.dockerManager.start();
+                            }
                             break;
                         case "stop_kong":
-                            functionResult = await this.dockerManager.stop();
+                            if (vscode.workspace.getConfiguration('kongAgent').get('kongMode') === 'remote') {
+                                functionResult = "Error: Docker lifecycle management (Stop) is not available for Remote Kong instances.";
+                            } else {
+                                functionResult = await this.dockerManager.stop();
+                            }
                             break;
                         case "get_kong_status":
                             const apiStatus = await this.kongApi.getStatus();
@@ -459,10 +469,10 @@ export class Agent {
                         case "open_file_in_editor":
                             functionResult = await this.dockerManager.openFile(functionArgs.filename);
                             break;
-                        case "sync_to_storage_file":
+                        case "export_live_to_storage_file":
                             const declarativeYaml = await this.kongApi.getDeclarativeConfig();
                             await this.dockerManager.writeStorageFile('kong.yml', declarativeYaml);
-                            functionResult = "Successfully exported the current Kong configuration to 'kong.yml' in your storage directory.";
+                            functionResult = "Successfully exported the current live Kong configuration to 'kong.yml' in your storage directory.";
                             break;
                         case "apply_config_from_file":
                             const filePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);

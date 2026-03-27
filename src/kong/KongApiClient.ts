@@ -4,6 +4,12 @@ import * as vscode from 'vscode';
 export class KongApiClient {
     private getBaseUrl(): string {
         const config = vscode.workspace.getConfiguration('kongAgent');
+        const mode = config.get<string>('kongMode') || 'local';
+        
+        if (mode === 'remote') {
+            return config.get<string>('remoteAdminApiUrl') || 'http://localhost:8001';
+        }
+
         const adminPort = config.get<number>('adminApiPort') || 8001;
         return `http://localhost:${adminPort}`;
     }
