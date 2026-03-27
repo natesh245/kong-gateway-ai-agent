@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
 import { KongDockerManager } from "../docker/KongDockerManager";
 import { KongApiClient } from "../kong/KongApiClient";
 
@@ -15,7 +17,9 @@ export class Agent {
         this.messages.push({
             role: "system",
             content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. " +
-                     "You can start or stop the Kong Docker containers, and interact with the Admin API to create routes, services, and consumers. " +
+                     "You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. " +
+                     "CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. " +
+                     "If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. " +
                      "If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. " +
                      "You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. " +
                      "Always use the provided tool functions when the user asks you to perform an action on Kong. " +
@@ -159,6 +163,42 @@ export class Agent {
                         required: ["proxy", "admin", "manager"]
                     }
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "list_storage_files",
+                    description: "Lists all files in the current storage directory (e.g., docker-compose.yml, kong.yml).",
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "read_storage_file",
+                    description: "Reads the content of a file in the storage directory for review or analysis.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            filename: { type: "string", description: "The name of the file to read (e.g. 'kong.yml')" },
+                        },
+                        required: ["filename"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "write_storage_file",
+                    description: "Writes content to a file in the storage directory.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            filename: { type: "string" },
+                            content: { type: "string" }
+                        },
+                        required: ["filename", "content"]
+                    }
+                }
             }
         ];
 
@@ -215,6 +255,31 @@ export class Agent {
                             await config.update('adminApiPort', functionArgs.admin, vscode.ConfigurationTarget.Global);
                             await config.update('managerGuiPort', functionArgs.manager, vscode.ConfigurationTarget.Global);
                             functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}. You can now try starting Kong again.`;
+                            break;
+                        case "list_storage_files":
+                            const listPath = this.dockerManager.getStoragePath();
+                            const files = fs.readdirSync(listPath);
+                            functionResult = `Files in storage folder (${listPath}):\n${files.join('\n')}`;
+                            break;
+                        case "read_storage_file":
+                            const readPath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
+                            if (fs.existsSync(readPath)) {
+                                functionResult = fs.readFileSync(readPath, 'utf8');
+                            } else {
+                                functionResult = `Error: File '${functionArgs.filename}' not found.`;
+                            }
+                            break;
+                        case "write_storage_file":
+                            const writePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
+                            fs.writeFileSync(writePath, functionArgs.content, 'utf8');
+                            // Open the file in the editor
+                            try {
+                                const writeDoc = await vscode.workspace.openTextDocument(writePath);
+                                await vscode.window.showTextDocument(writeDoc);
+                            } catch (err: any) {
+                                console.error(`Failed to open document: ${err.message}`);
+                            }
+                            functionResult = `Successfully wrote to '${functionArgs.filename}' and opened it in the editor.`;
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

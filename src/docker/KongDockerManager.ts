@@ -10,8 +10,12 @@ const execAsync = promisify(exec);
 export class KongDockerManager {
     constructor(private context: vscode.ExtensionContext) {}
 
-    private getStoragePath(): string {
-        const storagePath = this.context.globalStorageUri.fsPath;
+    public getStoragePath(): string {
+        const config = vscode.workspace.getConfiguration('kongAgent');
+        const customPath = config.get<string>('storagePath');
+        
+        const storagePath = customPath || this.context.globalStorageUri.fsPath;
+        
         if (!fs.existsSync(storagePath)) {
             fs.mkdirSync(storagePath, { recursive: true });
         }
@@ -46,6 +50,10 @@ export class KongDockerManager {
             const storagePath = this.getStoragePath();
             const composePath = path.join(storagePath, 'kong-docker-compose.yml');
             fs.writeFileSync(composePath, this.composeContent(proxyPort, adminPort, managerPort), 'utf8');
+
+            // Open the file in the editor
+            const doc = await vscode.workspace.openTextDocument(composePath);
+            await vscode.window.showTextDocument(doc);
 
             vscode.window.showInformationMessage('Kong Agent: Starting Postgres Database...');
             await execAsync('docker-compose -f kong-docker-compose.yml up -d kong-database', { cwd: storagePath });

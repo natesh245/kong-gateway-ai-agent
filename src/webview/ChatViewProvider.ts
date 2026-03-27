@@ -48,6 +48,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('provider', data.provider, vscode.ConfigurationTarget.Global);
                         await config.update('model', data.model, vscode.ConfigurationTarget.Global);
                         await config.update('openRouterApiKey', data.apiKey, vscode.ConfigurationTarget.Global);
+                        await config.update('storagePath', data.storagePath, vscode.ConfigurationTarget.Global);
+                        break;
+                    }
+                case 'selectFolder':
+                    {
+                        const result = await vscode.window.showOpenDialog({
+                            canSelectFiles: false,
+                            canSelectFolders: true,
+                            canSelectMany: false,
+                            openLabel: 'Select Storage Folder'
+                        });
+
+                        if (result && result.length > 0) {
+                            const folderPath = result[0].fsPath;
+                            const config = vscode.workspace.getConfiguration('kongAgent');
+                            await config.update('storagePath', folderPath, vscode.ConfigurationTarget.Global);
+                            // Notify webview to update UI
+                            this._updateWebviewConfig();
+                        }
                         break;
                     }
             }
@@ -61,7 +80,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 type: 'setConfig',
                 provider: config.get('provider'),
                 model: config.get('model'),
-                apiKey: config.get('openRouterApiKey')
+                apiKey: config.get('openRouterApiKey'),
+                storagePath: config.get('storagePath')
             });
         }
     }
@@ -249,6 +269,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 <label>Model</label>
                 <input type="text" id="model-input" placeholder="e.g. openai/gpt-4o" />
             </div>
+            <div class="settings-row">
+                <label>Storage</label>
+                <div style="display: flex; gap: 4px; flex: 1;">
+                    <input type="text" id="storage-input" placeholder="Default storage" readonly style="flex: 1; cursor: default;" />
+                    <button id="browse-btn" style="padding: 4px 8px; font-size: 10px; background: var(--vscode-button-secondaryBackground);">Browse</button>
+                </div>
+            </div>
         </div>
         <div class="chat-input-row">
             <input type="text" id="prompt" placeholder="Ask me to start Kong..." />
@@ -266,6 +293,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const providerSelect = document.getElementById('provider-select');
         const apiKeyInput = document.getElementById('api-key-input');
         const modelInput = document.getElementById('model-input');
+        const storageInput = document.getElementById('storage-input');
+        const browseBtn = document.getElementById('browse-btn');
         const apiKeyRow = document.getElementById('api-key-row');
 
         function updateConfig() {
@@ -273,7 +302,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 type: 'updateConfig',
                 provider: providerSelect.value,
                 apiKey: apiKeyInput.value,
-                model: modelInput.value
+                model: modelInput.value,
+                storagePath: storageInput.value
             });
             
             // Toggle visibility of API key row
@@ -283,6 +313,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         providerSelect.addEventListener('change', updateConfig);
         apiKeyInput.addEventListener('input', updateConfig);
         modelInput.addEventListener('input', updateConfig);
+        
+        browseBtn.addEventListener('click', () => {
+             vscode.postMessage({ type: 'selectFolder' });
+        });
 
         function appendMessage(role, content) {
             const div = document.createElement('div');
@@ -317,6 +351,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     providerSelect.value = message.provider || 'openrouter';
                     apiKeyInput.value = message.apiKey || '';
                     modelInput.value = message.model || 'openai/gpt-4o';
+                    storageInput.value = message.storagePath || 'Using Default Global Storage';
                     apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
                     break;
             }

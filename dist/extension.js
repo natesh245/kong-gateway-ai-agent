@@ -770,14 +770,14 @@ var require_url_state_machine = __commonJS({
       return url2.replace(/\u0009|\u000A|\u000D/g, "");
     }
     function shortenPath(url2) {
-      const path2 = url2.path;
-      if (path2.length === 0) {
+      const path3 = url2.path;
+      if (path3.length === 0) {
         return;
       }
-      if (url2.scheme === "file" && path2.length === 1 && isNormalizedWindowsDriveLetter(path2[0])) {
+      if (url2.scheme === "file" && path3.length === 1 && isNormalizedWindowsDriveLetter(path3[0])) {
         return;
       }
-      path2.pop();
+      path3.pop();
     }
     function includesCredentials(url2) {
       return url2.username !== "" || url2.password !== "";
@@ -6567,14 +6567,14 @@ __export(fileFromPath_exports, {
   fileFromPathSync: () => fileFromPathSync,
   isFile: () => isFile
 });
-function createFileFromPath(path2, { mtimeMs, size }, filenameOrOptions, options = {}) {
+function createFileFromPath(path3, { mtimeMs, size }, filenameOrOptions, options = {}) {
   let filename;
   if (isPlainObject_default2(filenameOrOptions)) {
     [options, filename] = [filenameOrOptions, void 0];
   } else {
     filename = filenameOrOptions;
   }
-  const file = new FileFromPath({ path: path2, size, lastModified: mtimeMs });
+  const file = new FileFromPath({ path: path3, size, lastModified: mtimeMs });
   if (!filename) {
     filename = file.name;
   }
@@ -6583,13 +6583,13 @@ function createFileFromPath(path2, { mtimeMs, size }, filenameOrOptions, options
     lastModified: file.lastModified
   });
 }
-function fileFromPathSync(path2, filenameOrOptions, options = {}) {
-  const stats = (0, import_fs.statSync)(path2);
-  return createFileFromPath(path2, stats, filenameOrOptions, options);
+function fileFromPathSync(path3, filenameOrOptions, options = {}) {
+  const stats = (0, import_fs.statSync)(path3);
+  return createFileFromPath(path3, stats, filenameOrOptions, options);
 }
-async function fileFromPath2(path2, filenameOrOptions, options) {
-  const stats = await import_fs.promises.stat(path2);
-  return createFileFromPath(path2, stats, filenameOrOptions, options);
+async function fileFromPath2(path3, filenameOrOptions, options) {
+  const stats = await import_fs.promises.stat(path3);
+  return createFileFromPath(path3, stats, filenameOrOptions, options);
 }
 var import_fs, import_path, import_node_domexception, __classPrivateFieldSet4, __classPrivateFieldGet5, _FileFromPath_path, _FileFromPath_start, MESSAGE, FileFromPath;
 var init_fileFromPath = __esm({
@@ -15504,11 +15504,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path2) {
-      if (!path2 || typeof path2 !== "string") {
+    function lookup(path3) {
+      if (!path3 || typeof path3 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path2).toLowerCase().substr(1);
+      var extension2 = extname("x." + path3).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -16613,11 +16613,11 @@ var require_form_data = __commonJS({
     "use strict";
     var CombinedStream = require_combined_stream();
     var util3 = require("util");
-    var path2 = require("path");
+    var path3 = require("path");
     var http3 = require("http");
     var https2 = require("https");
     var parseUrl = require("url").parse;
-    var fs3 = require("fs");
+    var fs4 = require("fs");
     var Stream2 = require("stream").Stream;
     var crypto2 = require("crypto");
     var mime = require_mime_types();
@@ -16684,7 +16684,7 @@ var require_form_data = __commonJS({
         if (value.end != void 0 && value.end != Infinity && value.start != void 0) {
           callback(null, value.end + 1 - (value.start ? value.start : 0));
         } else {
-          fs3.stat(value.path, function(err, stat) {
+          fs4.stat(value.path, function(err, stat) {
             if (err) {
               callback(err);
               return;
@@ -16741,11 +16741,11 @@ var require_form_data = __commonJS({
     FormData5.prototype._getContentDisposition = function(value, options) {
       var filename;
       if (typeof options.filepath === "string") {
-        filename = path2.normalize(options.filepath).replace(/\\/g, "/");
+        filename = path3.normalize(options.filepath).replace(/\\/g, "/");
       } else if (options.filename || value && (value.name || value.path)) {
-        filename = path2.basename(options.filename || value && (value.name || value.path));
+        filename = path3.basename(options.filename || value && (value.name || value.path));
       } else if (value && value.readable && hasOwn2(value, "httpVersion")) {
-        filename = path2.basename(value.client._httpMessage.path || "");
+        filename = path3.basename(value.client._httpMessage.path || "");
       }
       if (filename) {
         return 'filename="' + filename + '"';
@@ -18278,13 +18278,13 @@ var MultipartBody = class {
 // node_modules/openai/_shims/node-runtime.mjs
 var import_web = require("node:stream/web");
 var fileFromPathWarned = false;
-async function fileFromPath3(path2, ...args) {
+async function fileFromPath3(path3, ...args) {
   const { fileFromPath: _fileFromPath } = await Promise.resolve().then(() => (init_fileFromPath(), fileFromPath_exports));
   if (!fileFromPathWarned) {
-    console.warn(`fileFromPath is deprecated; use fs.createReadStream(${JSON.stringify(path2)}) instead`);
+    console.warn(`fileFromPath is deprecated; use fs.createReadStream(${JSON.stringify(path3)}) instead`);
     fileFromPathWarned = true;
   }
-  return await _fileFromPath(path2, ...args);
+  return await _fileFromPath(path3, ...args);
 }
 var defaultHttpAgent = new import_agentkeepalive.default({ keepAlive: true, timeout: 5 * 60 * 1e3 });
 var defaultHttpsAgent = new import_agentkeepalive.default.HttpsAgent({ keepAlive: true, timeout: 5 * 60 * 1e3 });
@@ -19079,29 +19079,29 @@ var APIClient = class {
   defaultIdempotencyKey() {
     return `stainless-node-retry-${uuid4()}`;
   }
-  get(path2, opts) {
-    return this.methodRequest("get", path2, opts);
+  get(path3, opts) {
+    return this.methodRequest("get", path3, opts);
   }
-  post(path2, opts) {
-    return this.methodRequest("post", path2, opts);
+  post(path3, opts) {
+    return this.methodRequest("post", path3, opts);
   }
-  patch(path2, opts) {
-    return this.methodRequest("patch", path2, opts);
+  patch(path3, opts) {
+    return this.methodRequest("patch", path3, opts);
   }
-  put(path2, opts) {
-    return this.methodRequest("put", path2, opts);
+  put(path3, opts) {
+    return this.methodRequest("put", path3, opts);
   }
-  delete(path2, opts) {
-    return this.methodRequest("delete", path2, opts);
+  delete(path3, opts) {
+    return this.methodRequest("delete", path3, opts);
   }
-  methodRequest(method, path2, opts) {
+  methodRequest(method, path3, opts) {
     return this.request(Promise.resolve(opts).then(async (opts2) => {
       const body = opts2 && isBlobLike(opts2?.body) ? new DataView(await opts2.body.arrayBuffer()) : opts2?.body instanceof DataView ? opts2.body : opts2?.body instanceof ArrayBuffer ? new DataView(opts2.body) : opts2 && ArrayBuffer.isView(opts2?.body) ? new DataView(opts2.body.buffer) : opts2?.body;
-      return { method, path: path2, ...opts2, body };
+      return { method, path: path3, ...opts2, body };
     }));
   }
-  getAPIList(path2, Page2, opts) {
-    return this.requestAPIList(Page2, { method: "get", path: path2, ...opts });
+  getAPIList(path3, Page2, opts) {
+    return this.requestAPIList(Page2, { method: "get", path: path3, ...opts });
   }
   calculateContentLength(body) {
     if (typeof body === "string") {
@@ -19120,10 +19120,10 @@ var APIClient = class {
   }
   buildRequest(inputOptions, { retryCount = 0 } = {}) {
     const options = { ...inputOptions };
-    const { method, path: path2, query, headers = {} } = options;
+    const { method, path: path3, query, headers = {} } = options;
     const body = ArrayBuffer.isView(options.body) || options.__binaryRequest && typeof options.body === "string" ? options.body : isMultipartBody(options.body) ? options.body.body : options.body ? JSON.stringify(options.body, null, 2) : null;
     const contentLength = this.calculateContentLength(body);
-    const url2 = this.buildURL(path2, query);
+    const url2 = this.buildURL(path3, query);
     if ("timeout" in options)
       validatePositiveInteger("timeout", options.timeout);
     options.timeout = options.timeout ?? this.timeout;
@@ -19239,8 +19239,8 @@ var APIClient = class {
     const request = this.makeRequest(options, null);
     return new PagePromise(this, request, Page2);
   }
-  buildURL(path2, query) {
-    const url2 = isAbsoluteURL(path2) ? new URL(path2) : new URL(this.baseURL + (this.baseURL.endsWith("/") && path2.startsWith("/") ? path2.slice(1) : path2));
+  buildURL(path3, query) {
+    const url2 = isAbsoluteURL(path3) ? new URL(path3) : new URL(this.baseURL + (this.baseURL.endsWith("/") && path3.startsWith("/") ? path3.slice(1) : path3));
     const defaultQuery = this.defaultQuery();
     if (!isEmptyObj(defaultQuery)) {
       query = { ...defaultQuery, ...query };
@@ -24160,6 +24160,8 @@ var openai_default = OpenAI;
 
 // src/llm/Agent.ts
 var vscode = __toESM(require("vscode"));
+var fs2 = __toESM(require("fs"));
+var path = __toESM(require("path"));
 
 // node_modules/axios/lib/helpers/bind.js
 function bind(fn, thisArg) {
@@ -24691,10 +24693,10 @@ function isVisitable(thing) {
 function removeBrackets(key) {
   return utils_default.endsWith(key, "[]") ? key.slice(0, -2) : key;
 }
-function renderKey(path2, key, dots) {
-  if (!path2)
+function renderKey(path3, key, dots) {
+  if (!path3)
     return key;
-  return path2.concat(key).map(function each(token, i2) {
+  return path3.concat(key).map(function each(token, i2) {
     token = removeBrackets(token);
     return !dots && i2 ? "[" + token + "]" : token;
   }).join(dots ? "." : "");
@@ -24748,13 +24750,13 @@ function toFormData(obj, formData, options) {
     }
     return value;
   }
-  function defaultVisitor(value, key, path2) {
+  function defaultVisitor(value, key, path3) {
     let arr = value;
     if (utils_default.isReactNative(formData) && utils_default.isReactNativeBlob(value)) {
-      formData.append(renderKey(path2, key, dots), convertValue(value));
+      formData.append(renderKey(path3, key, dots), convertValue(value));
       return false;
     }
-    if (value && !path2 && typeof value === "object") {
+    if (value && !path3 && typeof value === "object") {
       if (utils_default.endsWith(key, "{}")) {
         key = metaTokens ? key : key.slice(0, -2);
         value = JSON.stringify(value);
@@ -24773,7 +24775,7 @@ function toFormData(obj, formData, options) {
     if (isVisitable(value)) {
       return true;
     }
-    formData.append(renderKey(path2, key, dots), convertValue(value));
+    formData.append(renderKey(path3, key, dots), convertValue(value));
     return false;
   }
   const stack = [];
@@ -24782,17 +24784,17 @@ function toFormData(obj, formData, options) {
     convertValue,
     isVisitable
   });
-  function build(value, path2) {
+  function build(value, path3) {
     if (utils_default.isUndefined(value))
       return;
     if (stack.indexOf(value) !== -1) {
-      throw Error("Circular reference detected in " + path2.join("."));
+      throw Error("Circular reference detected in " + path3.join("."));
     }
     stack.push(value);
     utils_default.forEach(value, function each(el, key) {
-      const result = !(utils_default.isUndefined(el) || el === null) && visitor.call(formData, el, utils_default.isString(key) ? key.trim() : key, path2, exposedHelpers);
+      const result = !(utils_default.isUndefined(el) || el === null) && visitor.call(formData, el, utils_default.isString(key) ? key.trim() : key, path3, exposedHelpers);
       if (result === true) {
-        build(el, path2 ? path2.concat(key) : [key]);
+        build(el, path3 ? path3.concat(key) : [key]);
       }
     });
     stack.pop();
@@ -25004,7 +25006,7 @@ var platform_default = {
 // node_modules/axios/lib/helpers/toURLEncodedForm.js
 function toURLEncodedForm(data, options) {
   return toFormData_default(data, new platform_default.classes.URLSearchParams(), {
-    visitor: function(value, key, path2, helpers) {
+    visitor: function(value, key, path3, helpers) {
       if (platform_default.isNode && utils_default.isBuffer(value)) {
         this.append(key, value.toString("base64"));
         return false;
@@ -25034,12 +25036,12 @@ function arrayToObject(arr) {
   return obj;
 }
 function formDataToJSON(formData) {
-  function buildPath(path2, value, target, index) {
-    let name = path2[index++];
+  function buildPath(path3, value, target, index) {
+    let name = path3[index++];
     if (name === "__proto__")
       return true;
     const isNumericKey = Number.isFinite(+name);
-    const isLast = index >= path2.length;
+    const isLast = index >= path3.length;
     name = !name && utils_default.isArray(target) ? target.length : name;
     if (isLast) {
       if (utils_default.hasOwnProp(target, name)) {
@@ -25052,7 +25054,7 @@ function formDataToJSON(formData) {
     if (!target[name] || !utils_default.isObject(target[name])) {
       target[name] = [];
     }
-    const result = buildPath(path2, value, target[name], index);
+    const result = buildPath(path3, value, target[name], index);
     if (result && utils_default.isArray(target[name])) {
       target[name] = arrayToObject(target[name]);
     }
@@ -26438,9 +26440,9 @@ var http_default = isHttpAdapterSupported && function httpAdapter(config) {
       auth = urlUsername + ":" + urlPassword;
     }
     auth && headers.delete("authorization");
-    let path2;
+    let path3;
     try {
-      path2 = buildURL(
+      path3 = buildURL(
         parsed.pathname + parsed.search,
         config.params,
         config.paramsSerializer
@@ -26458,7 +26460,7 @@ var http_default = isHttpAdapterSupported && function httpAdapter(config) {
       false
     );
     const options = {
-      path: path2,
+      path: path3,
       method,
       headers: headers.toJSON(),
       agents: { http: config.httpAgent, https: config.httpsAgent },
@@ -26709,15 +26711,15 @@ var isURLSameOrigin_default = platform_default.hasStandardBrowserEnv ? /* @__PUR
 var cookies_default = platform_default.hasStandardBrowserEnv ? (
   // Standard browser envs support document.cookie
   {
-    write(name, value, expires, path2, domain, secure, sameSite) {
+    write(name, value, expires, path3, domain, secure, sameSite) {
       if (typeof document === "undefined")
         return;
       const cookie = [`${name}=${encodeURIComponent(value)}`];
       if (utils_default.isNumber(expires)) {
         cookie.push(`expires=${new Date(expires).toUTCString()}`);
       }
-      if (utils_default.isString(path2)) {
-        cookie.push(`path=${path2}`);
+      if (utils_default.isString(path3)) {
+        cookie.push(`path=${path3}`);
       }
       if (utils_default.isString(domain)) {
         cookie.push(`domain=${domain}`);
@@ -28016,7 +28018,7 @@ var Agent = class {
     this.kongApi = new KongApiClient();
     this.messages.push({
       role: "system",
-      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Docker containers, and interact with the Admin API to create routes, services, and consumers. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
+      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
     });
   }
   openai = null;
@@ -28150,6 +28152,42 @@ var Agent = class {
             required: ["proxy", "admin", "manager"]
           }
         }
+      },
+      {
+        type: "function",
+        function: {
+          name: "list_storage_files",
+          description: "Lists all files in the current storage directory (e.g., docker-compose.yml, kong.yml)."
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "read_storage_file",
+          description: "Reads the content of a file in the storage directory for review or analysis.",
+          parameters: {
+            type: "object",
+            properties: {
+              filename: { type: "string", description: "The name of the file to read (e.g. 'kong.yml')" }
+            },
+            required: ["filename"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "write_storage_file",
+          description: "Writes content to a file in the storage directory.",
+          parameters: {
+            type: "object",
+            properties: {
+              filename: { type: "string" },
+              content: { type: "string" }
+            },
+            required: ["filename", "content"]
+          }
+        }
       }
     ];
     let response = await this.openai.chat.completions.create({
@@ -28199,6 +28237,31 @@ ${apiStatus}`;
               await config.update("adminApiPort", functionArgs.admin, vscode.ConfigurationTarget.Global);
               await config.update("managerGuiPort", functionArgs.manager, vscode.ConfigurationTarget.Global);
               functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}. You can now try starting Kong again.`;
+              break;
+            case "list_storage_files":
+              const listPath = this.dockerManager.getStoragePath();
+              const files = fs2.readdirSync(listPath);
+              functionResult = `Files in storage folder (${listPath}):
+${files.join("\n")}`;
+              break;
+            case "read_storage_file":
+              const readPath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
+              if (fs2.existsSync(readPath)) {
+                functionResult = fs2.readFileSync(readPath, "utf8");
+              } else {
+                functionResult = `Error: File '${functionArgs.filename}' not found.`;
+              }
+              break;
+            case "write_storage_file":
+              const writePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
+              fs2.writeFileSync(writePath, functionArgs.content, "utf8");
+              try {
+                const writeDoc = await vscode.workspace.openTextDocument(writePath);
+                await vscode.window.showTextDocument(writeDoc);
+              } catch (err) {
+                console.error(`Failed to open document: ${err.message}`);
+              }
+              functionResult = `Successfully wrote to '${functionArgs.filename}' and opened it in the editor.`;
               break;
             default:
               functionResult = `Error: Unknown function ${functionName}`;
@@ -28252,6 +28315,22 @@ var ChatViewProvider = class {
           await config.update("provider", data.provider, vscode2.ConfigurationTarget.Global);
           await config.update("model", data.model, vscode2.ConfigurationTarget.Global);
           await config.update("openRouterApiKey", data.apiKey, vscode2.ConfigurationTarget.Global);
+          await config.update("storagePath", data.storagePath, vscode2.ConfigurationTarget.Global);
+          break;
+        }
+        case "selectFolder": {
+          const result = await vscode2.window.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            openLabel: "Select Storage Folder"
+          });
+          if (result && result.length > 0) {
+            const folderPath = result[0].fsPath;
+            const config = vscode2.workspace.getConfiguration("kongAgent");
+            await config.update("storagePath", folderPath, vscode2.ConfigurationTarget.Global);
+            this._updateWebviewConfig();
+          }
           break;
         }
       }
@@ -28264,7 +28343,8 @@ var ChatViewProvider = class {
         type: "setConfig",
         provider: config.get("provider"),
         model: config.get("model"),
-        apiKey: config.get("openRouterApiKey")
+        apiKey: config.get("openRouterApiKey"),
+        storagePath: config.get("storagePath")
       });
     }
   }
@@ -28451,6 +28531,13 @@ var ChatViewProvider = class {
                 <label>Model</label>
                 <input type="text" id="model-input" placeholder="e.g. openai/gpt-4o" />
             </div>
+            <div class="settings-row">
+                <label>Storage</label>
+                <div style="display: flex; gap: 4px; flex: 1;">
+                    <input type="text" id="storage-input" placeholder="Default storage" readonly style="flex: 1; cursor: default;" />
+                    <button id="browse-btn" style="padding: 4px 8px; font-size: 10px; background: var(--vscode-button-secondaryBackground);">Browse</button>
+                </div>
+            </div>
         </div>
         <div class="chat-input-row">
             <input type="text" id="prompt" placeholder="Ask me to start Kong..." />
@@ -28468,6 +28555,8 @@ var ChatViewProvider = class {
         const providerSelect = document.getElementById('provider-select');
         const apiKeyInput = document.getElementById('api-key-input');
         const modelInput = document.getElementById('model-input');
+        const storageInput = document.getElementById('storage-input');
+        const browseBtn = document.getElementById('browse-btn');
         const apiKeyRow = document.getElementById('api-key-row');
 
         function updateConfig() {
@@ -28475,7 +28564,8 @@ var ChatViewProvider = class {
                 type: 'updateConfig',
                 provider: providerSelect.value,
                 apiKey: apiKeyInput.value,
-                model: modelInput.value
+                model: modelInput.value,
+                storagePath: storageInput.value
             });
             
             // Toggle visibility of API key row
@@ -28485,6 +28575,10 @@ var ChatViewProvider = class {
         providerSelect.addEventListener('change', updateConfig);
         apiKeyInput.addEventListener('input', updateConfig);
         modelInput.addEventListener('input', updateConfig);
+        
+        browseBtn.addEventListener('click', () => {
+             vscode.postMessage({ type: 'selectFolder' });
+        });
 
         function appendMessage(role, content) {
             const div = document.createElement('div');
@@ -28519,6 +28613,7 @@ var ChatViewProvider = class {
                     providerSelect.value = message.provider || 'openrouter';
                     apiKeyInput.value = message.apiKey || '';
                     modelInput.value = message.model || 'openai/gpt-4o';
+                    storageInput.value = message.storagePath || 'Using Default Global Storage';
                     apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
                     break;
             }
@@ -28531,8 +28626,8 @@ var ChatViewProvider = class {
 
 // src/docker/KongDockerManager.ts
 var vscode3 = __toESM(require("vscode"));
-var fs2 = __toESM(require("fs"));
-var path = __toESM(require("path"));
+var fs3 = __toESM(require("fs"));
+var path2 = __toESM(require("path"));
 var import_child_process = require("child_process");
 var import_util5 = require("util");
 
@@ -28581,9 +28676,11 @@ var KongDockerManager = class {
     this.context = context;
   }
   getStoragePath() {
-    const storagePath = this.context.globalStorageUri.fsPath;
-    if (!fs2.existsSync(storagePath)) {
-      fs2.mkdirSync(storagePath, { recursive: true });
+    const config = vscode3.workspace.getConfiguration("kongAgent");
+    const customPath = config.get("storagePath");
+    const storagePath = customPath || this.context.globalStorageUri.fsPath;
+    if (!fs3.existsSync(storagePath)) {
+      fs3.mkdirSync(storagePath, { recursive: true });
     }
     return storagePath;
   }
@@ -28609,8 +28706,10 @@ var KongDockerManager = class {
         );
       }
       const storagePath = this.getStoragePath();
-      const composePath = path.join(storagePath, "kong-docker-compose.yml");
-      fs2.writeFileSync(composePath, this.composeContent(proxyPort, adminPort, managerPort), "utf8");
+      const composePath = path2.join(storagePath, "kong-docker-compose.yml");
+      fs3.writeFileSync(composePath, this.composeContent(proxyPort, adminPort, managerPort), "utf8");
+      const doc = await vscode3.workspace.openTextDocument(composePath);
+      await vscode3.window.showTextDocument(doc);
       vscode3.window.showInformationMessage("Kong Agent: Starting Postgres Database...");
       await execAsync("docker-compose -f kong-docker-compose.yml up -d kong-database", { cwd: storagePath });
       vscode3.window.showInformationMessage("Kong Agent: Bootstrapping database...");
