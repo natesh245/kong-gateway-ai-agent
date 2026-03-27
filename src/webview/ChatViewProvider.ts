@@ -606,17 +606,21 @@ What can I do for you today?</div>
                     div.classList.add('error-message');
                 }
                 
-                if (content.indexOf('\x60\x60\x60diff') !== -1) {
-                    const parts = content.split('\x60\x60\x60diff');
+                if (content.includes('\x60\x60\x60diff') || content.includes('\x60\x60\x60yaml')) {
+                    const type = content.includes('\x60\x60\x60diff') ? 'diff' : 'yaml';
+                    const parts = content.split('\x60\x60\x60' + type);
                     const textBefore = (typeof marked !== 'undefined') ? marked.parse(parts[0]) : parts[0];
                     const rest = parts[1].split('\x60\x60\x60');
-                    const diffLines = rest[0].split('\\n').map(line => {
-                        if (line.indexOf('+') === 0) return '<span class="diff-added">' + line + '</span>';
-                        if (line.indexOf('-') === 0) return '<span class="diff-removed">' + line + '</span>';
+                    
+                    let highlightedLines = rest[0].split('\\n').map(line => {
+                        const trimmed = line.trim();
+                        if (line.startsWith('+') || line.startsWith('  +') || trimmed.startsWith('creating')) return '<span class="diff-added">' + line + '</span>';
+                        if (line.startsWith('-') || line.startsWith('  -') || trimmed.startsWith('deleting')) return '<span class="diff-removed">' + line + '</span>';
                         return line;
                     }).join('\\n');
+                    
                     const textAfter = (rest[1] && typeof marked !== 'undefined') ? marked.parse(rest[1]) : (rest[1] || "");
-                    div.innerHTML = textBefore + '<pre><code>' + diffLines + '</code></pre>' + textAfter;
+                    div.innerHTML = textBefore + '<pre><code class="language-' + type + '">' + highlightedLines + '</code></pre>' + textAfter;
                 } else if (role === 'toolCall' || role === 'toolResult') {
                     div.innerText = content;
                 } else {

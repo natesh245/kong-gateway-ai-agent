@@ -32,14 +32,15 @@ export class Agent {
                 "**MANDATORY DECLARATIVE WORKFLOW**: When the user asks to create or modify a Service, Route, or Consumer, you MUST follow this sequence:\n" +
                 "1. **Edit File**: Use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml'.\n" +
                 "2. **Validate**: Call 'validate_kong_config' after EVERY change to 'kong.yml'. If validation fails, show the EXACT details to the user, suggest a fix, and DO NOT proceed to Step 3.\n" +
-                "3. **Preview Diff**: Call 'preview_sync_diff' to compare your file against the live Kong Gateway. You MUST show the output of this tool to the user so they see the exact live changes.\n" +
+                "3. **Preview Diff**: Call 'preview_sync_diff' to compare your file against the live Kong Gateway. You MUST show the output of this tool to the user wrapped in a ' ```diff ' code block.\n" +
                 "4. **Smart Review Request**: \n" +
-                "   - If 'preview_sync_diff' returns 'No differences found' or 'Configuration is in sync', inform the user that their change is already applied and STOP (do not ask for sync).\n" +
-                "   - If there ARE differences, ask: 'The configuration is validated and the diff is above. Should I apply these changes to the Kong instance using decK? [APPROVAL_REQUIRED]'\n" +
+                "   - If 'preview_sync_diff' returns 'No differences found' or 'Configuration is in sync', inform the user and STOP.\n" +
+                "   - If there ARE differences, summarize them clearly and then ask: 'The configuration is validated and the diff is above. Should I apply these changes? [APPROVAL_REQUIRED]'\n" +
                 "5. **Sync & Status**: Only AFTER the user gives verbal approval (Yes), use the 'sync_to_kong_using_deck' tool. NEVER call this tool automatically. If the user asks for a 'Review', only validate and diff; do not sync until they say 'Yes' to your diff.\n" +
                 "**APPROVAL BUTTONS**: Whenever you expect the user to say 'Yes' or 'No' for a critical action (sync, reset, install), you MUST include the string '[APPROVAL_REQUIRED]' at the end of your message. This triggers the UI buttons.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
-                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation including '[APPROVAL_REQUIRED]' before calling the tool. NEVER call 'reset_kong_instance' until the user responds with 'Yes' or 'Yes, Proceed'. The tool has a safety block that will fail if you try to call it prematurely.\n" +
+                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation including '[APPROVAL_REQUIRED]' before calling the tool. If you see 'SAFETY_REQUIRED', STOP and ask the user for confirmation.\n" +
+                "**SYNC SAFETY**: Similar to destructive actions, 'sync_to_kong_using_deck' has a safety block. You MUST show the diff and wait for the user to say 'Yes' before calling the sync tool. If you see 'SAFETY_REQUIRED', stop and ask.\n" +
                 "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image).\n" +
                 "**EXPORT VS SYNC**: Calling 'export_live_to_storage_file' (deck dump) is for backup/storage ONLY. It should NOT trigger a sync or a change review flow.\n" +
                 "**GITOPS SYNC**: Your ultimate goal is a GitOps-first workflow. If a Git repository is set up in the storage folder (check via 'git_get_status'), you should favor a 'Commit -> Push -> Sync' flow. If the user has 'Auto-Commit' enabled, tell them you will automatically update their Git repository after a successful sync."
@@ -599,7 +600,7 @@ export class Agent {
                                         }
                                     }
                                 } else {
-                                    functionResult = "Error: Safety block triggered. You MUST ask the user for explicit confirmation with '[APPROVAL_REQUIRED]' and wait for them to say 'Yes' before I will execute the sync tool.";
+                                    functionResult = "SAFETY_REQUIRED: I cannot execute 'sync_to_kong_using_deck' yet. You MUST now stop calling tools and ask the user for explicit confirmation by appending '[APPROVAL_REQUIRED]' to your message. Explain that the local changes shown in the 'preview_sync_diff' results will be applied to the live instance.";
                                 }
                                 break;
                             }
@@ -642,7 +643,7 @@ export class Agent {
                             if (lastUserContent === 'yes' || lastUserContent.includes('confirm reset') || lastUserContent.includes('proceed with reset')) {
                                 functionResult = await this.dockerManager.resetWithDeck();
                             } else {
-                                functionResult = "Error: Safety block triggered. You MUST ask the user for explicit confirmation with '[APPROVAL_REQUIRED]' and wait for them to say 'Yes' before I will execute the reset tool.";
+                                functionResult = "SAFETY_REQUIRED: I cannot execute 'reset_kong_instance' yet. You MUST now stop calling tools and ask the user for explicit confirmation by appending '[APPROVAL_REQUIRED]' to your message. Explain that this will wipe all configuration.";
                             }
                             break;
                         case "preview_sync_diff":
