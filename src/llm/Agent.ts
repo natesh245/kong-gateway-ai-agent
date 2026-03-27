@@ -30,6 +30,8 @@ export class Agent {
                 "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
                 "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
                 "When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. " +
+                "**CRITICAL LOOP PREVENTION**: Once you have the information from a tool call that answers the user's question, STOP calling more tools. Summarize the result and wait. " +
+                "**OPENING FILES**: If the user asks to 'open', 'show in editor', or 'see' a file locally, use the 'open_file_in_editor' tool. " +
                 "Be concise and confirm when an action is done."
         });
     }
@@ -183,7 +185,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "list_storage_files",
-                    description: "Lists all files in the current storage directory.",
+                    description: "Lists all files (yml, json, etc) in the current storage directory. Use this to verify which files exist before trying to read or open them.",
                 }
             },
             {
@@ -257,6 +259,20 @@ export class Agent {
                 function: {
                     name: "get_instance_details",
                     description: "Fetches technical details like Kong version, database engine, and runtime configuration."
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "open_file_in_editor",
+                    description: "Opens a specific file from the storage directory in a new VS Code editor tab for the user to see.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            filename: { type: "string" },
+                        },
+                        required: ["filename"]
+                    }
                 }
             }
         ];
@@ -367,6 +383,9 @@ export class Agent {
                             break;
                         case "get_instance_details":
                             functionResult = await this.kongApi.getInstanceInfo();
+                            break;
+                        case "open_file_in_editor":
+                            functionResult = await this.dockerManager.openFile(functionArgs.filename);
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

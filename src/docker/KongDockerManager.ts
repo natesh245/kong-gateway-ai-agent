@@ -160,16 +160,32 @@ export class KongDockerManager {
     }
   }
 
-  public async openFile(filename: string): Promise<void> {
+  public async openFile(filename: string): Promise<string> {
     try {
       const storagePath = this.getStoragePath();
-      const filePath = path.join(storagePath, filename);
+      let filePath = path.join(storagePath, filename);
+
+      // Extension Tolerance: if precisely named file not found, check for common kong extensions
+      if (!fs.existsSync(filePath)) {
+        const altFilename = filename.endsWith('.yml') ? filename.replace('.yml', '.yaml') : (filename.endsWith('.yaml') ? filename.replace('.yaml', '.yml') : null);
+        if (altFilename) {
+          const altFilePath = path.join(storagePath, altFilename);
+          if (fs.existsSync(altFilePath)) {
+            filePath = altFilePath;
+          }
+        }
+      }
+
       if (fs.existsSync(filePath)) {
         const doc = await vscode.workspace.openTextDocument(filePath);
         await vscode.window.showTextDocument(doc);
+        return `Successfully opened '${path.basename(filePath)}' in the editor for you.`;
+      } else {
+        return `Error: File '${filename}' not found in storage directory (${storagePath}).`;
       }
     } catch (e: any) {
       vscode.window.showErrorMessage(`Failed to open file ${filename}: ${e.message}`);
+      return `Error: Failed to open file: ${e.message}`;
     }
   }
 
