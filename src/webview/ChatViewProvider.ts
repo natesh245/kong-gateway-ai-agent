@@ -219,6 +219,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         vscode.window.showInformationMessage('Kong Gateway Agent configuration has been reset to defaults.');
                         break;
                     }
+                case 'fetchModels':
+                    {
+                        const models = await this._agent.fetchAvailableModels(data.provider, data.apiKey);
+                        webviewView.webview.postMessage({ type: 'modelsFetched', models });
+                        break;
+                    }
             }
         });
     }
@@ -248,6 +254,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 autoCommit: config.get('autoCommit') === true,
                 maxDepth: config.get('maxToolDepth') || 10,
                 showThinking: config.get('showThinking') !== false,
+                models: await this._agent.fetchAvailableModels(),
                 files: await this.dockerManager.listStorageFiles()
             });
         }
@@ -509,7 +516,8 @@ What can I do for you today?</div>
             </summary>
             <div class="settings-panel">
                 <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="gemini">Gemini</option></select></div>
-                <div class="settings-row"><label>Model</label><input type="text" id="model-input" placeholder="e.g. openai/gpt-4o"/></div>
+                <div class="settings-row" style="margin-bottom:2px;"><label>Model</label><div style="display:flex;gap:4px;flex:1;"><input type="text" id="model-filter" placeholder="Search models..." style="flex:1;font-size:10px;height:24px;border-radius:4px;padding:4px;"/><button id="refresh-models-btn" title="Refresh Models" style="background:var(--vscode-button-secondaryBackground);padding:4px 8px;font-size:10px;border:none;border-radius:4px;cursor:pointer;">🔄</button></div></div>
+                <div class="settings-row" style="margin-top:0px;"><label>&nbsp;</label><select id="model-input" style="flex:1;"><option value="">Loading models...</option></select></div>
                 <div class="settings-row" id="api-key-row"><label>OpenRouter Key</label><input type="password" id="api-key-input"/></div>
                 <div class="settings-row" id="gemini-api-key-row" class="hidden"><label>Gemini Key</label><input type="password" id="gemini-api-key-input"/></div>
                 <div class="settings-row" style="margin-top:8px; background:rgba(255,255,255,0.03); padding:8px; border-radius:8px;">
@@ -710,10 +718,22 @@ What can I do for you today?</div>
                 providerSelect.onchange = (e) => {
                     const apiKeyRow = document.getElementById('api-key-row');
                     const geminiKeyRow = document.getElementById('gemini-api-key-row');
+                    const modelSelect = document.getElementById('model-input');
                     const provider = e.target.value;
                     
                     if (apiKeyRow) apiKeyRow.style.display = provider === 'openrouter' ? 'flex' : 'none';
                     if (geminiKeyRow) geminiKeyRow.style.display = provider === 'gemini' ? 'flex' : 'none';
+
+                    // Clear and re-fetch models for the new provider
+                    if (modelSelect) {
+                        modelSelect.innerHTML = '<option value="">Loading models...</option>';
+                    }
+
+                    const apiKey = (provider === 'openrouter') ? 
+                        document.getElementById('api-key-input').value : 
+                        document.getElementById('gemini-api-key-input').value;
+
+                    vscode.postMessage({ type: 'fetchModels', provider, apiKey });
                 };
             }
 
@@ -724,6 +744,31 @@ What can I do for you today?</div>
                     document.getElementById('local-settings').classList.toggle('hidden', !isLocal);
                     document.getElementById('remote-settings').classList.toggle('hidden', isLocal);
                     document.getElementById('check-ports-btn').classList.toggle('hidden', !isLocal);
+                };
+            }
+
+            const refreshModelsBtn = document.getElementById('refresh-models-btn');
+            if (refreshModelsBtn) {
+                refreshModelsBtn.onclick = () => {
+                    refreshModelsBtn.innerText = '⌛';
+                    const provider = document.getElementById('provider-select').value;
+                    const apiKey = (provider === 'openrouter') ? 
+                        document.getElementById('api-key-input').value : 
+                        document.getElementById('gemini-api-key-input').value;
+
+                    vscode.postMessage({ type: 'fetchModels', provider, apiKey });
+                };
+            }
+
+            const modelFilter = document.getElementById('model-filter');
+            if (modelFilter) {
+                modelFilter.oninput = (e) => {
+                    const term = e.target.value.toLowerCase();
+                    const state = vscode.getState() || {};
+                    const allModels = state.availableModels || [];
+                    const filtered = allModels.filter(m => m.toLowerCase().includes(term));
+                    const currentVal = document.getElementById('model-input').value;
+                    populateModelSelect(filtered, currentVal);
                 };
             }
 
@@ -754,6 +799,13 @@ What can I do for you today?</div>
                     gitRemoteUrl: document.getElementById('git-remote-input').value,
                     autoCommit: document.getElementById('auto-commit-input').checked
                 });
+                // Auto-refresh models when saving if provider or key is new
+                const provider = document.getElementById('provider-select').value;
+                const apiKey = (provider === 'openrouter') ? 
+                    document.getElementById('api-key-input').value : 
+                    document.getElementById('gemini-api-key-input').value;
+
+                vscode.postMessage({ type: 'fetchModels', provider, apiKey });
             };
 
             const resetInstBtn = document.getElementById('reset-instance-btn');
@@ -783,7 +835,16 @@ What can I do for you today?</div>
                 } else if (m.type === 'setConfig') {
                     const provider = m.provider || 'openrouter';
                     document.getElementById('provider-select').value = provider;
-                    document.getElementById('model-input').value = m.model || 'openai/gpt-4o';
+                    
+                    const modelSelect = document.getElementById('model-input');
+                    const currentModel = m.model || '';
+                    
+                    if (m.models) {
+                        populateModelSelect(m.models, currentModel);
+                    } else {
+                        vscode.postMessage({ type: 'fetchModels' });
+                    }
+
                     document.getElementById('api-key-input').value = m.apiKey || '';
                     document.getElementById('gemini-api-key-input').value = m.geminiApiKey || '';
                     document.getElementById('max-depth-input').value = m.maxDepth || 10;
@@ -859,8 +920,54 @@ What can I do for you today?</div>
                     }
                     if (m.hasCollision) appendMessage('agent', '⚠️ **Port Issues**:\\n\\n' + m.report);
                     else appendMessage('agent', '✅ All ports are available!');
+                } else if (m.type === 'modelsFetched') {
+                    const refreshBtn = document.getElementById('refresh-models-btn');
+                    if (refreshBtn) refreshBtn.innerText = '🔄';
+                    
+                    // Store available models in webview state for local filtering
+                    const state = vscode.getState() || {};
+                    state.availableModels = m.models;
+                    vscode.setState(state);
+                    
+                    const currentModelValue = document.getElementById('model-input').value;
+                    const filterTerm = document.getElementById('model-filter').value.toLowerCase();
+                    const filtered = m.models.filter(mod => mod.toLowerCase().includes(filterTerm));
+                    populateModelSelect(filtered, currentModelValue);
                 }
             });
+
+            function populateModelSelect(models, selectedValue) {
+                const select = document.getElementById('model-input');
+                if (!select) return;
+                
+                select.innerHTML = '';
+                if (models.length === 0) {
+                    const opt = document.createElement('option');
+                    opt.value = "";
+                    opt.innerText = "No models found (Check API Key)";
+                    select.appendChild(opt);
+                    return;
+                }
+
+                // Only keep selectedValue if it exists in the fetched list
+                // This prevents models from one provider leaking into another's dropdown
+                models.forEach(mId => {
+                    const opt = document.createElement('option');
+                    opt.value = mId;
+                    opt.innerText = mId;
+                    if (mId === selectedValue) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                
+                // If selectedValue was not found, add a placeholder or select the first one
+                if (selectedValue && !models.includes(selectedValue)) {
+                    const opt = document.createElement('option');
+                    opt.value = selectedValue;
+                    opt.innerText = selectedValue + ' (unsupported by provider)';
+                    opt.disabled = true;
+                    select.prepend(opt);
+                }
+            }
         })();
     </script>
 </body>

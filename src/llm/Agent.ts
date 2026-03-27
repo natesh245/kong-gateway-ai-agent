@@ -5,6 +5,7 @@ import * as path from "path";
 import { KongDockerManager } from "../docker/KongDockerManager";
 import { KongApiClient } from "../kong/KongApiClient";
 import { DiffUtil } from "../utils/DiffUtil";
+import axios from "axios";
 
 export class Agent {
     private openai: OpenAI | null = null;
@@ -85,6 +86,80 @@ export class Agent {
         }
 
         return true;
+    }
+
+    public async fetchAvailableModels(providerOverride?: string, apiKeyOverride?: string): Promise<string[]> {
+        const config = vscode.workspace.getConfiguration('kongAgent');
+        const provider = providerOverride || config.get<string>('provider') || 'openrouter';
+        
+        const geminiFallback = [
+            'gemini-3.1-pro-preview',
+            'gemini-3-flash-preview',
+            'gemini-3.1-flash-lite-preview',
+            'gemini-2.5-pro',
+            'gemini-2.5-flash',
+            'gemini-2.5-flash-lite',
+            'gemini-1.5-pro',
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-pro-latest'
+        ];
+
+        try {
+            if (provider === 'gemini') {
+                const geminiKey = apiKeyOverride || config.get<string>('geminiApiKey');
+                if (!geminiKey) {
+                    return geminiFallback;
+                }
+
+                try {
+                    // Use the standard OpenAI client for the Google OpenAI-compatible endpoint
+                    const tempOpenai = new OpenAI({
+                        baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+                        apiKey: geminiKey
+                    });
+
+                    const response = await tempOpenai.models.list();
+                    const models = response.data
+                        .map(m => m.id)
+                        .filter(id => id.toLowerCase().includes('gemini'))
+                        .map(id => id.replace(/^models\//, ''));
+                    
+                    return models.length > 0 ? models : geminiFallback;
+                } catch (err) {
+                    console.error("Gemini model fetch failed, using fallback:", err);
+                    return geminiFallback;
+                }
+            } else if (provider === 'openrouter') {
+                try {
+                    // Use OpenRouter native API for better metadata and public-only list
+                    const response = await axios.get('https://openrouter.ai/api/v1/models');
+                    if (response.data && Array.isArray(response.data.data)) {
+                        return response.data.data
+                            .filter((m: any) => !m.deprecated)
+                            .map((m: any) => m.id);
+                    }
+                } catch (err) {
+                    console.error("OpenRouter model fetch failed:", err);
+                }
+            }
+            
+            // Standard OpenAI models list fallback (e.g. for custom endpoints)
+            try {
+                this.openai = new OpenAI({
+                    baseURL: provider === 'openrouter' ? "https://openrouter.ai/api/v1" : "https://generativelanguage.googleapis.com/v1beta/openai/",
+                    apiKey: apiKeyOverride || (provider === 'openrouter' ? config.get<string>('openRouterApiKey') : config.get<string>('geminiApiKey')) || "dummy"
+                });
+
+                const response = await this.openai!.models.list();
+                return response.data.map(m => m.id);
+            } catch (err) {
+                return provider === 'gemini' ? geminiFallback : [];
+            }
+        } catch (e: any) {
+            console.error(`Unexpected failure in model fetch: ${e.message}`);
+            return provider === 'gemini' ? geminiFallback : [];
+        }
     }
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
