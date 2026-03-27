@@ -17519,10 +17519,10 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode4 = __toESM(require("vscode"));
+var vscode5 = __toESM(require("vscode"));
 
 // src/webview/ChatViewProvider.ts
-var vscode2 = __toESM(require("vscode"));
+var vscode3 = __toESM(require("vscode"));
 var path2 = __toESM(require("path"));
 var fs3 = __toESM(require("fs"));
 
@@ -24161,7 +24161,7 @@ OpenAI.ContainerListResponsesPage = ContainerListResponsesPage;
 var openai_default = OpenAI;
 
 // src/llm/Agent.ts
-var vscode = __toESM(require("vscode"));
+var vscode2 = __toESM(require("vscode"));
 var fs2 = __toESM(require("fs"));
 var path = __toESM(require("path"));
 
@@ -27968,11 +27968,16 @@ var {
 } = axios_default;
 
 // src/kong/KongApiClient.ts
+var vscode = __toESM(require("vscode"));
 var KongApiClient = class {
-  baseUrl = "http://localhost:8001";
+  getBaseUrl() {
+    const config = vscode.workspace.getConfiguration("kongAgent");
+    const adminPort = config.get("adminApiPort") || 8001;
+    return `http://localhost:${adminPort}`;
+  }
   async getStatus() {
     try {
-      const res = await axios_default.get(`${this.baseUrl}/status`);
+      const res = await axios_default.get(`${this.getBaseUrl()}/status`);
       return JSON.stringify(res.data, null, 2);
     } catch (e2) {
       return `Kong Admin API unreachable: ${e2.message}`;
@@ -27980,7 +27985,7 @@ var KongApiClient = class {
   }
   async createService(name, url2) {
     try {
-      const res = await axios_default.post(`${this.baseUrl}/services`, {
+      const res = await axios_default.post(`${this.getBaseUrl()}/services`, {
         name,
         url: url2
       });
@@ -27991,7 +27996,7 @@ var KongApiClient = class {
   }
   async createRoute(serviceName, paths) {
     try {
-      const res = await axios_default.post(`${this.baseUrl}/services/${serviceName}/routes`, {
+      const res = await axios_default.post(`${this.getBaseUrl()}/services/${serviceName}/routes`, {
         paths,
         name: `${serviceName}-route`
       });
@@ -28002,7 +28007,7 @@ var KongApiClient = class {
   }
   async createConsumer(username) {
     try {
-      const res = await axios_default.post(`${this.baseUrl}/consumers`, {
+      const res = await axios_default.post(`${this.getBaseUrl()}/consumers`, {
         username
       });
       return `Consumer created successfully: ${JSON.stringify(res.data.id)}`;
@@ -28481,12 +28486,12 @@ var Agent = class {
   messages = [];
   kongApi;
   initClient() {
-    const config = vscode.workspace.getConfiguration("kongAgent");
+    const config = vscode2.workspace.getConfiguration("kongAgent");
     const provider = config.get("provider") || "openrouter";
     const apiKey = config.get("openRouterApiKey");
     if (provider === "openrouter") {
       if (!apiKey) {
-        vscode.window.showErrorMessage("Kong Agent: OpenRouter API key is missing. Please configure it in the sidebar settings or VS Code settings.");
+        vscode2.window.showErrorMessage("Kong Agent: OpenRouter API key is missing. Please configure it in the sidebar settings or VS Code settings.");
         return false;
       }
       this.openai = new openai_default({
@@ -28511,7 +28516,7 @@ var Agent = class {
       return;
     }
     this.messages.push({ role: "user", content });
-    const config = vscode.workspace.getConfiguration("kongAgent");
+    const config = vscode2.workspace.getConfiguration("kongAgent");
     const model = config.get("model") || (config.get("provider") === "local" ? "llama3.1" : "openai/gpt-4o");
     try {
       await this.runLoop(model, onUpdate, 0);
@@ -28721,10 +28726,10 @@ ${apiStatus}`;
               functionResult = await this.kongApi.createConsumer(functionArgs.username);
               break;
             case "update_kong_ports":
-              const config = vscode.workspace.getConfiguration("kongAgent");
-              await config.update("proxyPort", functionArgs.proxy, vscode.ConfigurationTarget.Global);
-              await config.update("adminApiPort", functionArgs.admin, vscode.ConfigurationTarget.Global);
-              await config.update("managerGuiPort", functionArgs.manager, vscode.ConfigurationTarget.Global);
+              const config = vscode2.workspace.getConfiguration("kongAgent");
+              await config.update("proxyPort", functionArgs.proxy, vscode2.ConfigurationTarget.Global);
+              await config.update("adminApiPort", functionArgs.admin, vscode2.ConfigurationTarget.Global);
+              await config.update("managerGuiPort", functionArgs.manager, vscode2.ConfigurationTarget.Global);
               functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}.`;
               break;
             case "list_storage_files":
@@ -28752,8 +28757,8 @@ ${files.join("\n")}`;
               const chatDiff = DiffUtil.formatForChat(writeDiff);
               this.dockerManager.updateFileCache(functionArgs.filename, newContent);
               try {
-                const writeDoc = await vscode.workspace.openTextDocument(writePath);
-                await vscode.window.showTextDocument(writeDoc);
+                const writeDoc = await vscode2.workspace.openTextDocument(writePath);
+                await vscode2.window.showTextDocument(writeDoc);
               } catch (err) {
               }
               functionResult = `Successfully wrote to '${functionArgs.filename}'.
@@ -28768,10 +28773,10 @@ ${chatDiff}
               functionResult = `Found existing containers: ${existingJson}. Ask the user confirm.`;
               break;
             case "connect_to_existing_instance":
-              const connConfig = vscode.workspace.getConfiguration("kongAgent");
-              await connConfig.update("proxyPort", functionArgs.proxyPort, vscode.ConfigurationTarget.Global);
-              await connConfig.update("adminApiPort", functionArgs.adminPort, vscode.ConfigurationTarget.Global);
-              await connConfig.update("managerGuiPort", functionArgs.managerPort, vscode.ConfigurationTarget.Global);
+              const connConfig = vscode2.workspace.getConfiguration("kongAgent");
+              await connConfig.update("proxyPort", functionArgs.proxyPort, vscode2.ConfigurationTarget.Global);
+              await connConfig.update("adminApiPort", functionArgs.adminPort, vscode2.ConfigurationTarget.Global);
+              await connConfig.update("managerGuiPort", functionArgs.managerPort, vscode2.ConfigurationTarget.Global);
               functionResult = `Adopted existing instance at Proxy=${functionArgs.proxyPort}, Admin=${functionArgs.adminPort}, Manager=${functionArgs.managerPort}.`;
               break;
             case "verify_connectivity":
@@ -28817,11 +28822,11 @@ var ChatViewProvider = class {
     if (this._watcher) {
       this._watcher.dispose();
     }
-    const config = vscode2.workspace.getConfiguration("kongAgent");
+    const config = vscode3.workspace.getConfiguration("kongAgent");
     const storagePath = config.get("storagePath");
     if (storagePath && fs3.existsSync(storagePath)) {
-      this._watcher = vscode2.workspace.createFileSystemWatcher(
-        new vscode2.RelativePattern(storagePath, "**/*.{yml,yaml,json}")
+      this._watcher = vscode3.workspace.createFileSystemWatcher(
+        new vscode3.RelativePattern(storagePath, "**/*.{yml,yaml,json}")
       );
       this._watcher.onDidChange((uri) => this._handleFileChange(uri));
       this._watcher.onDidCreate((uri) => this._handleFileChange(uri));
@@ -28859,17 +28864,17 @@ var ChatViewProvider = class {
           break;
         }
         case "updateConfig": {
-          const config = vscode2.workspace.getConfiguration("kongAgent");
-          await config.update("provider", data.provider, vscode2.ConfigurationTarget.Global);
-          await config.update("model", data.model, vscode2.ConfigurationTarget.Global);
-          await config.update("openRouterApiKey", data.apiKey, vscode2.ConfigurationTarget.Global);
-          await config.update("storagePath", data.storagePath, vscode2.ConfigurationTarget.Global);
+          const config = vscode3.workspace.getConfiguration("kongAgent");
+          await config.update("provider", data.provider, vscode3.ConfigurationTarget.Global);
+          await config.update("model", data.model, vscode3.ConfigurationTarget.Global);
+          await config.update("openRouterApiKey", data.apiKey, vscode3.ConfigurationTarget.Global);
+          await config.update("storagePath", data.storagePath, vscode3.ConfigurationTarget.Global);
           this.dockerManager.initializeCache();
           this._setupWatcher();
           break;
         }
         case "selectFolder": {
-          const result = await vscode2.window.showOpenDialog({
+          const result = await vscode3.window.showOpenDialog({
             canSelectFiles: false,
             canSelectFolders: true,
             canSelectMany: false,
@@ -28877,8 +28882,8 @@ var ChatViewProvider = class {
           });
           if (result && result.length > 0) {
             const folderPath = result[0].fsPath;
-            const config = vscode2.workspace.getConfiguration("kongAgent");
-            await config.update("storagePath", folderPath, vscode2.ConfigurationTarget.Global);
+            const config = vscode3.workspace.getConfiguration("kongAgent");
+            await config.update("storagePath", folderPath, vscode3.ConfigurationTarget.Global);
             this.dockerManager.initializeCache();
             this._setupWatcher();
             this._updateWebviewConfig();
@@ -28914,7 +28919,7 @@ Please review it.`;
   }
   _updateWebviewConfig() {
     if (this._view) {
-      const config = vscode2.workspace.getConfiguration("kongAgent");
+      const config = vscode3.workspace.getConfiguration("kongAgent");
       this._view.webview.postMessage({
         type: "setConfig",
         provider: config.get("provider"),
@@ -28995,7 +29000,9 @@ Please review it.`;
         </div>
         <button id="review-btn" style="background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;padding:6px;border-radius:4px;font-size:11px;cursor:pointer;">\u{1F50D} Review Changes</button>
     </div>
-    <div class="chat-container" id="chat"></div>
+    <div class="chat-container" id="chat">
+        <div class="message agent">Hello! I am your Kong Gateway Agent. I can start your local Kong via Docker, create routes, and configure services. How can I assist you today?</div>
+    </div>
     <div class="typing" id="typing">Kong Agent is thinking...</div>
     <div class="input-container">
         <div class="settings-panel">
@@ -29091,7 +29098,7 @@ Please review it.`;
 };
 
 // src/docker/KongDockerManager.ts
-var vscode3 = __toESM(require("vscode"));
+var vscode4 = __toESM(require("vscode"));
 var fs4 = __toESM(require("fs"));
 var path3 = __toESM(require("path"));
 var import_child_process = require("child_process");
@@ -29143,7 +29150,7 @@ var KongDockerManager = class {
   }
   _fileCache = /* @__PURE__ */ new Map();
   getStoragePath() {
-    const config = vscode3.workspace.getConfiguration("kongAgent");
+    const config = vscode4.workspace.getConfiguration("kongAgent");
     const customPath = config.get("storagePath");
     const storagePath = customPath || this.context.globalStorageUri.fsPath;
     if (!fs4.existsSync(storagePath)) {
@@ -29153,7 +29160,7 @@ var KongDockerManager = class {
   }
   async start() {
     try {
-      const config = vscode3.workspace.getConfiguration("kongAgent");
+      const config = vscode4.workspace.getConfiguration("kongAgent");
       const proxyPort = config.get("proxyPort") || 8e3;
       const adminPort = config.get("adminApiPort") || 8001;
       const managerPort = config.get("managerGuiPort") || 8002;
@@ -29177,13 +29184,13 @@ var KongDockerManager = class {
       const composeContent = this.composeContent(proxyPort, adminPort, managerPort);
       fs4.writeFileSync(composePath, composeContent, "utf8");
       this.updateFileCache("kong-docker-compose.yml", composeContent);
-      const doc = await vscode3.workspace.openTextDocument(composePath);
-      await vscode3.window.showTextDocument(doc);
-      vscode3.window.showInformationMessage("Kong Agent: Starting Postgres Database...");
+      const doc = await vscode4.workspace.openTextDocument(composePath);
+      await vscode4.window.showTextDocument(doc);
+      vscode4.window.showInformationMessage("Kong Agent: Starting Postgres Database...");
       await execAsync("docker-compose -f kong-docker-compose.yml up -d kong-database", { cwd: storagePath });
-      vscode3.window.showInformationMessage("Kong Agent: Bootstrapping database...");
+      vscode4.window.showInformationMessage("Kong Agent: Bootstrapping database...");
       await execAsync("docker-compose -f kong-docker-compose.yml run --rm kong kong migrations bootstrap", { cwd: storagePath });
-      vscode3.window.showInformationMessage("Kong Agent: Starting Kong Gateway...");
+      vscode4.window.showInformationMessage("Kong Agent: Starting Kong Gateway...");
       await execAsync("docker-compose -f kong-docker-compose.yml up -d kong", { cwd: storagePath });
       const successMsg = `Kong Gateway started successfully! Here are your access details:
 
@@ -29192,7 +29199,7 @@ var KongDockerManager = class {
 | **Kong Manager (GUI)** | http://localhost:${managerPort} |
 | **Admin API** | http://localhost:${adminPort} |
 | **Proxy Gateway** | http://localhost:${proxyPort} |`;
-      vscode3.env.openExternal(vscode3.Uri.parse(`http://localhost:${managerPort}`));
+      vscode4.env.openExternal(vscode4.Uri.parse(`http://localhost:${managerPort}`));
       return successMsg;
     } catch (e2) {
       throw new Error(`Failed to start Kong: ${e2.message}`);
@@ -29257,7 +29264,7 @@ ${stdout}`;
     }
   }
   async verifyConnectivity() {
-    const config = vscode3.workspace.getConfiguration("kongAgent");
+    const config = vscode4.workspace.getConfiguration("kongAgent");
     const proxyPort = config.get("proxyPort") || 8e3;
     const adminPort = config.get("adminApiPort") || 8001;
     const results = { admin: false, proxy: false, error: "" };
@@ -29293,6 +29300,10 @@ x-kong-config: &kong-env
   KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
   KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002, 0.0.0.0:8445 ssl
   KONG_ADMIN_GUI_URL: http://localhost:${managerPort}
+  KONG_ADMIN_API_URI: http://localhost:${adminPort}
+  KONG_ADMIN_ACCESS_CONTROL_ALLOW_ORIGIN: "*"
+  KONG_ADMIN_ACCESS_CONTROL_ALLOW_METHODS: "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"
+  KONG_ADMIN_ACCESS_CONTROL_ALLOW_HEADERS: "Content-Type, Authorization"
 
 networks:
   kong-net:
@@ -29345,7 +29356,7 @@ function activate(context) {
   const dockerManager = new KongDockerManager(context);
   const provider = new ChatViewProvider(context.extensionUri, context, dockerManager);
   context.subscriptions.push(
-    vscode4.window.registerWebviewViewProvider(ChatViewProvider.viewType, provider)
+    vscode5.window.registerWebviewViewProvider(ChatViewProvider.viewType, provider)
   );
 }
 function deactivate() {

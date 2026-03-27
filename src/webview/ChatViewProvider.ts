@@ -222,7 +222,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         </div>
         <button id="review-btn" style="background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;padding:6px;border-radius:4px;font-size:11px;cursor:pointer;">🔍 Review Changes</button>
     </div>
-    <div class="chat-container" id="chat"></div>
+    <div class="chat-container" id="chat">
+        <div class="message agent">Hello! I am your Kong Gateway Agent. I can start your local Kong via Docker, create routes, and configure services. How can I assist you today?</div>
+    </div>
     <div class="typing" id="typing">Kong Agent is thinking...</div>
     <div class="input-container">
         <div class="settings-panel">

@@ -196,6 +196,10 @@ x-kong-config: &kong-env
   KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
   KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002, 0.0.0.0:8445 ssl
   KONG_ADMIN_GUI_URL: http://localhost:${managerPort}
+  KONG_ADMIN_API_URI: http://localhost:${adminPort}
+  KONG_ADMIN_ACCESS_CONTROL_ALLOW_ORIGIN: "*"
+  KONG_ADMIN_ACCESS_CONTROL_ALLOW_METHODS: "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"
+  KONG_ADMIN_ACCESS_CONTROL_ALLOW_HEADERS: "Content-Type, Authorization"
 
 networks:
   kong-net:

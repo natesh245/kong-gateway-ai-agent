@@ -1,11 +1,16 @@
 import axios from 'axios';
+import * as vscode from 'vscode';
 
 export class KongApiClient {
-    private baseUrl: string = 'http://localhost:8001';
+    private getBaseUrl(): string {
+        const config = vscode.workspace.getConfiguration('kongAgent');
+        const adminPort = config.get<number>('adminApiPort') || 8001;
+        return `http://localhost:${adminPort}`;
+    }
 
     public async getStatus(): Promise<string> {
         try {
-            const res = await axios.get(`${this.baseUrl}/status`);
+            const res = await axios.get(`${this.getBaseUrl()}/status`);
             return JSON.stringify(res.data, null, 2);
         } catch (e: any) {
             return `Kong Admin API unreachable: ${e.message}`;
@@ -14,7 +19,7 @@ export class KongApiClient {
 
     public async createService(name: string, url: string): Promise<string> {
         try {
-            const res = await axios.post(`${this.baseUrl}/services`, {
+            const res = await axios.post(`${this.getBaseUrl()}/services`, {
                 name,
                 url
             });
@@ -26,7 +31,7 @@ export class KongApiClient {
 
     public async createRoute(serviceName: string, paths: string[]): Promise<string> {
         try {
-            const res = await axios.post(`${this.baseUrl}/services/${serviceName}/routes`, {
+            const res = await axios.post(`${this.getBaseUrl()}/services/${serviceName}/routes`, {
                 paths,
                 name: `${serviceName}-route`
             });
@@ -38,7 +43,7 @@ export class KongApiClient {
 
     public async createConsumer(username: string): Promise<string> {
         try {
-            const res = await axios.post(`${this.baseUrl}/consumers`, {
+            const res = await axios.post(`${this.getBaseUrl()}/consumers`, {
                 username
             });
             return `Consumer created successfully: ${JSON.stringify(res.data.id)}`;
