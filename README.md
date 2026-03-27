@@ -34,7 +34,7 @@ npm install
 
 ### 2. Run the Extension
 - Open the project in VS Code.
-- Press `F5` (or go to **Run and Debug** > **Extension**) to launch a new VS Code window with the extension loaded.
+- Press `F5` (or go to **Run > Start Debug** ) to launch a new VS Code window with the extension loaded.
 - Click the **Kong Agent** icon (⚡) in the Activity Bar to open the chat sidebar.
 
 ### 3. Test & Build
