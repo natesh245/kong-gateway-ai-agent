@@ -31,13 +31,17 @@ export class Agent {
                 "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
                 "**MANDATORY DECLARATIVE WORKFLOW**: When the user asks to create or modify a Service, Route, or Consumer, you MUST follow this sequence:\n" +
                 "1. **Edit File**: Use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml'.\n" +
-                "2. **Validate**: Call 'validate_kong_config'. If validation fails, fix the YAML and repeat Step 1.\n" +
+                "2. **Validate**: Call 'validate_kong_config' after EVERY change to 'kong.yml'. If validation fails, show the EXACT details to the user, suggest a fix, and DO NOT proceed to Step 3.\n" +
                 "3. **Preview Diff**: Call 'preview_sync_diff' to compare your file against the live Kong Gateway. You MUST show the output of this tool to the user so they see the exact live changes.\n" +
-                "4. **Request Review**: Once the diff is shown, ask: 'The configuration is validated and the diff is above. Should I apply these changes to the Kong instance using decK?'\n" +
+                "4. **Smart Review Request**: \n" +
+                "   - If 'preview_sync_diff' returns 'No differences found' or 'Configuration is in sync', inform the user that their change is already applied and STOP (do not ask for sync).\n" +
+                "   - If there ARE differences, ask: 'The configuration is validated and the diff is above. Should I apply these changes to the Kong instance using decK? [APPROVAL_REQUIRED]'\n" +
                 "5. **Sync & Status**: Only AFTER the user gives verbal approval, use the 'sync_to_kong_using_deck' tool. You MUST then summarize the sync results (e.g., 'Successfully created 1 entity') to the user.\n" +
+                "**APPROVAL BUTTONS**: Whenever you expect the user to say 'Yes' or 'No' for a critical action (like syncing, installation, or reset), you MUST include the string '[APPROVAL_REQUIRED]' at the end of your message. This triggers the UI buttons.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
-                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation before calling the tool.\n" +
+                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation including '[APPROVAL_REQUIRED]' before calling the tool.\n" +
                 "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image).\n" +
+                "**EXPORT VS SYNC**: Calling 'export_live_to_storage_file' (deck dump) is for backup/storage ONLY. It should NOT trigger a sync or a change review flow.\n" +
                 "**GITOPS SYNC**: Your ultimate goal is a GitOps-first workflow. If a Git repository is set up in the storage folder (check via 'git_get_status'), you should favor a 'Commit -> Push -> Sync' flow. If the user has 'Auto-Commit' enabled, tell them you will automatically update their Git repository after a successful sync."
         });
     }

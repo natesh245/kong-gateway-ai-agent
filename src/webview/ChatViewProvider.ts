@@ -452,6 +452,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             font-weight: 500; font-family: monospace;
         }
         .hidden-thinking { display: none !important; }
+
+        /* Approval Buttons */
+        .approval-container {
+            display: flex; gap: 10px; margin-top: 12px; padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .approval-btn {
+            flex: 1; padding: 10px; border-radius: 8px; cursor: pointer;
+            font-size: 11px; font-weight: 600; text-align: center;
+            transition: all 0.2s; border: none;
+        }
+        .approval-btn.yes {
+            background: var(--accent-gradient); color: white;
+            box-shadow: 0 4px 12px rgba(245, 26, 86, 0.2);
+        }
+        .approval-btn.no {
+            background: rgba(255, 255, 255, 0.05); color: #ccc;
+            border: 1px solid var(--border);
+        }
+        .approval-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+        .approval-btn:active { transform: translateY(0); }
+        .approval-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     </style>
 </head>
 <body>
@@ -598,7 +620,40 @@ What can I do for you today?</div>
                 } else if (role === 'toolCall' || role === 'toolResult') {
                     div.innerText = content;
                 } else {
-                    div.innerHTML = (typeof marked !== 'undefined') ? marked.parse(content) : content;
+                    let processedContent = content;
+                    let hasApproval = false;
+                    
+                    if (content.includes('[APPROVAL_REQUIRED]')) {
+                        hasApproval = true;
+                        processedContent = content.replace('[APPROVAL_REQUIRED]', '').trim();
+                    }
+                    
+                    div.innerHTML = (typeof marked !== 'undefined') ? marked.parse(processedContent) : processedContent;
+                    
+                    if (hasApproval) {
+                        const approvalDiv = document.createElement('div');
+                        approvalDiv.className = 'approval-container';
+                        
+                        const yesBtn = document.createElement('button');
+                        yesBtn.className = 'approval-btn yes';
+                        yesBtn.innerText = '✅ Yes, Proceed';
+                        yesBtn.onclick = () => {
+                            vscode.postMessage({ type: 'prompt', value: 'Yes' });
+                            approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+                        };
+                        
+                        const noBtn = document.createElement('button');
+                        noBtn.className = 'approval-btn no';
+                        noBtn.innerText = '❌ No, Cancel';
+                        noBtn.onclick = () => {
+                            vscode.postMessage({ type: 'prompt', value: 'No, cancel this change.' });
+                            approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+                        };
+                        
+                        approvalDiv.appendChild(yesBtn);
+                        approvalDiv.appendChild(noBtn);
+                        div.appendChild(approvalDiv);
+                    }
                 }
 
                 chat.appendChild(div);
