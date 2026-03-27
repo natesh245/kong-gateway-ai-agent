@@ -146,6 +146,33 @@ export class KongDockerManager {
     }
   }
 
+  public async listStorageFiles(): Promise<string[]> {
+    try {
+      const storagePath = this.getStoragePath();
+      if (!fs.existsSync(storagePath)) return [];
+      const files = fs.readdirSync(storagePath);
+      // Filter for relevant agent-managed files
+      return files.filter(f => 
+        f.endsWith('.yml') || f.endsWith('.yaml') || f.endsWith('.json') || f.endsWith('.conf')
+      );
+    } catch (e) {
+      return [];
+    }
+  }
+
+  public async openFile(filename: string): Promise<void> {
+    try {
+      const storagePath = this.getStoragePath();
+      const filePath = path.join(storagePath, filename);
+      if (fs.existsSync(filePath)) {
+        const doc = await vscode.workspace.openTextDocument(filePath);
+        await vscode.window.showTextDocument(doc);
+      }
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`Failed to open file ${filename}: ${e.message}`);
+    }
+  }
+
   public updateFileCache(filename: string, content: string) {
     this._fileCache.set(filename, content);
   }

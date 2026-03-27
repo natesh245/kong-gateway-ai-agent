@@ -115,7 +115,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             await config.update('storagePath', folderPath, vscode.ConfigurationTarget.Global);
                             this.dockerManager.initializeCache();
                             this._setupWatcher();
-                            this._updateWebviewConfig();
+                            await this._updateWebviewConfig();
                         }
                         break;
                     }
@@ -139,6 +139,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                                 webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
                             });
                         }
+                        break;
+                    }
+                case 'openFile':
+                    {
+                        if (data.filename) this.dockerManager.openFile(data.filename);
                         break;
                     }
                 case 'checkPorts':
@@ -181,7 +186,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('managerGuiPort', undefined, vscode.ConfigurationTarget.Global);
                         
                         await this.dockerManager.stop();
-                        this._updateWebviewConfig();
+                        await this._updateWebviewConfig();
                         vscode.window.showInformationMessage('Kong Gateway Agent configuration has been reset to defaults.');
                         break;
                     }
@@ -189,7 +194,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private _updateWebviewConfig() {
+    private async _updateWebviewConfig() {
         if (this._view) {
             const config = vscode.workspace.getConfiguration('kongAgent');
             this._view.webview.postMessage({
@@ -202,7 +207,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 adminPort: config.get('adminApiPort'),
                 managerPort: config.get('managerGuiPort'),
                 databasePort: config.get('databasePort') || 5432,
-                maxDepth: config.get('maxToolDepth') || 10
+                maxDepth: config.get('maxToolDepth') || 10,
+                files: await this.dockerManager.listStorageFiles()
             });
         }
     }
@@ -332,6 +338,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         .port-card input { width: 100%; border: none; background: none; font-size: 13px; font-weight: 600; padding: 0; color: white; }
         .port-card input:focus { outline: none; color: var(--accent); }
 
+        .managed-files {
+            margin-top: 8px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05);
+            display: flex; flex-direction: column; gap: 4px;
+        }
+        .file-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 8px;
+            font-size: 11px; border: 1px solid transparent; transition: all 0.2s;
+        }
+        .file-item:hover { background: rgba(255,255,255,0.06); border-color: var(--border); }
+        .file-item .file-name { color: #ccc; font-family: 'Courier New', Courier, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-item button { 
+            background: none; border: none; color: var(--accent); cursor: pointer; 
+            font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+        }
+        .file-item button:hover { background: rgba(245, 26, 86, 0.1); }
+
         .reset-btn {
             background: none; border: 1px solid rgba(255,255,255,0.1); color: #888;
             padding: 8px; border-radius: 8px; font-size: 10px; cursor: pointer;
@@ -402,7 +425,13 @@ What can I do for you today?</div>
                     <div class="port-card" id="manager-card"><label>Manager Port</label><input type="number" id="manager-port-input" value="8002"/></div>
                     <div class="port-card" id="db-card"><label>Postgres Port</label><input type="number" id="db-port-input" value="5432"/></div>
                 </div>
-                <div style="display:flex; gap:6px; margin-top:4px;">
+                
+                <div class="managed-files" id="file-list-container">
+                    <div style="font-size:9px; color:#666; text-transform:uppercase; margin-bottom:4px; font-weight:600;">Managed Files</div>
+                    <div id="file-list"></div>
+                </div>
+
+                <div style="display:flex; gap:6px; margin-top:8px;">
                     <button id="check-ports-btn" style="flex:1; background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:10px;">🔍 Check Availability</button>
                     <button id="save-config-btn" style="flex:2; background:var(--accent); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:11px; font-weight:600;">Save Configuration</button>
                 </div>
@@ -516,6 +545,18 @@ What can I do for you today?</div>
                     document.getElementById('admin-port-input').value = m.adminPort || 8001;
                     document.getElementById('manager-port-input').value = m.managerPort || 8002;
                     document.getElementById('db-port-input').value = m.databasePort || 5432;
+                    
+                    if (m.files) {
+                        const list = document.getElementById('file-list');
+                        list.innerHTML = '';
+                        m.files.forEach(f => {
+                            const item = document.createElement('div');
+                            item.className = 'file-item';
+                            item.innerHTML = '<span class="file-name">' + f + '</span><button class="open-file-btn">Open</button>';
+                            item.querySelector('.open-file-btn').onclick = () => vscode.postMessage({ type: 'openFile', filename: f });
+                            list.appendChild(item);
+                        });
+                    }
                 } else if (m.type === 'portCheckResults') {
                     for (const [key, res] of Object.entries(m.results)) {
                         const el = document.getElementById(key + '-card');
