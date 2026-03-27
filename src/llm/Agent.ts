@@ -34,7 +34,7 @@ export class Agent {
                 "2. **Validate**: Call 'validate_kong_config' after EVERY internal change or manual update. If validation fails, show the details to the user, suggest a fix, but DO NOT call 'write_storage_file' for the fix unless specifically asked.\n" +
                 "3. **Preview Diff**: Call 'preview_sync_diff' to show the exact changes to the user. Wrap this in ' ```diff ' code blocks.\n" +
                 "4. **Smart Review Request**: If differences exist, summarize them and ask for approval using '[APPROVAL_REQUIRED]'.\n" +
-                "5. **Sync**: Only sync after explicit 'Yes' or button click.\n" +
+                "5. **Sync**: Only sync AFTER the user sees your diff and provides explicit verbal approval (Yes). NEVER call 'sync_to_kong_using_deck' in the same turn as 'write_storage_file' or 'preview_sync_diff'.\n" +
                 "**REVIEWS & MANUAL UPDATES**: When a user asks for a 'Review' of a file, you MUST ALWAYS call 'read_storage_file' first to understand the full context. DO NOT hallucinate content based on diffs alone. Move directly to Step 2 (Validate) and Step 3 (Diff).\n" +
                 "**NO RESET ON CANCEL**: If the user says 'Cancel' or 'No', STOP and confirm. NEVER use 'reset_kong_instance' as a way to 'revert' or 'cancel' a pending configuration change.\n" +
                 "**APPROVAL BUTTONS**: Whenever you expect the user to say 'Yes' or 'No' for a critical action, you MUST include '[APPROVAL_REQUIRED]' at the end of your message.\n" +
@@ -457,6 +457,7 @@ export class Agent {
         this.messages.push(responseMessage);
 
         if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+            let shouldStopTurn = false;
             for (const toolCall of responseMessage.tool_calls) {
                 const functionName = toolCall.function.name;
 
@@ -663,6 +664,11 @@ export class Agent {
                     functionResult = `Error executing ${functionName}: ${e.message}`;
                 }
 
+                // If any tool triggers safety, we MUST stop the automated turn immediately
+                if (functionResult.includes("SAFETY_REQUIRED")) {
+                    shouldStopTurn = true;
+                }
+
                 // Transparency: Notify UI result
                 onUpdate(functionResult, 'toolResult');
 
@@ -673,7 +679,9 @@ export class Agent {
                 } as any);
             }
 
-            await this.runLoop(model, onUpdate, depth + 1);
+            if (!shouldStopTurn) {
+                await this.runLoop(model, onUpdate, depth + 1);
+            }
         } else if (responseMessage.content) {
             onUpdate(responseMessage.content as string);
         }
