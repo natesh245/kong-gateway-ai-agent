@@ -27,12 +27,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this._watcher.dispose();
         }
 
-        const config = vscode.workspace.getConfiguration('kongAgent');
-        const storagePath = config.get<string>('storagePath');
+        const storagePath = this.dockerManager.getStoragePath();
 
         if (storagePath && fs.existsSync(storagePath)) {
+            const storageUri = vscode.Uri.file(storagePath);
             this._watcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(storagePath, '**/*.{yml,yaml,json}')
+                new vscode.RelativePattern(storageUri, '**/*.{yml,yaml,json}')
             );
 
             this._watcher.onDidChange(uri => this._handleFileChange(uri));
@@ -53,7 +53,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     filename: filename
                 });
             }
-        }, 2000);
+        }, 1000);
     }
 
     public resolveWebviewView(
@@ -623,6 +623,24 @@ What can I do for you today?</div>
                             item.querySelector('.open-file-btn').onclick = () => vscode.postMessage({ type: 'openFile', filename: f });
                             list.appendChild(item);
                         });
+                    }
+                } else if (m.type === 'fileChanged') {
+                    const toast = document.getElementById('notification');
+                    const fileNameSpan = document.getElementById('changed-filename');
+                    const reviewBtn = document.getElementById('review-btn');
+                    const dismissBtn = document.getElementById('dismiss-btn');
+
+                    if (toast && fileNameSpan) {
+                        fileNameSpan.innerText = m.filename;
+                        toast.style.display = 'flex';
+                        
+                        reviewBtn.onclick = () => {
+                            vscode.postMessage({ type: 'requestReview', filename: m.filename });
+                            toast.style.display = 'none';
+                        };
+                        dismissBtn.onclick = () => {
+                            toast.style.display = 'none';
+                        };
                     }
                 } else if (m.type === 'portCheckResults') {
                     for (const [key, res] of Object.entries(m.results)) {
