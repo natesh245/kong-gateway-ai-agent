@@ -27,26 +27,27 @@ export class KongDockerManager {
     public async start(): Promise<string> {
         try {
             const config = vscode.workspace.getConfiguration('kongAgent');
-            const proxyPort = config.get<number>('proxyPort') || 8000;
-            const adminPort = config.get<number>('adminApiPort') || 8001;
-            const managerPort = config.get<number>('managerGuiPort') || 8002;
+            let proxyPort = config.get<number>('proxyPort') || 8000;
+            let adminPort = config.get<number>('adminApiPort') || 8001;
+            let managerPort = config.get<number>('managerGuiPort') || 8002;
 
-            // Pre-flight check
-            const conflicts: number[] = [];
-            if (await PortUtil.isPortInUse(proxyPort)) conflicts.push(proxyPort);
-            if (await PortUtil.isPortInUse(adminPort)) conflicts.push(adminPort);
-            if (await PortUtil.isPortInUse(managerPort)) conflicts.push(managerPort);
+            // Automatic Port Resolution
+            if (await PortUtil.isPortInUse(proxyPort)) {
+                vscode.window.showInformationMessage(`Port ${proxyPort} is in use. Finding next available for Proxy...`);
+                proxyPort = await PortUtil.findNextAvailablePort(proxyPort);
+                await config.update('proxyPort', proxyPort, vscode.ConfigurationTarget.Global);
+            }
 
-            if (conflicts.length > 0) {
-                const suggestedProxy = await PortUtil.findNextAvailablePort(proxyPort);
-                const suggestedAdmin = await PortUtil.findNextAvailablePort(adminPort);
-                const suggestedManager = await PortUtil.findNextAvailablePort(managerPort);
+            if (await PortUtil.isPortInUse(adminPort)) {
+                vscode.window.showInformationMessage(`Port ${adminPort} is in use. Finding next available for Admin API...`);
+                adminPort = await PortUtil.findNextAvailablePort(adminPort);
+                await config.update('adminApiPort', adminPort, vscode.ConfigurationTarget.Global);
+            }
 
-                throw new Error(
-                    `PORT_CONFLICT: The following ports are already in use: ${conflicts.join(', ')}. ` +
-                    `Suggested alternatives: Proxy=${suggestedProxy}, Admin=${suggestedAdmin}, Manager=${suggestedManager}. ` +
-                    `Please update your settings and try again.`
-                );
+            if (await PortUtil.isPortInUse(managerPort)) {
+                vscode.window.showInformationMessage(`Port ${managerPort} is in use. Finding next available for Manager GUI...`);
+                managerPort = await PortUtil.findNextAvailablePort(managerPort);
+                await config.update('managerGuiPort', managerPort, vscode.ConfigurationTarget.Global);
             }
 
             const storagePath = this.getStoragePath();
@@ -197,6 +198,7 @@ x-kong-config: &kong-env
   KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002, 0.0.0.0:8445 ssl
   KONG_ADMIN_GUI_URL: http://localhost:${managerPort}
   KONG_ADMIN_API_URI: http://localhost:${adminPort}
+  KONG_ADMIN_GUI_API_URL: http://localhost:${adminPort}
   KONG_ADMIN_ACCESS_CONTROL_ALLOW_ORIGIN: "*"
   KONG_ADMIN_ACCESS_CONTROL_ALLOW_METHODS: "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"
   KONG_ADMIN_ACCESS_CONTROL_ALLOW_HEADERS: "Content-Type, Authorization"
