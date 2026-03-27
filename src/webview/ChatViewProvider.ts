@@ -384,7 +384,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         #prompt { 
             flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); 
             border: 1px solid var(--vscode-input-border); padding: 12px 16px; border-radius: 12px; outline: none;
-            transition: border-color 0.2s;
+            transition: all 0.2s; resize: none; min-height: 48px; max-height: 200px;
+            font-family: inherit; line-height: 1.5;
         }
         #prompt:focus { border-color: var(--accent); }
         #send { 
@@ -472,7 +473,7 @@ What can I do for you today?</div>
                 <button class="reset-btn" id="reset-config-btn">Reset to Default Settings</button>
             </div>
         </details>
-        <div class="chat-input-row"><input type="text" id="prompt" placeholder="Message Kong Agent..."/><button id="send">Send</button></div>
+        <div class="chat-input-row"><textarea id="prompt" placeholder="Message Kong Agent..." rows="1"></textarea><button id="send">Send</button></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
@@ -529,7 +530,17 @@ What can I do for you today?</div>
                         typing.style.display = 'block';
                     }
                 };
-                input.onkeypress = (e) => { if (e.key === 'Enter') sendBtn.click(); };
+                input.oninput = () => {
+                    input.style.height = 'auto';
+                    input.style.height = (input.scrollHeight) + 'px';
+                };
+                input.onkeydown = (e) => { 
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendBtn.click();
+                        input.style.height = 'auto';
+                    }
+                };
             }
 
             const providerSelect = document.getElementById('provider-select');
