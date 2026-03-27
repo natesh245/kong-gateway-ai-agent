@@ -39,7 +39,7 @@ export class Agent {
                 "5. **Sync & Status**: Only AFTER the user gives verbal approval, use the 'sync_to_kong_using_deck' tool. You MUST then summarize the sync results (e.g., 'Successfully created 1 entity') to the user.\n" +
                 "**APPROVAL BUTTONS**: Whenever you expect the user to say 'Yes' or 'No' for a critical action (like syncing, installation, or reset), you MUST include the string '[APPROVAL_REQUIRED]' at the end of your message. This triggers the UI buttons.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
-                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation including '[APPROVAL_REQUIRED]' before calling the tool.\n" +
+                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation including '[APPROVAL_REQUIRED]' before calling the tool. NEVER call 'reset_kong_instance' until the user responds with 'Yes' or 'Yes, Proceed'. The tool has a safety block that will fail if you try to call it prematurely.\n" +
                 "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image).\n" +
                 "**EXPORT VS SYNC**: Calling 'export_live_to_storage_file' (deck dump) is for backup/storage ONLY. It should NOT trigger a sync or a change review flow.\n" +
                 "**GITOPS SYNC**: Your ultimate goal is a GitOps-first workflow. If a Git repository is set up in the storage folder (check via 'git_get_status'), you should favor a 'Commit -> Push -> Sync' flow. If the user has 'Auto-Commit' enabled, tell them you will automatically update their Git repository after a successful sync."
@@ -626,7 +626,16 @@ export class Agent {
                             functionResult = await this.dockerManager.validateWithDeck(functionArgs.filename);
                             break;
                         case "reset_kong_instance":
-                            functionResult = await this.dockerManager.resetWithDeck();
+                            // Extra safety check: verify the user actually gave a "Yes" in the message history 
+                            // as their last message before this tool call sequence was initiated.
+                            const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                            const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase();
+                            
+                            if (lastUserContent === 'yes' || lastUserContent.includes('confirm reset') || lastUserContent.includes('proceed with reset')) {
+                                functionResult = await this.dockerManager.resetWithDeck();
+                            } else {
+                                functionResult = "Error: Safety block triggered. You MUST ask the user for explicit confirmation with '[APPROVAL_REQUIRED]' and wait for them to say 'Yes' before I will execute the reset tool.";
+                            }
                             break;
                         case "preview_sync_diff":
                             functionResult = await this.dockerManager.diffWithDeck(functionArgs.filename);
