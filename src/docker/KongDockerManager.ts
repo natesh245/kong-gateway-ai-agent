@@ -8,6 +8,7 @@ import { PortUtil } from '../utils/PortUtil';
 const execAsync = promisify(exec);
 
 export class KongDockerManager {
+    private _fileCache: Map<string, string> = new Map();
     constructor(private context: vscode.ExtensionContext) {}
 
     public getStoragePath(): string {
@@ -49,7 +50,9 @@ export class KongDockerManager {
 
             const storagePath = this.getStoragePath();
             const composePath = path.join(storagePath, 'kong-docker-compose.yml');
-            fs.writeFileSync(composePath, this.composeContent(proxyPort, adminPort, managerPort), 'utf8');
+            const composeContent = this.composeContent(proxyPort, adminPort, managerPort);
+            fs.writeFileSync(composePath, composeContent, 'utf8');
+            this.updateFileCache('kong-docker-compose.yml', composeContent);
 
             // Open the file in the editor
             const doc = await vscode.workspace.openTextDocument(composePath);
@@ -118,6 +121,32 @@ export class KongDockerManager {
             return JSON.stringify(existing);
         } catch (e) {
             return "[]";
+        }
+    }
+
+    public updateFileCache(filename: string, content: string) {
+        this._fileCache.set(filename, content);
+    }
+
+    public getFileCache(filename: string): string | undefined {
+        return this._fileCache.get(filename);
+    }
+
+    public async initializeCache() {
+        try {
+            const storagePath = this.getStoragePath();
+            if (!fs.existsSync(storagePath)) return;
+            
+            const files = fs.readdirSync(storagePath);
+            for (const file of files) {
+                if (file.endsWith('.yml') || file.endsWith('.yaml') || file.endsWith('.json')) {
+                    const fullPath = path.join(storagePath, file);
+                    const content = fs.readFileSync(fullPath, 'utf8');
+                    this._fileCache.set(file, content);
+                }
+            }
+        } catch (e) {
+            console.error(`Failed to initialize cache: ${e}`);
         }
     }
 

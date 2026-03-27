@@ -28012,6 +28012,460 @@ var KongApiClient = class {
   }
 };
 
+// node_modules/diff/libesm/diff/base.js
+var Diff = class {
+  diff(oldStr, newStr, options = {}) {
+    let callback;
+    if (typeof options === "function") {
+      callback = options;
+      options = {};
+    } else if ("callback" in options) {
+      callback = options.callback;
+    }
+    const oldString = this.castInput(oldStr, options);
+    const newString = this.castInput(newStr, options);
+    const oldTokens = this.removeEmpty(this.tokenize(oldString, options));
+    const newTokens = this.removeEmpty(this.tokenize(newString, options));
+    return this.diffWithOptionsObj(oldTokens, newTokens, options, callback);
+  }
+  diffWithOptionsObj(oldTokens, newTokens, options, callback) {
+    var _a2;
+    const done = (value) => {
+      value = this.postProcess(value, options);
+      if (callback) {
+        setTimeout(function() {
+          callback(value);
+        }, 0);
+        return void 0;
+      } else {
+        return value;
+      }
+    };
+    const newLen = newTokens.length, oldLen = oldTokens.length;
+    let editLength = 1;
+    let maxEditLength = newLen + oldLen;
+    if (options.maxEditLength != null) {
+      maxEditLength = Math.min(maxEditLength, options.maxEditLength);
+    }
+    const maxExecutionTime = (_a2 = options.timeout) !== null && _a2 !== void 0 ? _a2 : Infinity;
+    const abortAfterTimestamp = Date.now() + maxExecutionTime;
+    const bestPath = [{ oldPos: -1, lastComponent: void 0 }];
+    let newPos = this.extractCommon(bestPath[0], newTokens, oldTokens, 0, options);
+    if (bestPath[0].oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
+      return done(this.buildValues(bestPath[0].lastComponent, newTokens, oldTokens));
+    }
+    let minDiagonalToConsider = -Infinity, maxDiagonalToConsider = Infinity;
+    const execEditLength = () => {
+      for (let diagonalPath = Math.max(minDiagonalToConsider, -editLength); diagonalPath <= Math.min(maxDiagonalToConsider, editLength); diagonalPath += 2) {
+        let basePath;
+        const removePath = bestPath[diagonalPath - 1], addPath = bestPath[diagonalPath + 1];
+        if (removePath) {
+          bestPath[diagonalPath - 1] = void 0;
+        }
+        let canAdd = false;
+        if (addPath) {
+          const addPathNewPos = addPath.oldPos - diagonalPath;
+          canAdd = addPath && 0 <= addPathNewPos && addPathNewPos < newLen;
+        }
+        const canRemove = removePath && removePath.oldPos + 1 < oldLen;
+        if (!canAdd && !canRemove) {
+          bestPath[diagonalPath] = void 0;
+          continue;
+        }
+        if (!canRemove || canAdd && removePath.oldPos < addPath.oldPos) {
+          basePath = this.addToPath(addPath, true, false, 0, options);
+        } else {
+          basePath = this.addToPath(removePath, false, true, 1, options);
+        }
+        newPos = this.extractCommon(basePath, newTokens, oldTokens, diagonalPath, options);
+        if (basePath.oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
+          return done(this.buildValues(basePath.lastComponent, newTokens, oldTokens)) || true;
+        } else {
+          bestPath[diagonalPath] = basePath;
+          if (basePath.oldPos + 1 >= oldLen) {
+            maxDiagonalToConsider = Math.min(maxDiagonalToConsider, diagonalPath - 1);
+          }
+          if (newPos + 1 >= newLen) {
+            minDiagonalToConsider = Math.max(minDiagonalToConsider, diagonalPath + 1);
+          }
+        }
+      }
+      editLength++;
+    };
+    if (callback) {
+      (function exec2() {
+        setTimeout(function() {
+          if (editLength > maxEditLength || Date.now() > abortAfterTimestamp) {
+            return callback(void 0);
+          }
+          if (!execEditLength()) {
+            exec2();
+          }
+        }, 0);
+      })();
+    } else {
+      while (editLength <= maxEditLength && Date.now() <= abortAfterTimestamp) {
+        const ret = execEditLength();
+        if (ret) {
+          return ret;
+        }
+      }
+    }
+  }
+  addToPath(path4, added, removed, oldPosInc, options) {
+    const last = path4.lastComponent;
+    if (last && !options.oneChangePerToken && last.added === added && last.removed === removed) {
+      return {
+        oldPos: path4.oldPos + oldPosInc,
+        lastComponent: { count: last.count + 1, added, removed, previousComponent: last.previousComponent }
+      };
+    } else {
+      return {
+        oldPos: path4.oldPos + oldPosInc,
+        lastComponent: { count: 1, added, removed, previousComponent: last }
+      };
+    }
+  }
+  extractCommon(basePath, newTokens, oldTokens, diagonalPath, options) {
+    const newLen = newTokens.length, oldLen = oldTokens.length;
+    let oldPos = basePath.oldPos, newPos = oldPos - diagonalPath, commonCount = 0;
+    while (newPos + 1 < newLen && oldPos + 1 < oldLen && this.equals(oldTokens[oldPos + 1], newTokens[newPos + 1], options)) {
+      newPos++;
+      oldPos++;
+      commonCount++;
+      if (options.oneChangePerToken) {
+        basePath.lastComponent = { count: 1, previousComponent: basePath.lastComponent, added: false, removed: false };
+      }
+    }
+    if (commonCount && !options.oneChangePerToken) {
+      basePath.lastComponent = { count: commonCount, previousComponent: basePath.lastComponent, added: false, removed: false };
+    }
+    basePath.oldPos = oldPos;
+    return newPos;
+  }
+  equals(left, right, options) {
+    if (options.comparator) {
+      return options.comparator(left, right);
+    } else {
+      return left === right || !!options.ignoreCase && left.toLowerCase() === right.toLowerCase();
+    }
+  }
+  removeEmpty(array) {
+    const ret = [];
+    for (let i2 = 0; i2 < array.length; i2++) {
+      if (array[i2]) {
+        ret.push(array[i2]);
+      }
+    }
+    return ret;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  castInput(value, options) {
+    return value;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  tokenize(value, options) {
+    return Array.from(value);
+  }
+  join(chars) {
+    return chars.join("");
+  }
+  postProcess(changeObjects, options) {
+    return changeObjects;
+  }
+  get useLongestToken() {
+    return false;
+  }
+  buildValues(lastComponent, newTokens, oldTokens) {
+    const components = [];
+    let nextComponent;
+    while (lastComponent) {
+      components.push(lastComponent);
+      nextComponent = lastComponent.previousComponent;
+      delete lastComponent.previousComponent;
+      lastComponent = nextComponent;
+    }
+    components.reverse();
+    const componentLen = components.length;
+    let componentPos = 0, newPos = 0, oldPos = 0;
+    for (; componentPos < componentLen; componentPos++) {
+      const component = components[componentPos];
+      if (!component.removed) {
+        if (!component.added && this.useLongestToken) {
+          let value = newTokens.slice(newPos, newPos + component.count);
+          value = value.map(function(value2, i2) {
+            const oldValue = oldTokens[oldPos + i2];
+            return oldValue.length > value2.length ? oldValue : value2;
+          });
+          component.value = this.join(value);
+        } else {
+          component.value = this.join(newTokens.slice(newPos, newPos + component.count));
+        }
+        newPos += component.count;
+        if (!component.added) {
+          oldPos += component.count;
+        }
+      } else {
+        component.value = this.join(oldTokens.slice(oldPos, oldPos + component.count));
+        oldPos += component.count;
+      }
+    }
+    return components;
+  }
+};
+
+// node_modules/diff/libesm/diff/line.js
+var LineDiff = class extends Diff {
+  constructor() {
+    super(...arguments);
+    this.tokenize = tokenize;
+  }
+  equals(left, right, options) {
+    if (options.ignoreWhitespace) {
+      if (!options.newlineIsToken || !left.includes("\n")) {
+        left = left.trim();
+      }
+      if (!options.newlineIsToken || !right.includes("\n")) {
+        right = right.trim();
+      }
+    } else if (options.ignoreNewlineAtEof && !options.newlineIsToken) {
+      if (left.endsWith("\n")) {
+        left = left.slice(0, -1);
+      }
+      if (right.endsWith("\n")) {
+        right = right.slice(0, -1);
+      }
+    }
+    return super.equals(left, right, options);
+  }
+};
+var lineDiff = new LineDiff();
+function diffLines(oldStr, newStr, options) {
+  return lineDiff.diff(oldStr, newStr, options);
+}
+function tokenize(value, options) {
+  if (options.stripTrailingCr) {
+    value = value.replace(/\r\n/g, "\n");
+  }
+  const retLines = [], linesAndNewlines = value.split(/(\n|\r\n)/);
+  if (!linesAndNewlines[linesAndNewlines.length - 1]) {
+    linesAndNewlines.pop();
+  }
+  for (let i2 = 0; i2 < linesAndNewlines.length; i2++) {
+    const line = linesAndNewlines[i2];
+    if (i2 % 2 && !options.newlineIsToken) {
+      retLines[retLines.length - 1] += line;
+    } else {
+      retLines.push(line);
+    }
+  }
+  return retLines;
+}
+
+// node_modules/diff/libesm/patch/create.js
+var INCLUDE_HEADERS = {
+  includeIndex: true,
+  includeUnderline: true,
+  includeFileHeaders: true
+};
+function structuredPatch(oldFileName, newFileName, oldStr, newStr, oldHeader, newHeader, options) {
+  let optionsObj;
+  if (!options) {
+    optionsObj = {};
+  } else if (typeof options === "function") {
+    optionsObj = { callback: options };
+  } else {
+    optionsObj = options;
+  }
+  if (typeof optionsObj.context === "undefined") {
+    optionsObj.context = 4;
+  }
+  const context = optionsObj.context;
+  if (optionsObj.newlineIsToken) {
+    throw new Error("newlineIsToken may not be used with patch-generation functions, only with diffing functions");
+  }
+  if (!optionsObj.callback) {
+    return diffLinesResultToPatch(diffLines(oldStr, newStr, optionsObj));
+  } else {
+    const { callback } = optionsObj;
+    diffLines(oldStr, newStr, Object.assign(Object.assign({}, optionsObj), { callback: (diff) => {
+      const patch = diffLinesResultToPatch(diff);
+      callback(patch);
+    } }));
+  }
+  function diffLinesResultToPatch(diff) {
+    if (!diff) {
+      return;
+    }
+    diff.push({ value: "", lines: [] });
+    function contextLines(lines) {
+      return lines.map(function(entry) {
+        return " " + entry;
+      });
+    }
+    const hunks = [];
+    let oldRangeStart = 0, newRangeStart = 0, curRange = [], oldLine = 1, newLine = 1;
+    for (let i2 = 0; i2 < diff.length; i2++) {
+      const current = diff[i2], lines = current.lines || splitLines(current.value);
+      current.lines = lines;
+      if (current.added || current.removed) {
+        if (!oldRangeStart) {
+          const prev = diff[i2 - 1];
+          oldRangeStart = oldLine;
+          newRangeStart = newLine;
+          if (prev) {
+            curRange = context > 0 ? contextLines(prev.lines.slice(-context)) : [];
+            oldRangeStart -= curRange.length;
+            newRangeStart -= curRange.length;
+          }
+        }
+        for (const line of lines) {
+          curRange.push((current.added ? "+" : "-") + line);
+        }
+        if (current.added) {
+          newLine += lines.length;
+        } else {
+          oldLine += lines.length;
+        }
+      } else {
+        if (oldRangeStart) {
+          if (lines.length <= context * 2 && i2 < diff.length - 2) {
+            for (const line of contextLines(lines)) {
+              curRange.push(line);
+            }
+          } else {
+            const contextSize = Math.min(lines.length, context);
+            for (const line of contextLines(lines.slice(0, contextSize))) {
+              curRange.push(line);
+            }
+            const hunk = {
+              oldStart: oldRangeStart,
+              oldLines: oldLine - oldRangeStart + contextSize,
+              newStart: newRangeStart,
+              newLines: newLine - newRangeStart + contextSize,
+              lines: curRange
+            };
+            hunks.push(hunk);
+            oldRangeStart = 0;
+            newRangeStart = 0;
+            curRange = [];
+          }
+        }
+        oldLine += lines.length;
+        newLine += lines.length;
+      }
+    }
+    for (const hunk of hunks) {
+      for (let i2 = 0; i2 < hunk.lines.length; i2++) {
+        if (hunk.lines[i2].endsWith("\n")) {
+          hunk.lines[i2] = hunk.lines[i2].slice(0, -1);
+        } else {
+          hunk.lines.splice(i2 + 1, 0, "\\ No newline at end of file");
+          i2++;
+        }
+      }
+    }
+    return {
+      oldFileName,
+      newFileName,
+      oldHeader,
+      newHeader,
+      hunks
+    };
+  }
+}
+function formatPatch(patch, headerOptions) {
+  if (!headerOptions) {
+    headerOptions = INCLUDE_HEADERS;
+  }
+  if (Array.isArray(patch)) {
+    if (patch.length > 1 && !headerOptions.includeFileHeaders) {
+      throw new Error("Cannot omit file headers on a multi-file patch. (The result would be unparseable; how would a tool trying to apply the patch know which changes are to which file?)");
+    }
+    return patch.map((p2) => formatPatch(p2, headerOptions)).join("\n");
+  }
+  const ret = [];
+  if (headerOptions.includeIndex && patch.oldFileName == patch.newFileName) {
+    ret.push("Index: " + patch.oldFileName);
+  }
+  if (headerOptions.includeUnderline) {
+    ret.push("===================================================================");
+  }
+  if (headerOptions.includeFileHeaders) {
+    ret.push("--- " + patch.oldFileName + (typeof patch.oldHeader === "undefined" ? "" : "	" + patch.oldHeader));
+    ret.push("+++ " + patch.newFileName + (typeof patch.newHeader === "undefined" ? "" : "	" + patch.newHeader));
+  }
+  for (let i2 = 0; i2 < patch.hunks.length; i2++) {
+    const hunk = patch.hunks[i2];
+    if (hunk.oldLines === 0) {
+      hunk.oldStart -= 1;
+    }
+    if (hunk.newLines === 0) {
+      hunk.newStart -= 1;
+    }
+    ret.push("@@ -" + hunk.oldStart + "," + hunk.oldLines + " +" + hunk.newStart + "," + hunk.newLines + " @@");
+    for (const line of hunk.lines) {
+      ret.push(line);
+    }
+  }
+  return ret.join("\n") + "\n";
+}
+function createTwoFilesPatch(oldFileName, newFileName, oldStr, newStr, oldHeader, newHeader, options) {
+  if (typeof options === "function") {
+    options = { callback: options };
+  }
+  if (!(options === null || options === void 0 ? void 0 : options.callback)) {
+    const patchObj = structuredPatch(oldFileName, newFileName, oldStr, newStr, oldHeader, newHeader, options);
+    if (!patchObj) {
+      return;
+    }
+    return formatPatch(patchObj, options === null || options === void 0 ? void 0 : options.headerOptions);
+  } else {
+    const { callback } = options;
+    structuredPatch(oldFileName, newFileName, oldStr, newStr, oldHeader, newHeader, Object.assign(Object.assign({}, options), { callback: (patchObj) => {
+      if (!patchObj) {
+        callback(void 0);
+      } else {
+        callback(formatPatch(patchObj, options.headerOptions));
+      }
+    } }));
+  }
+}
+function createPatch(fileName, oldStr, newStr, oldHeader, newHeader, options) {
+  return createTwoFilesPatch(fileName, fileName, oldStr, newStr, oldHeader, newHeader, options);
+}
+function splitLines(text) {
+  const hasTrailingNl = text.endsWith("\n");
+  const result = text.split("\n").map((line) => line + "\n");
+  if (hasTrailingNl) {
+    result.pop();
+  } else {
+    result.push(result.pop().slice(0, -1));
+  }
+  return result;
+}
+
+// src/utils/DiffUtil.ts
+var DiffUtil = class {
+  /**
+   * Generates a unified diff between two strings.
+   * @param filename The name of the file being diffed.
+   * @param oldStr The original content.
+   * @param newStr The new content.
+   */
+  static generateUnifiedDiff(filename, oldStr, newStr) {
+    return createPatch(filename, oldStr, newStr, "Original", "Modified");
+  }
+  /**
+   * Formats a raw unified diff for the webview.
+   * This adds simple HTML-like markers or just returns the string for the webview to handle.
+   */
+  static formatForChat(diffStr) {
+    const lines = diffStr.split("\n");
+    return lines.slice(4).join("\n");
+  }
+};
+
 // src/llm/Agent.ts
 var Agent = class {
   constructor(context, dockerManager) {
@@ -28020,7 +28474,7 @@ var Agent = class {
     this.kongApi = new KongApiClient();
     this.messages.push({
       role: "system",
-      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
+      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. Always use the provided tool functions when the user asks you to perform an action on Kong. When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. Be concise and confirm when an action is done."
     });
   }
   openai = null;
@@ -28282,14 +28736,27 @@ ${files.join("\n")}`;
               break;
             case "write_storage_file":
               const writePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
-              fs2.writeFileSync(writePath, functionArgs.content, "utf8");
+              let oldContent = "";
+              if (fs2.existsSync(writePath)) {
+                oldContent = fs2.readFileSync(writePath, "utf8");
+              }
+              const newContent = functionArgs.content;
+              fs2.writeFileSync(writePath, newContent, "utf8");
+              const writeDiff = DiffUtil.generateUnifiedDiff(functionArgs.filename, oldContent, newContent);
+              const chatDiff = DiffUtil.formatForChat(writeDiff);
+              this.dockerManager.updateFileCache(functionArgs.filename, newContent);
               try {
                 const writeDoc = await vscode.workspace.openTextDocument(writePath);
                 await vscode.window.showTextDocument(writeDoc);
               } catch (err) {
                 console.error(`Failed to open document: ${err.message}`);
               }
-              functionResult = `Successfully wrote to '${functionArgs.filename}' and opened it in the editor.`;
+              functionResult = `Successfully wrote to '${functionArgs.filename}' and updated the cache.
+
+DIFF:
+\`\`\`diff
+${chatDiff}
+\`\`\``;
               break;
             case "check_existing_containers":
               const existingJson = await this.dockerManager.findExistingContainers();
@@ -28343,6 +28810,7 @@ var ChatViewProvider = class {
     this.context = context;
     this.dockerManager = dockerManager;
     this._agent = new Agent(context, dockerManager);
+    this.dockerManager.initializeCache();
     this._setupWatcher();
   }
   static viewType = "kongAgentChat";
@@ -28378,7 +28846,7 @@ var ChatViewProvider = class {
       }
     }, 2e3);
   }
-  resolveWebviewView(webviewView, context, _token) {
+  resolveWebviewView(webviewView, _context, _token) {
     this._view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
@@ -28401,6 +28869,7 @@ var ChatViewProvider = class {
           await config.update("model", data.model, vscode2.ConfigurationTarget.Global);
           await config.update("openRouterApiKey", data.apiKey, vscode2.ConfigurationTarget.Global);
           await config.update("storagePath", data.storagePath, vscode2.ConfigurationTarget.Global);
+          this.dockerManager.initializeCache();
           this._setupWatcher();
           break;
         }
@@ -28415,8 +28884,33 @@ var ChatViewProvider = class {
             const folderPath = result[0].fsPath;
             const config = vscode2.workspace.getConfiguration("kongAgent");
             await config.update("storagePath", folderPath, vscode2.ConfigurationTarget.Global);
+            this.dockerManager.initializeCache();
             this._setupWatcher();
             this._updateWebviewConfig();
+          }
+          break;
+        }
+        case "requestReview": {
+          const filename = data.filename;
+          const storagePath = this.dockerManager.getStoragePath();
+          const fullPath = path2.join(storagePath, filename);
+          if (fs3.existsSync(fullPath)) {
+            const newContent = fs3.readFileSync(fullPath, "utf8");
+            const oldContent = this.dockerManager.getFileCache(filename) || "";
+            const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
+            const chatDiff = DiffUtil.formatForChat(diff);
+            const prompt = `I just manually updated ${filename}. Here is the diff of my changes:
+
+\`\`\`diff
+${chatDiff}
+\`\`\`
+
+Please review my changes and provide feedback.`;
+            webviewView.webview.postMessage({ type: "addMessage", role: "user", content: prompt });
+            this.dockerManager.updateFileCache(filename, newContent);
+            await this._agent.processMessage(prompt, (content) => {
+              webviewView.webview.postMessage({ type: "addMessage", role: "agent", content });
+            });
           }
           break;
         }
@@ -28441,7 +28935,6 @@ var ChatViewProvider = class {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kong Agent</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
         
@@ -28449,235 +28942,75 @@ var ChatViewProvider = class {
             font-family: 'Inter', sans-serif;
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
+            margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
         }
 
         .header {
-            padding: 16px;
-            background: linear-gradient(135deg, #0A2540, #2E86AB);
-            color: white;
-            font-weight: 600;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            border-bottom-left-radius: 12px;
-            border-bottom-right-radius: 12px;
-            margin-bottom: 10px;
+            padding: 16px; background: linear-gradient(135deg, #0A2540, #2E86AB); color: white;
+            font-weight: 600; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; margin-bottom: 10px;
         }
 
-        .chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
+        .chat-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 
         .message {
-            max-width: 85%;
-            padding: 12px 16px;
-            border-radius: 12px;
-            line-height: 1.4;
-            animation: fadeIn 0.3s ease-out forwards;
-            word-wrap: break-word;
-            white-space: pre-wrap;
+            max-width: 90%; padding: 12px 16px; border-radius: 12px; line-height: 1.4;
+            animation: fadeIn 0.3s ease-out forwards; word-wrap: break-word;
         }
+        .message.user { align-self: flex-end; background: rgba(46, 134, 171, 0.2); border: 1px solid rgba(46, 134, 171, 0.4); }
+        .message.agent { align-self: flex-start; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #F51A56; }
 
-        .message.user {
-            align-self: flex-end;
-            background: rgba(46, 134, 171, 0.2);
-            border: 1px solid rgba(46, 134, 171, 0.4);
-            backdrop-filter: blur(10px);
-        }
-
-        .message.agent {
-            align-self: flex-start;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-left: 4px solid #F51A56; /* Kong Red */
-        }
+        .message pre { background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 11px; margin: 8px 0; }
+        .message code { font-family: 'Courier New', Courier, monospace; }
+        .diff-added { color: #4ec9b0; display: block; }
+        .diff-removed { color: #f44747; display: block; }
 
         .notification-toast {
-            background: var(--vscode-notifications-background);
-            color: var(--vscode-notifications-foreground);
-            padding: 12px;
-            border-radius: 8px;
-            margin: 8px 16px;
-            display: none;
-            flex-direction: column;
-            gap: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            border: 1px solid var(--vscode-widget-border);
+            background: var(--vscode-notifications-background); color: var(--vscode-notifications-foreground);
+            padding: 12px; border-radius: 8px; margin: 8px 16px; display: none; flex-direction: column; gap: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid var(--vscode-widget-border);
         }
-
+        .notification-toast .toast-content { display: flex; justify-content: space-between; align-items: center; }
         .notification-toast b { font-size: 12px; }
-        .notification-toast .toast-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-        }
-        .notification-toast .dismiss-btn {
-            background: none;
-            color: var(--vscode-notifications-foreground);
-            padding: 0 4px;
-            cursor: pointer;
-            font-size: 16px;
-            width: auto;
-            box-shadow: none;
-        }
-        .notification-toast .dismiss-btn:hover { color: #F51A56; }
-        .notification-toast button {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            border: none;
-            padding: 6px;
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 11px;
-            width: 100%;
-            margin-top: 4px;
+        .dismiss-btn { background: none; color: inherit; border: none; cursor: pointer; font-size: 16px; }
+        .notification-toast button#review-btn {
+            background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+            border: none; padding: 6px; cursor: pointer; border-radius: 4px; font-size: 11px; width: 100%;
         }
 
-        .input-container {
-            padding: 16px;
-            background: var(--vscode-sideBar-background);
-            border-top: 1px solid var(--vscode-widget-border);
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
+        .input-container { padding: 16px; background: var(--vscode-sideBar-background); border-top: 1px solid var(--vscode-widget-border); display: flex; flex-direction: column; gap: 12px; }
+        .settings-panel { padding: 12px; background: rgba(0, 0, 0, 0.1); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+        .settings-row { display: flex; align-items: center; gap: 8px; }
+        .settings-row label { width: 60px; color: var(--vscode-descriptionForeground); }
+        .settings-row input, .settings-row select { flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px; border-radius: 4px; }
 
-        .settings-panel {
-            padding: 12px;
-            background: rgba(0, 0, 0, 0.1);
-            border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            font-size: 11px;
-            border: 1px solid var(--vscode-widget-border);
-        }
-
-        .settings-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .settings-row label {
-            width: 60px;
-            color: var(--vscode-descriptionForeground);
-        }
-
-        .settings-row select, .settings-row input {
-            flex: 1;
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-        }
-
-        .chat-input-row {
-            display: flex;
-            gap: 8px;
-        }
-
-        input {
-            flex: 1;
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
-            padding: 10px 14px;
-            border-radius: 8px;
-            outline: none;
-            font-family: 'Inter', sans-serif;
-            transition: all 0.2s ease;
-            font-size: 13px;
-        }
-
-        input:focus {
-            border-color: #2E86AB;
-            box-shadow: 0 0 0 2px rgba(46, 134, 171, 0.3);
-        }
-
-        #send {
-            background: linear-gradient(135deg, #F51A56, #d90f46);
-            color: white;
-            border: none;
-            padding: 12px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: transform 0.1s ease, box-shadow 0.1s ease;
-        }
-
-        #send:active { transform: scale(0.95); }
-        #send:hover { box-shadow: 0 4px 10px rgba(245, 26, 86, 0.4); }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        .chat-input-row { display: flex; gap: 8px; }
+        #prompt { flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 10px; border-radius: 8px; outline: none; }
+        #send { background: #F51A56; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
         
-        .typing { display: none; align-self: flex-start; margin-left: 16px; color: #888; font-style: italic; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        .typing { display: none; margin-left:16px; color:#888; font-size:11px; margin-bottom: 8px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div class="header">\u{1F98D} Kong Agent</div>
-    
     <div id="notification" class="notification-toast">
         <div class="toast-content">
-            <span>Detected manual changes in <b id="changed-filename">file.yml</b></span>
+            <span>Manual changes in <b id="changed-filename">file.yml</b></span>
             <button id="dismiss-btn" class="dismiss-btn">&times;</button>
         </div>
         <button id="review-btn">\u{1F50D} Review Changes</button>
     </div>
-
-    <div class="chat-container" id="chat">
-        <div class="message agent">Hello! I am your Kong Gateway Agent. I can start your local Kong via Docker, create routes, and configure services. How can I assist you today?</div>
-    </div>
-    
+    <div class="chat-container" id="chat"></div>
     <div class="typing" id="typing">Kong Agent is thinking...</div>
-    
     <div class="input-container">
         <div class="settings-panel">
-            <div class="settings-row">
-                <label>Provider</label>
-                <select id="provider-select">
-                    <option value="openrouter">OpenRouter</option>
-                    <option value="local">Local (Ollama)</option>
-                </select>
-            </div>
-            <div class="settings-row" id="api-key-row">
-                <label>API Key</label>
-                <input type="password" id="api-key-input" placeholder="OpenRouter API key" />
-            </div>
-            <div class="settings-row">
-                <label>Model</label>
-                <input type="text" id="model-input" placeholder="e.g. openai/gpt-4o" />
-            </div>
-            <div class="settings-row">
-                <label>Storage</label>
-                <div style="display: flex; gap: 4px; flex: 1;">
-                    <input type="text" id="storage-input" placeholder="Default storage" readonly style="flex: 1; cursor: default;" />
-                    <button id="browse-btn" style="padding: 4px 8px; font-size: 10px; background: var(--vscode-button-secondaryBackground);">Browse</button>
-                </div>
-            </div>
+            <div class="settings-row"><label>Provider</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
+            <div class="settings-row" id="api-key-row"><label>API Key</label><input type="password" id="api-key-input"/></div>
+            <div class="settings-row"><label>Model</label><input type="text" id="model-input"/></div>
+            <div class="settings-row"><label>Storage</label><div style="display:flex;gap:4px;flex:1;"><input type="text" id="storage-input" readonly/><button id="browse-btn" style="background:var(--vscode-button-secondaryBackground);padding:2px 6px;font-size:10px;">Browse</button></div></div>
         </div>
-        <div class="chat-input-row">
-            <input type="text" id="prompt" placeholder="Ask me to start Kong..." />
-            <button id="send">Send</button>
-        </div>
+        <div class="chat-input-row"><input type="text" id="prompt" placeholder="Ask anything..."/><button id="send">Send</button></div>
     </div>
 
     <script>
@@ -28686,90 +29019,60 @@ var ChatViewProvider = class {
         const input = document.getElementById('prompt');
         const sendBtn = document.getElementById('send');
         const typing = document.getElementById('typing');
-
-        const providerSelect = document.getElementById('provider-select');
-        const apiKeyInput = document.getElementById('api-key-input');
-        const modelInput = document.getElementById('model-input');
-        const storageInput = document.getElementById('storage-input');
-        const browseBtn = document.getElementById('browse-btn');
-        const apiKeyRow = document.getElementById('api-key-row');
-        
         const notification = document.getElementById('notification');
-        const changedFilenameDisplay = document.getElementById('changed-filename');
-        const reviewBtn = document.getElementById('review-btn');
-        const dismissBtn = document.getElementById('dismiss-btn');
-
-        function updateConfig() {
-            vscode.postMessage({
-                type: 'updateConfig',
-                provider: providerSelect.value,
-                apiKey: apiKeyInput.value,
-                model: modelInput.value,
-                storagePath: storageInput.value
-            });
-            apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
-        }
-
-        providerSelect.addEventListener('change', updateConfig);
-        apiKeyInput.addEventListener('input', updateConfig);
-        modelInput.addEventListener('input', updateConfig);
-        
-        browseBtn.addEventListener('click', () => {
-             vscode.postMessage({ type: 'selectFolder' });
-        });
-
-        reviewBtn.addEventListener('click', () => {
-            const filename = changedFilenameDisplay.innerText;
-            vscode.postMessage({ 
-                type: 'prompt', 
-                value: "I just manually updated " + filename + ". Please read it, review my changes, and let me know if I should fix anything."
-            });
-            notification.style.display = 'none';
-        });
-
-        dismissBtn.addEventListener('click', () => {
-            notification.style.display = 'none';
-        });
+        const filenameDisplay = document.getElementById('changed-filename');
 
         function appendMessage(role, content) {
             const div = document.createElement('div');
             div.className = 'message ' + role;
-            div.innerText = content;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
+            
+            if (content.includes('\`\`\`diff')) {
+                const parts = content.split('\`\`\`diff');
+                const textBefore = parts[0];
+                const rest = parts[1].split('\`\`\`');
+                const diffBody = rest[0];
+                const textAfter = rest[1] || "";
+                
+                div.innerHTML = textBefore.replace(/\\n/g, '<br>') + 
+                    '<pre><code>' + 
+                    diffBody.split('\\n').map(line => {
+                        if (line.startsWith('+')) return '<span class="diff-added">' + line + '</span>';
+                        if (line.startsWith('-')) return '<span class="diff-removed">' + line + '</span>';
+                        return line;
+                    }).join('\\n') + 
+                    '</code></pre>' + textAfter.replace(/\\n/g, '<br>');
+            } else {
+                div.innerHTML = content.replace(/\\n/g, '<br>');
+            }
+            chat.appendChild(div); chat.scrollTop = chat.scrollHeight;
         }
 
-        sendBtn.addEventListener('click', () => {
-            const text = input.value.trim();
-            if (text) {
-                vscode.postMessage({ type: 'prompt', value: text });
-                input.value = '';
-                typing.style.display = 'block';
-            }
-        });
+        sendBtn.onclick = () => {
+            const val = input.value.trim();
+            if (val) { vscode.postMessage({ type: 'prompt', value: val }); input.value = ''; typing.style.display = 'block'; }
+        };
+        input.onkeypress = (e) => { if(e.key === 'Enter') sendBtn.click(); };
 
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendBtn.click();
-        });
+        document.getElementById('review-btn').onclick = () => {
+             vscode.postMessage({ type: 'requestReview', filename: filenameDisplay.innerText });
+             notification.style.display = 'none';
+        };
+        document.getElementById('dismiss-btn').onclick = () => { notification.style.display = 'none'; };
+        document.getElementById('browse-btn').onclick = () => { vscode.postMessage({ type: 'selectFolder' }); };
 
         window.addEventListener('message', event => {
-            const message = event.data;
-            switch (message.type) {
-                case 'addMessage':
-                    typing.style.display = 'none';
-                    appendMessage(message.role, message.content);
-                    break;
-                case 'setConfig':
-                    providerSelect.value = message.provider || 'openrouter';
-                    apiKeyInput.value = message.apiKey || '';
-                    modelInput.value = message.model || 'openai/gpt-4o';
-                    storageInput.value = message.storagePath || 'Using Default Global Storage';
-                    apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
-                    break;
-                case 'fileChanged':
-                    notification.style.display = 'flex';
-                    changedFilenameDisplay.innerText = message.filename;
-                    break;
+            const m = event.data;
+            if (m.type === 'addMessage') { typing.style.display = 'none'; appendMessage(m.role, m.content); }
+            else if (m.type === 'setConfig') {
+                document.getElementById('provider-select').value = m.provider;
+                document.getElementById('api-key-input').value = m.apiKey || '';
+                document.getElementById('model-input').value = m.model;
+                document.getElementById('storage-input').value = m.storagePath || 'Default';
+                document.getElementById('api-key-row').style.display = m.provider === 'local' ? 'none' : 'flex';
+            }
+            else if (m.type === 'fileChanged') {
+                notification.style.display = 'flex';
+                filenameDisplay.innerText = m.filename;
             }
         });
     </script>
@@ -28829,6 +29132,7 @@ var KongDockerManager = class {
   constructor(context) {
     this.context = context;
   }
+  _fileCache = /* @__PURE__ */ new Map();
   getStoragePath() {
     const config = vscode3.workspace.getConfiguration("kongAgent");
     const customPath = config.get("storagePath");
@@ -28861,7 +29165,9 @@ var KongDockerManager = class {
       }
       const storagePath = this.getStoragePath();
       const composePath = path3.join(storagePath, "kong-docker-compose.yml");
-      fs4.writeFileSync(composePath, this.composeContent(proxyPort, adminPort, managerPort), "utf8");
+      const composeContent = this.composeContent(proxyPort, adminPort, managerPort);
+      fs4.writeFileSync(composePath, composeContent, "utf8");
+      this.updateFileCache("kong-docker-compose.yml", composeContent);
       const doc = await vscode3.workspace.openTextDocument(composePath);
       await vscode3.window.showTextDocument(doc);
       vscode3.window.showInformationMessage("Kong Agent: Starting Postgres Database...");
@@ -28916,6 +29222,29 @@ ${stdout}`;
       return JSON.stringify(existing);
     } catch (e2) {
       return "[]";
+    }
+  }
+  updateFileCache(filename, content) {
+    this._fileCache.set(filename, content);
+  }
+  getFileCache(filename) {
+    return this._fileCache.get(filename);
+  }
+  async initializeCache() {
+    try {
+      const storagePath = this.getStoragePath();
+      if (!fs4.existsSync(storagePath))
+        return;
+      const files = fs4.readdirSync(storagePath);
+      for (const file of files) {
+        if (file.endsWith(".yml") || file.endsWith(".yaml") || file.endsWith(".json")) {
+          const fullPath = path3.join(storagePath, file);
+          const content = fs4.readFileSync(fullPath, "utf8");
+          this._fileCache.set(file, content);
+        }
+      }
+    } catch (e2) {
+      console.error(`Failed to initialize cache: ${e2}`);
     }
   }
   composeContent(proxyPort, adminPort, managerPort) {

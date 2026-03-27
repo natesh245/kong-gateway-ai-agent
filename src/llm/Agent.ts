@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { KongDockerManager } from "../docker/KongDockerManager";
 import { KongApiClient } from "../kong/KongApiClient";
+import { DiffUtil } from "../utils/DiffUtil";
 
 export class Agent {
     private openai: OpenAI | null = null;
@@ -26,6 +27,8 @@ export class Agent {
                      "If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. " +
                      "If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. " +
                      "Always use the provided tool functions when the user asks you to perform an action on Kong. " +
+                     "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
+                     "When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. " +
                      "Be concise and confirm when an action is done."
         });
     }
@@ -302,7 +305,21 @@ export class Agent {
                             break;
                         case "write_storage_file":
                             const writePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
-                            fs.writeFileSync(writePath, functionArgs.content, 'utf8');
+                            let oldContent = "";
+                            if (fs.existsSync(writePath)) {
+                                oldContent = fs.readFileSync(writePath, 'utf8');
+                            }
+                            
+                            const newContent = functionArgs.content;
+                            fs.writeFileSync(writePath, newContent, 'utf8');
+                            
+                            // Generate diff for the chat
+                            const writeDiff = DiffUtil.generateUnifiedDiff(functionArgs.filename, oldContent, newContent);
+                            const chatDiff = DiffUtil.formatForChat(writeDiff);
+                            
+                            // Update cache
+                            this.dockerManager.updateFileCache(functionArgs.filename, newContent);
+
                             // Open the file in the editor
                             try {
                                 const writeDoc = await vscode.workspace.openTextDocument(writePath);
@@ -310,7 +327,7 @@ export class Agent {
                             } catch (err: any) {
                                 console.error(`Failed to open document: ${err.message}`);
                             }
-                            functionResult = `Successfully wrote to '${functionArgs.filename}' and opened it in the editor.`;
+                            functionResult = `Successfully wrote to '${functionArgs.filename}' and updated the cache.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
                             break;
                         case "check_existing_containers":
                             const existingJson = await this.dockerManager.findExistingContainers();

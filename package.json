@@ -37,7 +37,10 @@
       "properties": {
         "kongAgent.provider": {
           "type": "string",
-          "enum": ["openrouter", "local"],
+          "enum": [
+            "openrouter",
+            "local"
+          ],
           "default": "openrouter",
           "description": "The AI API provider (OpenRouter or Local/Ollama)"
         },
@@ -87,7 +90,9 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "openai": "^4.28.0",
-    "axios": "^1.6.7"
+    "@types/diff": "^7.0.2",
+    "axios": "^1.6.7",
+    "diff": "^8.0.4",
+    "openai": "^4.28.0"
   }
 }
