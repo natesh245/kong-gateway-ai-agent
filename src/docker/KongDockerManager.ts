@@ -101,19 +101,23 @@ export class KongDockerManager {
         }
     }
 
-    public async findExistingContainers(): Promise<string[]> {
+    public async findExistingContainers(): Promise<string> {
         try {
             // Find any running containers with 'kong' or 'postgres' in the name
-            const { stdout: nameOut } = await execAsync('docker ps --format "{{.Names}}"');
-            const names = nameOut.split('\n').filter(n => n.trim() !== '');
-            const existing = names.filter(name => 
-                name.toLowerCase().includes('kong') || 
-                name.toLowerCase().includes('postgres') ||
-                name.toLowerCase().includes('database')
-            );
-            return existing;
+            const { stdout: nameOut } = await execAsync('docker ps --format "{{.Id}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"');
+            const lines = nameOut.split('\n').filter(l => l.trim() !== '');
+            
+            const existing = lines.filter(line => {
+                const parts = line.toLowerCase();
+                return parts.includes('kong') || parts.includes('postgres') || parts.includes('database');
+            }).map(line => {
+                const [id, name, image, status, ports] = line.split('|');
+                return { id, name, image, status, ports };
+            });
+
+            return JSON.stringify(existing);
         } catch (e) {
-            return [];
+            return "[]";
         }
     }
 

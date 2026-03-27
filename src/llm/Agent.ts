@@ -18,11 +18,13 @@ export class Agent {
             role: "system",
             content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. " +
                      "You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. " +
-                     "CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. If any containers related to Kong or Postgres are already running, you MUST ask the user if they want to use the existing setup or start a fresh one. " +
+                     "CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. " +
+                     "If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. " +
+                     "If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. " +
+                     "ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. " +
                      "CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. " +
                      "If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. " +
                      "If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. " +
-                     "You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. " +
                      "Always use the provided tool functions when the user asks you to perform an action on Kong. " +
                      "Be concise and confirm when an action is done."
         });
@@ -32,7 +34,6 @@ export class Agent {
         const config = vscode.workspace.getConfiguration('kongAgent');
         const provider = config.get<string>('provider') || 'openrouter';
         const apiKey = config.get<string>('openRouterApiKey');
-        const model = config.get<string>('model') || 'openai/gpt-4o';
 
         if (provider === 'openrouter') {
             if (!apiKey) {
@@ -70,14 +71,20 @@ export class Agent {
         const model = config.get<string>('model') || (config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o');
 
         try {
-            await this.runLoop(model, updateUiCallback);
+            await this.runLoop(model, updateUiCallback, 0);
         } catch (e: any) {
              updateUiCallback(`Agent Error: ${e.message}`);
         }
     }
 
-    private async runLoop(model: string, updateUiCallback: (content: string) => void) {
+    private async runLoop(model: string, updateUiCallback: (content: string) => void, depth: number) {
         if (!this.openai) return;
+
+        // Prevent infinite loops
+        if (depth > 5) {
+            updateUiCallback("Agent Error: Max tool call depth reached to prevent infinite loop.");
+            return;
+        }
 
         const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
              {
@@ -207,6 +214,22 @@ export class Agent {
                     name: "check_existing_containers",
                     description: "Checks if any Docker containers related to Kong or Postgres are currently running on the system.",
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "connect_to_existing_instance",
+                    description: "Adopts an existing Kong instance by updating the Agent's local configuration to match the discovered ports.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            proxyPort: { type: "number" },
+                            adminPort: { type: "number" },
+                            managerPort: { type: "number" }
+                        },
+                        required: ["proxyPort", "adminPort", "managerPort"]
+                    }
+                }
             }
         ];
 
@@ -290,12 +313,24 @@ export class Agent {
                             functionResult = `Successfully wrote to '${functionArgs.filename}' and opened it in the editor.`;
                             break;
                         case "check_existing_containers":
-                            const existing = await this.dockerManager.findExistingContainers();
+                            const existingJson = await this.dockerManager.findExistingContainers();
+                            const existing = JSON.parse(existingJson);
                             if (existing.length > 0) {
-                                functionResult = `Found existing containers: ${existing.join(', ')}. Ask the user if they want to USE these or START FRESH.`;
+                                const details = existing.map((c: any) => `- Name: ${c.name}, Image: ${c.image}, Status: ${c.status}, Ports: ${c.ports}`).join('\n');
+                                functionResult = `Found existing containers:\n${details}\n\nAsk the user if they want to USE one of these or START FRESH.`;
                             } else {
                                 functionResult = "No existing Kong/Postgres containers found. Safe to proceed.";
                             }
+                            break;
+                        case "connect_to_existing_instance":
+                            const connConfig = vscode.workspace.getConfiguration('kongAgent');
+                            await connConfig.update('proxyPort', functionArgs.proxyPort, vscode.ConfigurationTarget.Global);
+                            await connConfig.update('adminApiPort', functionArgs.adminPort, vscode.ConfigurationTarget.Global);
+                            await connConfig.update('managerGuiPort', functionArgs.managerPort, vscode.ConfigurationTarget.Global);
+                            
+                            // Verify connectivity
+                            const checkStatus = await this.kongApi.getStatus();
+                            functionResult = `Successfully adopted existing instance. Connectivity check: ${checkStatus}\n\nAccess Details:\n- Manager: http://localhost:${functionArgs.managerPort}\n- Admin: http://localhost:${functionArgs.adminPort}\n- Proxy: http://localhost:${functionArgs.proxyPort}`;
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;
@@ -309,11 +344,11 @@ export class Agent {
                     tool_call_id: toolCall.id,
                     role: "tool",
                     content: functionResult
-                } as any); // using any for simplicity since OpenRouter SDK types can be strict
+                } as any); 
             }
 
             // Call again to let LLM summarize the function result
-            await this.runLoop(model, updateUiCallback);
+            await this.runLoop(model, updateUiCallback, depth + 1);
         } else if (responseMessage.content) {
             updateUiCallback(responseMessage.content as string);
         }

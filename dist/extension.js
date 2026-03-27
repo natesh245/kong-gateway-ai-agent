@@ -28018,7 +28018,7 @@ var Agent = class {
     this.kongApi = new KongApiClient();
     this.messages.push({
       role: "system",
-      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. If any containers related to Kong or Postgres are already running, you MUST ask the user if they want to use the existing setup or start a fresh one. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
+      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
     });
   }
   openai = null;
@@ -28028,7 +28028,6 @@ var Agent = class {
     const config = vscode.workspace.getConfiguration("kongAgent");
     const provider = config.get("provider") || "openrouter";
     const apiKey = config.get("openRouterApiKey");
-    const model = config.get("model") || "openai/gpt-4o";
     if (provider === "openrouter") {
       if (!apiKey) {
         vscode.window.showErrorMessage("Kong Agent: OpenRouter API key is missing. Please configure it in the sidebar settings or VS Code settings.");
@@ -28059,14 +28058,18 @@ var Agent = class {
     const config = vscode.workspace.getConfiguration("kongAgent");
     const model = config.get("model") || (config.get("provider") === "local" ? "llama3.1" : "openai/gpt-4o");
     try {
-      await this.runLoop(model, updateUiCallback);
+      await this.runLoop(model, updateUiCallback, 0);
     } catch (e2) {
       updateUiCallback(`Agent Error: ${e2.message}`);
     }
   }
-  async runLoop(model, updateUiCallback) {
+  async runLoop(model, updateUiCallback, depth) {
     if (!this.openai)
       return;
+    if (depth > 5) {
+      updateUiCallback("Agent Error: Max tool call depth reached to prevent infinite loop.");
+      return;
+    }
     const tools = [
       {
         type: "function",
@@ -28195,6 +28198,22 @@ var Agent = class {
           name: "check_existing_containers",
           description: "Checks if any Docker containers related to Kong or Postgres are currently running on the system."
         }
+      },
+      {
+        type: "function",
+        function: {
+          name: "connect_to_existing_instance",
+          description: "Adopts an existing Kong instance by updating the Agent's local configuration to match the discovered ports.",
+          parameters: {
+            type: "object",
+            properties: {
+              proxyPort: { type: "number" },
+              adminPort: { type: "number" },
+              managerPort: { type: "number" }
+            },
+            required: ["proxyPort", "adminPort", "managerPort"]
+          }
+        }
       }
     ];
     let response = await this.openai.chat.completions.create({
@@ -28271,12 +28290,30 @@ ${files.join("\n")}`;
               functionResult = `Successfully wrote to '${functionArgs.filename}' and opened it in the editor.`;
               break;
             case "check_existing_containers":
-              const existing = await this.dockerManager.findExistingContainers();
+              const existingJson = await this.dockerManager.findExistingContainers();
+              const existing = JSON.parse(existingJson);
               if (existing.length > 0) {
-                functionResult = `Found existing containers: ${existing.join(", ")}. Ask the user if they want to USE these or START FRESH.`;
+                const details = existing.map((c2) => `- Name: ${c2.name}, Image: ${c2.image}, Status: ${c2.status}, Ports: ${c2.ports}`).join("\n");
+                functionResult = `Found existing containers:
+${details}
+
+Ask the user if they want to USE one of these or START FRESH.`;
               } else {
                 functionResult = "No existing Kong/Postgres containers found. Safe to proceed.";
               }
+              break;
+            case "connect_to_existing_instance":
+              const connConfig = vscode.workspace.getConfiguration("kongAgent");
+              await connConfig.update("proxyPort", functionArgs.proxyPort, vscode.ConfigurationTarget.Global);
+              await connConfig.update("adminApiPort", functionArgs.adminPort, vscode.ConfigurationTarget.Global);
+              await connConfig.update("managerGuiPort", functionArgs.managerPort, vscode.ConfigurationTarget.Global);
+              const checkStatus = await this.kongApi.getStatus();
+              functionResult = `Successfully adopted existing instance. Connectivity check: ${checkStatus}
+
+Access Details:
+- Manager: http://localhost:${functionArgs.managerPort}
+- Admin: http://localhost:${functionArgs.adminPort}
+- Proxy: http://localhost:${functionArgs.proxyPort}`;
               break;
             default:
               functionResult = `Error: Unknown function ${functionName}`;
@@ -28290,7 +28327,7 @@ ${files.join("\n")}`;
           content: functionResult
         });
       }
-      await this.runLoop(model, updateUiCallback);
+      await this.runLoop(model, updateUiCallback, depth + 1);
     } else if (responseMessage.content) {
       updateUiCallback(responseMessage.content);
     }
@@ -28765,14 +28802,18 @@ ${stdout}`;
   }
   async findExistingContainers() {
     try {
-      const { stdout: nameOut } = await execAsync('docker ps --format "{{.Names}}"');
-      const names = nameOut.split("\n").filter((n2) => n2.trim() !== "");
-      const existing = names.filter(
-        (name) => name.toLowerCase().includes("kong") || name.toLowerCase().includes("postgres") || name.toLowerCase().includes("database")
-      );
-      return existing;
+      const { stdout: nameOut } = await execAsync('docker ps --format "{{.Id}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"');
+      const lines = nameOut.split("\n").filter((l2) => l2.trim() !== "");
+      const existing = lines.filter((line) => {
+        const parts = line.toLowerCase();
+        return parts.includes("kong") || parts.includes("postgres") || parts.includes("database");
+      }).map((line) => {
+        const [id, name, image, status, ports] = line.split("|");
+        return { id, name, image, status, ports };
+      });
+      return JSON.stringify(existing);
     } catch (e2) {
-      return [];
+      return "[]";
     }
   }
   composeContent(proxyPort, adminPort, managerPort) {
