@@ -80,11 +80,8 @@ export class Agent {
                 apiKey: geminiKey
             });
         } else {
-            // Local (Ollama)
-            this.openai = new OpenAI({
-                baseURL: "http://localhost:11434/v1",
-                apiKey: "dummy-local-key"
-            });
+            vscode.window.showErrorMessage("Kong Agent: Unsupported AI provider. Please configure a valid provider in the sidebar settings.");
+            return false;
         }
 
         return true;

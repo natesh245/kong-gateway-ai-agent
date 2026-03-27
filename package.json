@@ -39,8 +39,7 @@
           "type": "string",
           "enum": [
             "openrouter",
-            "gemini",
-            "local"
+            "gemini"
           ],
           "default": "openrouter",
           "description": "The AI API provider (OpenRouter or Local/Ollama)"

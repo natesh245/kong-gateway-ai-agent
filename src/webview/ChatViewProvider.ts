@@ -508,7 +508,7 @@ What can I do for you today?</div>
                 <span class="toggle-icon">▼</span>
             </summary>
             <div class="settings-panel">
-                <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="gemini">Gemini</option><option value="local">Ollama</option></select></div>
+                <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="gemini">Gemini</option></select></div>
                 <div class="settings-row"><label>Model</label><input type="text" id="model-input" placeholder="e.g. openai/gpt-4o"/></div>
                 <div class="settings-row" id="api-key-row"><label>OpenRouter Key</label><input type="password" id="api-key-input"/></div>
                 <div class="settings-row" id="gemini-api-key-row" class="hidden"><label>Gemini Key</label><input type="password" id="gemini-api-key-input"/></div>
