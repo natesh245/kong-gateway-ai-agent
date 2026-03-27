@@ -197,7 +197,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 storagePath: config.get('storagePath'),
                 proxyPort: config.get('proxyPort'),
                 adminPort: config.get('adminApiPort'),
-                managerPort: config.get('managerGuiPort')
+                managerPort: config.get('managerGuiPort'),
+                databasePort: config.get('databasePort') || 5432
             });
         }
     }
@@ -382,10 +383,11 @@ What can I do for you today?</div>
                 <div class="settings-row" style="margin-top:4px; padding-top:4px; border-top: 1px solid rgba(255,255,255,0.05);">
                     <label>Ports</label>
                     <div style="display:flex; gap:4px; flex:1;">
-                        <input type="number" id="proxy-port-input" placeholder="Proxy" title="Proxy Port" style="width:45px; flex:none;"/>
-                        <input type="number" id="admin-port-input" placeholder="Admin" title="Admin API Port" style="width:45px; flex:none;"/>
-                        <input type="number" id="manager-port-input" placeholder="Manager" title="Manager GUI Port" style="width:45px; flex:none;"/>
-                        <button id="check-ports-btn" title="Check Availability" style="background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:4px; padding:0 6px; cursor:pointer; font-size:10px;">🔍</button>
+                        <input type="number" id="proxy-port-input" placeholder="Proxy" title="Proxy Port" style="width:40px; flex:none;"/>
+                        <input type="number" id="admin-port-input" placeholder="Admin" title="Admin API Port" style="width:40px; flex:none;"/>
+                        <input type="number" id="manager-port-input" placeholder="Manager" title="Manager GUI Port" style="width:40px; flex:none;"/>
+                        <input type="number" id="db-port-input" placeholder="DB" title="Postgres Port" style="width:40px; flex:none;"/>
+                        <button id="check-ports-btn" title="Check Availability" style="background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:4px; padding:0 4px; cursor:pointer; font-size:10px;">🔍</button>
                         <button id="save-config-btn" style="background:var(--accent); color:white; border:none; border-radius:4px; padding:0 8px; cursor:pointer; font-size:10px; font-weight:600;">Save</button>
                     </div>
                 </div>
@@ -496,6 +498,7 @@ What can I do for you today?</div>
                     document.getElementById('proxy-port-input').value = m.proxyPort || 8000;
                     document.getElementById('admin-port-input').value = m.adminPort || 8001;
                     document.getElementById('manager-port-input').value = m.managerPort || 8002;
+                    document.getElementById('db-port-input').value = m.databasePort || 5432;
                 } else if (m.type === 'portCheckResults') {
                     for (const [key, res] of Object.entries(m.results)) {
                         const el = document.getElementById(key + '-port-input');

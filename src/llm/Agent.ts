@@ -13,24 +13,24 @@ export class Agent {
 
     constructor(private context: vscode.ExtensionContext, private dockerManager: KongDockerManager) {
         this.kongApi = new KongApiClient();
-        
+
         // System prompt
         this.messages.push({
             role: "system",
             content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. " +
-                     "You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. " +
-                     "CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. " +
-                     "If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. " +
-                     "If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. " +
-                     "ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. " +
-                     "PORT ACCURACY: NEVER assume ports 8000/8001/8002. ALWAYS use the specific port results returned by 'start_kong', 'verify_connectivity', or 'connect_to_existing_instance' in your final response. " +
-                     "TECHNICAL DETAILS: Use the 'get_instance_details' tool when the user asks for deep technical info like versions or configuration. Summarize these using Markdown tables for maximum readability. " +
-                     "CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. " +
-                     "If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. " +
-                     "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
-                     "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
-                     "When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. " +
-                     "Be concise and confirm when an action is done."
+                "You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. " +
+                "CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. " +
+                "If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. " +
+                "If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. " +
+                "ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. " +
+                "PORT ACCURACY: NEVER assume ports 8000/8001/8002. ALWAYS use the specific port results returned by 'start_kong', 'verify_connectivity', or 'connect_to_existing_instance' in your final response. " +
+                "TECHNICAL DETAILS: Use the 'get_instance_details' tool when the user asks for deep technical info like versions or configuration. Summarize these using Markdown tables for maximum readability. " +
+                "CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. " +
+                "If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. " +
+                "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
+                "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
+                "When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. " +
+                "Be concise and confirm when an action is done."
         });
     }
 
@@ -60,7 +60,7 @@ export class Agent {
                 apiKey: "dummy-local-key"
             });
         }
-        
+
         return true;
     }
 
@@ -77,7 +77,7 @@ export class Agent {
         try {
             await this.runLoop(model, onUpdate, 0);
         } catch (e: any) {
-             onUpdate(`Agent Error: ${e.message}`);
+            onUpdate(`Agent Error: ${e.message}`);
         }
     }
 
@@ -85,13 +85,13 @@ export class Agent {
         if (!this.openai) return;
 
         // Prevent infinite loops
-        if (depth > 5) {
+        if (depth > 10) {
             onUpdate("Agent Error: Max tool call depth reached to prevent infinite loop.");
             return;
         }
 
         const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-             {
+            {
                 type: "function",
                 function: {
                     name: "start_kong",
@@ -112,7 +112,7 @@ export class Agent {
                     description: "Fetches status info from Kong Admin API to test if it's reachable and running.",
                 }
             },
-             {
+            {
                 type: "function",
                 function: {
                     name: "create_service",
@@ -127,7 +127,7 @@ export class Agent {
                     }
                 }
             },
-             {
+            {
                 type: "function",
                 function: {
                     name: "create_route",
@@ -136,8 +136,8 @@ export class Agent {
                         type: "object",
                         properties: {
                             service_name: { type: "string", description: "The name of the service to attach this route to" },
-                            paths: { 
-                                type: "array", 
+                            paths: {
+                                type: "array",
                                 items: { type: "string" },
                                 description: "The paths (e.g., ['/mock']) that this route should listen on"
                             },
@@ -271,17 +271,17 @@ export class Agent {
         if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
             for (const toolCall of responseMessage.tool_calls) {
                 const functionName = toolCall.function.name;
-                
+
                 let functionArgs;
                 try {
                     functionArgs = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
-                } catch(e) {
+                } catch (e) {
                     functionArgs = {};
                 }
-                
+
                 // Transparency: Notify UI that we are running a tool
                 onUpdate(`Executing Tool: **${functionName}**${Object.keys(functionArgs).length > 0 ? ' (' + JSON.stringify(functionArgs).substring(0, 100) + ')' : ''}...`, 'toolCall');
-                
+
                 let functionResult = "";
 
                 try {
@@ -332,7 +332,7 @@ export class Agent {
                             }
                             const newContent = functionArgs.content;
                             fs.writeFileSync(writePath, newContent, 'utf8');
-                            
+
                             const writeDiff = DiffUtil.generateUnifiedDiff(functionArgs.filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(writeDiff);
                             this.dockerManager.updateFileCache(functionArgs.filename, newContent);
@@ -340,8 +340,8 @@ export class Agent {
                             try {
                                 const writeDoc = await vscode.workspace.openTextDocument(writePath);
                                 await vscode.window.showTextDocument(writeDoc);
-                            } catch (err: any) {}
-                            
+                            } catch (err: any) { }
+
                             functionResult = `Successfully wrote to '${functionArgs.filename}'.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
                             break;
                         case "check_existing_containers":
@@ -379,7 +379,7 @@ export class Agent {
                     tool_call_id: toolCall.id,
                     role: "tool",
                     content: functionResult
-                } as any); 
+                } as any);
             }
 
             await this.runLoop(model, onUpdate, depth + 1);

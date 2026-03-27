@@ -30,6 +30,7 @@ export class KongDockerManager {
       let proxyPort = config.get<number>('proxyPort') || 8000;
       let adminPort = config.get<number>('adminApiPort') || 8001;
       let managerPort = config.get<number>('managerGuiPort') || 8002;
+      let dbPort = config.get<number>('databasePort') || 5432;
 
       // Automatic Port Resolution
       if (await PortUtil.isPortInUse(proxyPort)) {
@@ -50,9 +51,15 @@ export class KongDockerManager {
         await config.update('managerGuiPort', managerPort, vscode.ConfigurationTarget.Global);
       }
 
+      if (await PortUtil.isPortInUse(dbPort)) {
+        vscode.window.showInformationMessage(`Port ${dbPort} is in use. Finding next available for Postgres...`);
+        dbPort = await PortUtil.findNextAvailablePort(dbPort);
+        await config.update('databasePort', dbPort, vscode.ConfigurationTarget.Global);
+      }
+
       const storagePath = this.getStoragePath();
       const composePath = path.join(storagePath, 'kong-docker-compose.yml');
-      const composeContent = this.composeContent(proxyPort, adminPort, managerPort);
+      const composeContent = this.composeContent(proxyPort, adminPort, managerPort, dbPort);
       fs.writeFileSync(composePath, composeContent, 'utf8');
       this.updateFileCache('kong-docker-compose.yml', composeContent);
 
@@ -75,7 +82,8 @@ export class KongDockerManager {
 | :--- | :--- |
 | **Kong Manager (GUI)** | http://localhost:${managerPort} |
 | **Admin API** | http://localhost:${adminPort} |
-| **Proxy Gateway** | http://localhost:${proxyPort} |`;
+| **Proxy Gateway** | http://localhost:${proxyPort} |
+| **Postgres Database** | localhost:${dbPort} |`;
 
       // Automatically open Kong Manager in browser
       await this.openManager();
@@ -195,13 +203,14 @@ export class KongDockerManager {
     }
   }
 
-  private composeContent(proxyPort: number, adminPort: number, managerPort: number): string {
+  private composeContent(proxyPort: number, adminPort: number, managerPort: number, dbPort: number): string {
     return `version: '3.9'
 x-kong-config: &kong-env
   KONG_DATABASE: postgres
   KONG_PG_HOST: kong-database
   KONG_PG_USER: kong
   KONG_PG_PASSWORD: kongpass
+  KONG_PG_PORT: 5432
   KONG_PROXY_ACCESS_LOG: /dev/stdout
   KONG_ADMIN_ACCESS_LOG: /dev/stdout
   KONG_PROXY_ERROR_LOG: /dev/stderr
@@ -230,7 +239,7 @@ services:
       POSTGRES_DB: kong
       POSTGRES_PASSWORD: kongpass
     ports:
-      - "5432:5432"
+      - "${dbPort}:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "kong"]
       interval: 10s
