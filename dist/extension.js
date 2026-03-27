@@ -28517,6 +28517,21 @@ var ChatViewProvider = class {
         }
 
         .notification-toast b { font-size: 12px; }
+        .notification-toast .toast-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .notification-toast .dismiss-btn {
+            background: none;
+            color: var(--vscode-notifications-foreground);
+            padding: 0 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: auto;
+            box-shadow: none;
+        }
+        .notification-toast .dismiss-btn:hover { color: #F51A56; }
         .notification-toast button {
             background: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
@@ -28526,6 +28541,7 @@ var ChatViewProvider = class {
             border-radius: 4px;
             font-size: 11px;
             width: 100%;
+            margin-top: 4px;
         }
 
         .input-container {
@@ -28620,7 +28636,10 @@ var ChatViewProvider = class {
     <div class="header">\u{1F98D} Kong Agent</div>
     
     <div id="notification" class="notification-toast">
-        <span>Detected manual changes in <b id="changed-filename">file.yml</b></span>
+        <div class="toast-content">
+            <span>Detected manual changes in <b id="changed-filename">file.yml</b></span>
+            <button id="dismiss-btn" class="dismiss-btn">&times;</button>
+        </div>
         <button id="review-btn">\u{1F50D} Review Changes</button>
     </div>
 
@@ -28678,6 +28697,7 @@ var ChatViewProvider = class {
         const notification = document.getElementById('notification');
         const changedFilenameDisplay = document.getElementById('changed-filename');
         const reviewBtn = document.getElementById('review-btn');
+        const dismissBtn = document.getElementById('dismiss-btn');
 
         function updateConfig() {
             vscode.postMessage({
@@ -28704,6 +28724,10 @@ var ChatViewProvider = class {
                 type: 'prompt', 
                 value: "I just manually updated " + filename + ". Please read it, review my changes, and let me know if I should fix anything."
             });
+            notification.style.display = 'none';
+        });
+
+        dismissBtn.addEventListener('click', () => {
             notification.style.display = 'none';
         });
 
