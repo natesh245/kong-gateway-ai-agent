@@ -35,15 +35,17 @@ export class Agent {
                 "3. **Preview Diff**: Call 'preview_sync_diff' to show the exact changes to the user. Wrap this in ' ```diff ' code blocks.\n" +
                 "4. **Smart Review Request**: If differences exist, summarize them and ask for approval using '[APPROVAL_REQUIRED]'.\n" +
                 "5. **Sync**: Only sync AFTER the user sees your diff and provides explicit verbal approval (Yes). NEVER call 'sync_to_kong_using_deck' in the same turn as 'write_storage_file' or 'preview_sync_diff'.\n" +
-                "**REVIEWS & MANUAL UPDATES**: When a user asks for a 'Review' of a file, you MUST ALWAYS call 'read_storage_file' first to understand the full context. DO NOT hallucinate content based on diffs alone. Move directly to Step 2 (Validate) and Step 3 (Diff).\n" +
+                "**REVIEWS & MANUAL UPDATES**: When a user asks for a 'Review' of a file, you MUST ensure you have the full file content (via 'read_storage_file') before analyzing. Move directly to Step 2 (Validate) and Step 3 (Diff). You are PROHIBITED from calling 'sync_to_kong_using_deck' during a review task. Stop after showing the diff.\n" +
                 "**NO RESET ON CANCEL**: If the user says 'Cancel' or 'No', STOP and confirm. NEVER use 'reset_kong_instance' as a way to 'revert' or 'cancel' a pending configuration change.\n" +
                 "**APPROVAL BUTTONS**: Whenever you expect the user to say 'Yes' or 'No' for a critical action, you MUST include '[APPROVAL_REQUIRED]' at the end of your message.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
                 "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation including '[APPROVAL_REQUIRED]'. If you see 'SAFETY_REQUIRED', STOP and ask. The tool has a code-level block that checks for a recent 'Yes' from the user.\n" +
                 "**SYNC SAFETY**: 'sync_to_kong_using_deck' has a safety block. You MUST show the diff and wait for 'Yes'. If you see 'SAFETY_REQUIRED', stop and ask.\n" +
                 "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed, the tool will fall back to Docker.\n" +
-                "**EXPORT VS SYNC**: Calling 'export_live_to_storage_file' (deck dump) is for backup ONLY. It should NOT trigger a sync or review flow.\n" +
-                "**GITOPS SYNC**: If a Git repository is set up, favor 'Commit -> Push -> Sync'. If Auto-Commit is enabled, update Git after a successful sync."
+                "**EXPORT VS SYNC**: 'export_live_to_storage_file' is for manual backups ONLY. You are PROHIBITED from calling it during or after 'preview_sync_diff' or 'sync_to_kong_using_deck'. It is NOT part of the sync or review flow and does not need to be called to 'refresh' state.\n" +
+                "**GITOPS SYNC**: If a Git repository is set up, favor 'Commit -> Push -> Sync'. If Auto-Commit is enabled, update Git after a successful sync.\n" +
+                "**EFFICIENCY**: BUNDLE tool calls whenever possible. For the declarative workflow, you SHOULD call 'write_storage_file', 'validate_kong_config', and 'preview_sync_diff' in a SINGLE response turn. Avoid redundant status checks if you just performed one.\n" +
+                "**LEGACY TOOLS**: Favor 'sync_to_kong_using_deck' over direct API creation tools like 'create_service' or 'create_route' unless specifically for 'Direct API' tasks."
         });
     }
 
@@ -290,57 +292,10 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "export_live_to_storage_file",
-                    description: "Downloads the current live Kong configuration (Services, Routes) and saves it as 'kong.yml' in the storage directory."
+                    description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. CAUTION: Use ONLY for backup; NEVER call during a sync or review flow unless specifically asked for a backup."
                 }
             },
-            {
-                type: "function",
-                function: {
-                    name: "apply_config_from_file",
-                    description: "Reads the 'kong.yml' file from storage and applies its configuration (Services and Routes) to the live Kong Gateway.",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            filename: { type: "string" }
-                        },
-                        required: ["filename"]
-                    }
-                }
-            },
-            {
-                type: "function",
-                function: {
-                    name: "apply_parsed_config",
-                    description: "Takes a list of Services and their Routes (in JSON format) and applies them to the live Kong instance (Fallback method).",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            services: {
-                                type: "array",
-                                items: {
-                                    type: "object",
-                                    properties: {
-                                        name: { type: "string" },
-                                        url: { type: "string" },
-                                        routes: {
-                                            type: "array",
-                                            items: {
-                                                type: "object",
-                                                properties: {
-                                                    name: { type: "string" },
-                                                    paths: { type: "array", items: { type: "string" } }
-                                                }
-                                            }
-                                        }
-                                    },
-                                    required: ["name", "url"]
-                                }
-                            }
-                        },
-                        required: ["services"]
-                    }
-                }
-            },
+
             {
                 type: "function",
                 function: {
@@ -557,26 +512,7 @@ export class Agent {
                         case "export_live_to_storage_file":
                             functionResult = await this.dockerManager.dumpWithDeck('kong.yml');
                             break;
-                        case "apply_config_from_file":
-                            const filePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
-                            if (!fs.existsSync(filePath)) {
-                                functionResult = `Error: File '${functionArgs.filename}' not found.`;
-                                break;
-                            }
-                            const yamlContent = fs.readFileSync(filePath, 'utf8');
-                            // Helper to parse simple services/routes from YAML without heavy lib
-                            // We use the agent's ability to interpret, but we'll do a basic iteration here
-                            // Actually, I'll let the agent parse the YAML into JSON and then call the apply method
-                            functionResult = `Got content from ${functionArgs.filename}. Please parse the services and routes from this content and confirm which ones to apply. \n\nCONTENT:\n${yamlContent}`;
-                            break;
-                        case "apply_parsed_config":
-                            let finalLogs = [];
-                            for (const svc of (functionArgs.services || [])) {
-                                const svcLogs = await this.kongApi.applyServiceState(svc);
-                                finalLogs.push(...svcLogs);
-                            }
-                            functionResult = `Apply Results:\n${finalLogs.join('\n')}`;
-                            break;
+
                         case "check_deck_installation":
                             const isInstalled = await this.dockerManager.isDeckInstalled();
                             functionResult = isInstalled ? "decK is installed and ready." : "decK is NOT installed. You should recommend installing it via 'install_deck_cli' with user approval.";

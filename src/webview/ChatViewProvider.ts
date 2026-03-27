@@ -142,7 +142,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             const oldContent = this.dockerManager.getFileCache(filename) || "";
                             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(diff);
-                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nPlease review it.`;
+                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nPlease review it according to the DECLARATIVE WORKFLOW. **DO NOT CALL SYNC TOOLS**. Stop after showing the preview diff.`;
                             
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
                             this.dockerManager.updateFileCache(filename, newContent);
