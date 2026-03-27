@@ -28474,7 +28474,7 @@ var Agent = class {
     this.kongApi = new KongApiClient();
     this.messages.push({
       role: "system",
-      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. Always use the provided tool functions when the user asks you to perform an action on Kong. When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. Be concise and confirm when an action is done."
+      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. Always use the provided tool functions when the user asks you to perform an action on Kong. Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. Be concise and confirm when an action is done."
     });
   }
   openai = null;
@@ -28505,25 +28505,25 @@ var Agent = class {
     }
     return true;
   }
-  async processMessage(content, updateUiCallback) {
+  async processMessage(content, onUpdate) {
     if (!this.initClient()) {
-      updateUiCallback("Error: LLM client initialization failed. Please check your provider and API key settings in the sidebar.");
+      onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the sidebar.");
       return;
     }
     this.messages.push({ role: "user", content });
     const config = vscode.workspace.getConfiguration("kongAgent");
     const model = config.get("model") || (config.get("provider") === "local" ? "llama3.1" : "openai/gpt-4o");
     try {
-      await this.runLoop(model, updateUiCallback, 0);
+      await this.runLoop(model, onUpdate, 0);
     } catch (e2) {
-      updateUiCallback(`Agent Error: ${e2.message}`);
+      onUpdate(`Agent Error: ${e2.message}`);
     }
   }
-  async runLoop(model, updateUiCallback, depth) {
+  async runLoop(model, onUpdate, depth) {
     if (!this.openai)
       return;
     if (depth > 5) {
-      updateUiCallback("Agent Error: Max tool call depth reached to prevent infinite loop.");
+      onUpdate("Agent Error: Max tool call depth reached to prevent infinite loop.");
       return;
     }
     const tools = [
@@ -28616,7 +28616,7 @@ var Agent = class {
         type: "function",
         function: {
           name: "list_storage_files",
-          description: "Lists all files in the current storage directory (e.g., docker-compose.yml, kong.yml)."
+          description: "Lists all files in the current storage directory."
         }
       },
       {
@@ -28627,7 +28627,7 @@ var Agent = class {
           parameters: {
             type: "object",
             properties: {
-              filename: { type: "string", description: "The name of the file to read (e.g. 'kong.yml')" }
+              filename: { type: "string" }
             },
             required: ["filename"]
           }
@@ -28652,14 +28652,14 @@ var Agent = class {
         type: "function",
         function: {
           name: "check_existing_containers",
-          description: "Checks if any Docker containers related to Kong or Postgres are currently running on the system."
+          description: "Checks if any Docker containers related to Kong or Postgres are currently running."
         }
       },
       {
         type: "function",
         function: {
           name: "connect_to_existing_instance",
-          description: "Adopts an existing Kong instance by updating the Agent's local configuration to match the discovered ports.",
+          description: "Adopts an existing Kong instance by updating the Agent's local configuration.",
           parameters: {
             type: "object",
             properties: {
@@ -28669,6 +28669,13 @@ var Agent = class {
             },
             required: ["proxyPort", "adminPort", "managerPort"]
           }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "verify_connectivity",
+          description: "Pings the Kong Admin API and Proxy to verify they are reachable and ready."
         }
       }
     ];
@@ -28683,13 +28690,13 @@ var Agent = class {
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       for (const toolCall of responseMessage.tool_calls) {
         const functionName = toolCall.function.name;
-        updateUiCallback(`*[Agent calls tool: ${functionName}]*`);
         let functionArgs;
         try {
           functionArgs = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
         } catch (e2) {
           functionArgs = {};
         }
+        onUpdate(`Executing Tool: **${functionName}**${Object.keys(functionArgs).length > 0 ? " (" + JSON.stringify(functionArgs).substring(0, 100) + ")" : ""}...`, "toolCall");
         let functionResult = "";
         try {
           switch (functionName) {
@@ -28718,12 +28725,11 @@ ${apiStatus}`;
               await config.update("proxyPort", functionArgs.proxy, vscode.ConfigurationTarget.Global);
               await config.update("adminApiPort", functionArgs.admin, vscode.ConfigurationTarget.Global);
               await config.update("managerGuiPort", functionArgs.manager, vscode.ConfigurationTarget.Global);
-              functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}. You can now try starting Kong again.`;
+              functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}.`;
               break;
             case "list_storage_files":
-              const listPath = this.dockerManager.getStoragePath();
-              const files = fs2.readdirSync(listPath);
-              functionResult = `Files in storage folder (${listPath}):
+              const files = fs2.readdirSync(this.dockerManager.getStoragePath());
+              functionResult = `Files in storage folder:
 ${files.join("\n")}`;
               break;
             case "read_storage_file":
@@ -28749,9 +28755,8 @@ ${files.join("\n")}`;
                 const writeDoc = await vscode.workspace.openTextDocument(writePath);
                 await vscode.window.showTextDocument(writeDoc);
               } catch (err) {
-                console.error(`Failed to open document: ${err.message}`);
               }
-              functionResult = `Successfully wrote to '${functionArgs.filename}' and updated the cache.
+              functionResult = `Successfully wrote to '${functionArgs.filename}'.
 
 DIFF:
 \`\`\`diff
@@ -28760,29 +28765,18 @@ ${chatDiff}
               break;
             case "check_existing_containers":
               const existingJson = await this.dockerManager.findExistingContainers();
-              const existing = JSON.parse(existingJson);
-              if (existing.length > 0) {
-                const details = existing.map((c2) => `- Name: ${c2.name}, Image: ${c2.image}, Status: ${c2.status}, Ports: ${c2.ports}`).join("\n");
-                functionResult = `Found existing containers:
-${details}
-
-Ask the user if they want to USE one of these or START FRESH.`;
-              } else {
-                functionResult = "No existing Kong/Postgres containers found. Safe to proceed.";
-              }
+              functionResult = `Found existing containers: ${existingJson}. Ask the user confirm.`;
               break;
             case "connect_to_existing_instance":
               const connConfig = vscode.workspace.getConfiguration("kongAgent");
               await connConfig.update("proxyPort", functionArgs.proxyPort, vscode.ConfigurationTarget.Global);
               await connConfig.update("adminApiPort", functionArgs.adminPort, vscode.ConfigurationTarget.Global);
               await connConfig.update("managerGuiPort", functionArgs.managerPort, vscode.ConfigurationTarget.Global);
-              const checkStatus = await this.kongApi.getStatus();
-              functionResult = `Successfully adopted existing instance. Connectivity check: ${checkStatus}
-
-Access Details:
-- Manager: http://localhost:${functionArgs.managerPort}
-- Admin: http://localhost:${functionArgs.adminPort}
-- Proxy: http://localhost:${functionArgs.proxyPort}`;
+              functionResult = `Adopted existing instance at Proxy=${functionArgs.proxyPort}, Admin=${functionArgs.adminPort}, Manager=${functionArgs.managerPort}.`;
+              break;
+            case "verify_connectivity":
+              const connStatus = await this.dockerManager.verifyConnectivity();
+              functionResult = `Connectivity: Admin=${connStatus.admin ? "READY" : "DOWN"}, Proxy=${connStatus.proxy ? "READY" : "DOWN"}. ${connStatus.error || ""}`;
               break;
             default:
               functionResult = `Error: Unknown function ${functionName}`;
@@ -28790,15 +28784,16 @@ Access Details:
         } catch (e2) {
           functionResult = `Error executing ${functionName}: ${e2.message}`;
         }
+        onUpdate(functionResult, "toolResult");
         this.messages.push({
           tool_call_id: toolCall.id,
           role: "tool",
           content: functionResult
         });
       }
-      await this.runLoop(model, updateUiCallback, depth + 1);
+      await this.runLoop(model, onUpdate, depth + 1);
     } else if (responseMessage.content) {
-      updateUiCallback(responseMessage.content);
+      onUpdate(responseMessage.content);
     }
   }
 };
@@ -28858,8 +28853,8 @@ var ChatViewProvider = class {
       switch (data.type) {
         case "prompt": {
           webviewView.webview.postMessage({ type: "addMessage", role: "user", content: data.value });
-          await this._agent.processMessage(data.value, (content) => {
-            webviewView.webview.postMessage({ type: "addMessage", role: "agent", content });
+          await this._agent.processMessage(data.value, (content, type = "agent") => {
+            webviewView.webview.postMessage({ type: "addMessage", role: type, content });
           });
           break;
         }
@@ -28899,17 +28894,17 @@ var ChatViewProvider = class {
             const oldContent = this.dockerManager.getFileCache(filename) || "";
             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
             const chatDiff = DiffUtil.formatForChat(diff);
-            const prompt = `I just manually updated ${filename}. Here is the diff of my changes:
+            const prompt = `I just manually updated ${filename}. Here is the diff:
 
 \`\`\`diff
 ${chatDiff}
 \`\`\`
 
-Please review my changes and provide feedback.`;
+Please review it.`;
             webviewView.webview.postMessage({ type: "addMessage", role: "user", content: prompt });
             this.dockerManager.updateFileCache(filename, newContent);
-            await this._agent.processMessage(prompt, (content) => {
-              webviewView.webview.postMessage({ type: "addMessage", role: "agent", content });
+            await this._agent.processMessage(prompt, (content, type = "agent") => {
+              webviewView.webview.postMessage({ type: "addMessage", role: type, content });
             });
           }
           break;
@@ -28939,10 +28934,8 @@ Please review my changes and provide feedback.`;
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
         
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-            margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+            font-family: 'Inter', sans-serif; background-color: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
         }
 
         .header {
@@ -28959,6 +28952,17 @@ Please review my changes and provide feedback.`;
         }
         .message.user { align-self: flex-end; background: rgba(46, 134, 171, 0.2); border: 1px solid rgba(46, 134, 171, 0.4); }
         .message.agent { align-self: flex-start; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #F51A56; }
+        
+        .message.toolCall {
+            align-self: flex-start; background: rgba(43, 43, 43, 0.4); border: 1px dashed rgba(255,255,255,0.2);
+            font-size: 11px; color: #aaa; font-family: 'Courier New', Courier, monospace; padding: 8px; border-radius: 8px;
+        }
+        .message.toolResult {
+            align-self: flex-start; background: rgba(30, 30, 30, 0.6); border: 1px solid rgba(255,255,255,0.1);
+            font-size: 10px; color: #888; font-family: 'Courier New', Courier, monospace;
+            margin-top: -8px; max-width: 95%; display: none; padding: 8px; border-radius: 8px;
+        }
+        .tool-toggle { cursor: pointer; color: #2E86AB; font-size: 10px; margin-top: 4px; text-decoration: underline; margin-left: 4px; }
 
         .message pre { background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 11px; margin: 8px 0; }
         .message code { font-family: 'Courier New', Courier, monospace; }
@@ -28970,24 +28974,14 @@ Please review my changes and provide feedback.`;
             padding: 12px; border-radius: 8px; margin: 8px 16px; display: none; flex-direction: column; gap: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid var(--vscode-widget-border);
         }
-        .notification-toast .toast-content { display: flex; justify-content: space-between; align-items: center; }
-        .notification-toast b { font-size: 12px; }
-        .dismiss-btn { background: none; color: inherit; border: none; cursor: pointer; font-size: 16px; }
-        .notification-toast button#review-btn {
-            background: var(--vscode-button-background); color: var(--vscode-button-foreground);
-            border: none; padding: 6px; cursor: pointer; border-radius: 4px; font-size: 11px; width: 100%;
-        }
-
         .input-container { padding: 16px; background: var(--vscode-sideBar-background); border-top: 1px solid var(--vscode-widget-border); display: flex; flex-direction: column; gap: 12px; }
         .settings-panel { padding: 12px; background: rgba(0, 0, 0, 0.1); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
         .settings-row { display: flex; align-items: center; gap: 8px; }
         .settings-row label { width: 60px; color: var(--vscode-descriptionForeground); }
         .settings-row input, .settings-row select { flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px; border-radius: 4px; }
-
         .chat-input-row { display: flex; gap: 8px; }
         #prompt { flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 10px; border-radius: 8px; outline: none; }
         #send { background: #F51A56; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-        
         .typing { display: none; margin-left:16px; color:#888; font-size:11px; margin-bottom: 8px; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
@@ -28995,11 +28989,11 @@ Please review my changes and provide feedback.`;
 <body>
     <div class="header">\u{1F98D} Kong Agent</div>
     <div id="notification" class="notification-toast">
-        <div class="toast-content">
-            <span>Manual changes in <b id="changed-filename">file.yml</b></span>
-            <button id="dismiss-btn" class="dismiss-btn">&times;</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Changes detected in <b id="changed-filename">file.yml</b></span>
+            <button id="dismiss-btn" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;">&times;</button>
         </div>
-        <button id="review-btn">\u{1F50D} Review Changes</button>
+        <button id="review-btn" style="background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;padding:6px;border-radius:4px;font-size:11px;cursor:pointer;">\u{1F50D} Review Changes</button>
     </div>
     <div class="chat-container" id="chat"></div>
     <div class="typing" id="typing">Kong Agent is thinking...</div>
@@ -29026,6 +29020,18 @@ Please review my changes and provide feedback.`;
             const div = document.createElement('div');
             div.className = 'message ' + role;
             
+            if (role === 'toolResult') {
+                const toggle = document.createElement('div');
+                toggle.className = 'tool-toggle';
+                toggle.innerText = 'Show Command Result [+]';
+                toggle.onclick = () => {
+                   const isHidden = div.style.display === 'none' || div.style.display === '';
+                   div.style.display = isHidden ? 'block' : 'none';
+                   toggle.innerText = isHidden ? 'Hide Result [-]' : 'Show Result [+]';
+                };
+                chat.appendChild(toggle);
+            }
+
             if (content.includes('\`\`\`diff')) {
                 const parts = content.split('\`\`\`diff');
                 const textBefore = parts[0];
@@ -29062,7 +29068,10 @@ Please review my changes and provide feedback.`;
 
         window.addEventListener('message', event => {
             const m = event.data;
-            if (m.type === 'addMessage') { typing.style.display = 'none'; appendMessage(m.role, m.content); }
+            if (m.type === 'addMessage') { 
+                if (m.role === 'agent') typing.style.display = 'none'; 
+                appendMessage(m.role, m.content); 
+            }
             else if (m.type === 'setConfig') {
                 document.getElementById('provider-select').value = m.provider;
                 document.getElementById('api-key-input').value = m.apiKey || '';
@@ -29245,6 +29254,29 @@ ${stdout}`;
       }
     } catch (e2) {
       console.error(`Failed to initialize cache: ${e2}`);
+    }
+  }
+  async verifyConnectivity() {
+    const config = vscode3.workspace.getConfiguration("kongAgent");
+    const proxyPort = config.get("proxyPort") || 8e3;
+    const adminPort = config.get("adminApiPort") || 8001;
+    const results = { admin: false, proxy: false, error: "" };
+    try {
+      try {
+        const adminResp = await axios_default.get(`http://localhost:${adminPort}/`, { timeout: 2e3 });
+        results.admin = adminResp.status === 200;
+      } catch (e2) {
+        results.error += `Admin API unreachable: ${e2.message}. `;
+      }
+      try {
+        const proxyResp = await axios_default.get(`http://localhost:${proxyPort}/`, { timeout: 2e3, validateStatus: () => true });
+        results.proxy = proxyResp.status !== 0;
+      } catch (e2) {
+        results.error += `Proxy unreachable: ${e2.message}. `;
+      }
+      return results;
+    } catch (e2) {
+      return { admin: false, proxy: false, error: e2.message };
     }
   }
   composeContent(proxyPort, adminPort, managerPort) {

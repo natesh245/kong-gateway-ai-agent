@@ -27,6 +27,7 @@ export class Agent {
                      "If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. " +
                      "If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. " +
                      "Always use the provided tool functions when the user asks you to perform an action on Kong. " +
+                     "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
                      "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
                      "When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. " +
                      "Be concise and confirm when an action is done."
@@ -63,9 +64,9 @@ export class Agent {
         return true;
     }
 
-    public async processMessage(content: string, updateUiCallback: (content: string) => void): Promise<void> {
+    public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
         if (!this.initClient()) {
-            updateUiCallback("Error: LLM client initialization failed. Please check your provider and API key settings in the sidebar.");
+            onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the sidebar.");
             return;
         }
 
@@ -74,18 +75,18 @@ export class Agent {
         const model = config.get<string>('model') || (config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o');
 
         try {
-            await this.runLoop(model, updateUiCallback, 0);
+            await this.runLoop(model, onUpdate, 0);
         } catch (e: any) {
-             updateUiCallback(`Agent Error: ${e.message}`);
+             onUpdate(`Agent Error: ${e.message}`);
         }
     }
 
-    private async runLoop(model: string, updateUiCallback: (content: string) => void, depth: number) {
+    private async runLoop(model: string, onUpdate: (content: string, type?: string) => void, depth: number) {
         if (!this.openai) return;
 
         // Prevent infinite loops
         if (depth > 5) {
-            updateUiCallback("Agent Error: Max tool call depth reached to prevent infinite loop.");
+            onUpdate("Agent Error: Max tool call depth reached to prevent infinite loop.");
             return;
         }
 
@@ -179,7 +180,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "list_storage_files",
-                    description: "Lists all files in the current storage directory (e.g., docker-compose.yml, kong.yml).",
+                    description: "Lists all files in the current storage directory.",
                 }
             },
             {
@@ -190,7 +191,7 @@ export class Agent {
                     parameters: {
                         type: "object",
                         properties: {
-                            filename: { type: "string", description: "The name of the file to read (e.g. 'kong.yml')" },
+                            filename: { type: "string" },
                         },
                         required: ["filename"]
                     }
@@ -215,14 +216,14 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "check_existing_containers",
-                    description: "Checks if any Docker containers related to Kong or Postgres are currently running on the system.",
+                    description: "Checks if any Docker containers related to Kong or Postgres are currently running.",
                 }
             },
             {
                 type: "function",
                 function: {
                     name: "connect_to_existing_instance",
-                    description: "Adopts an existing Kong instance by updating the Agent's local configuration to match the discovered ports.",
+                    description: "Adopts an existing Kong instance by updating the Agent's local configuration.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -232,6 +233,13 @@ export class Agent {
                         },
                         required: ["proxyPort", "adminPort", "managerPort"]
                     }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "verify_connectivity",
+                    description: "Pings the Kong Admin API and Proxy to verify they are reachable and ready."
                 }
             }
         ];
@@ -244,14 +252,11 @@ export class Agent {
         });
 
         const responseMessage = response.choices[0].message;
-        
-        // Push the assistant's message to the history
         this.messages.push(responseMessage);
 
         if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
             for (const toolCall of responseMessage.tool_calls) {
                 const functionName = toolCall.function.name;
-                updateUiCallback(`*[Agent calls tool: ${functionName}]*`);
                 
                 let functionArgs;
                 try {
@@ -259,6 +264,9 @@ export class Agent {
                 } catch(e) {
                     functionArgs = {};
                 }
+                
+                // Transparency: Notify UI that we are running a tool
+                onUpdate(`Executing Tool: **${functionName}**${Object.keys(functionArgs).length > 0 ? ' (' + JSON.stringify(functionArgs).substring(0, 100) + ')' : ''}...`, 'toolCall');
                 
                 let functionResult = "";
 
@@ -288,12 +296,11 @@ export class Agent {
                             await config.update('proxyPort', functionArgs.proxy, vscode.ConfigurationTarget.Global);
                             await config.update('adminApiPort', functionArgs.admin, vscode.ConfigurationTarget.Global);
                             await config.update('managerGuiPort', functionArgs.manager, vscode.ConfigurationTarget.Global);
-                            functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}. You can now try starting Kong again.`;
+                            functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}.`;
                             break;
                         case "list_storage_files":
-                            const listPath = this.dockerManager.getStoragePath();
-                            const files = fs.readdirSync(listPath);
-                            functionResult = `Files in storage folder (${listPath}):\n${files.join('\n')}`;
+                            const files = fs.readdirSync(this.dockerManager.getStoragePath());
+                            functionResult = `Files in storage folder:\n${files.join('\n')}`;
                             break;
                         case "read_storage_file":
                             const readPath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
@@ -309,45 +316,34 @@ export class Agent {
                             if (fs.existsSync(writePath)) {
                                 oldContent = fs.readFileSync(writePath, 'utf8');
                             }
-                            
                             const newContent = functionArgs.content;
                             fs.writeFileSync(writePath, newContent, 'utf8');
                             
-                            // Generate diff for the chat
                             const writeDiff = DiffUtil.generateUnifiedDiff(functionArgs.filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(writeDiff);
-                            
-                            // Update cache
                             this.dockerManager.updateFileCache(functionArgs.filename, newContent);
 
-                            // Open the file in the editor
                             try {
                                 const writeDoc = await vscode.workspace.openTextDocument(writePath);
                                 await vscode.window.showTextDocument(writeDoc);
-                            } catch (err: any) {
-                                console.error(`Failed to open document: ${err.message}`);
-                            }
-                            functionResult = `Successfully wrote to '${functionArgs.filename}' and updated the cache.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
+                            } catch (err: any) {}
+                            
+                            functionResult = `Successfully wrote to '${functionArgs.filename}'.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
                             break;
                         case "check_existing_containers":
                             const existingJson = await this.dockerManager.findExistingContainers();
-                            const existing = JSON.parse(existingJson);
-                            if (existing.length > 0) {
-                                const details = existing.map((c: any) => `- Name: ${c.name}, Image: ${c.image}, Status: ${c.status}, Ports: ${c.ports}`).join('\n');
-                                functionResult = `Found existing containers:\n${details}\n\nAsk the user if they want to USE one of these or START FRESH.`;
-                            } else {
-                                functionResult = "No existing Kong/Postgres containers found. Safe to proceed.";
-                            }
+                            functionResult = `Found existing containers: ${existingJson}. Ask the user confirm.`;
                             break;
                         case "connect_to_existing_instance":
                             const connConfig = vscode.workspace.getConfiguration('kongAgent');
                             await connConfig.update('proxyPort', functionArgs.proxyPort, vscode.ConfigurationTarget.Global);
                             await connConfig.update('adminApiPort', functionArgs.adminPort, vscode.ConfigurationTarget.Global);
                             await connConfig.update('managerGuiPort', functionArgs.managerPort, vscode.ConfigurationTarget.Global);
-                            
-                            // Verify connectivity
-                            const checkStatus = await this.kongApi.getStatus();
-                            functionResult = `Successfully adopted existing instance. Connectivity check: ${checkStatus}\n\nAccess Details:\n- Manager: http://localhost:${functionArgs.managerPort}\n- Admin: http://localhost:${functionArgs.adminPort}\n- Proxy: http://localhost:${functionArgs.proxyPort}`;
+                            functionResult = `Adopted existing instance at Proxy=${functionArgs.proxyPort}, Admin=${functionArgs.adminPort}, Manager=${functionArgs.managerPort}.`;
+                            break;
+                        case "verify_connectivity":
+                            const connStatus = await this.dockerManager.verifyConnectivity();
+                            functionResult = `Connectivity: Admin=${connStatus.admin ? 'READY' : 'DOWN'}, Proxy=${connStatus.proxy ? 'READY' : 'DOWN'}. ${connStatus.error || ''}`;
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;
@@ -356,7 +352,9 @@ export class Agent {
                     functionResult = `Error executing ${functionName}: ${e.message}`;
                 }
 
-                // Add function result to messages
+                // Transparency: Notify UI result
+                onUpdate(functionResult, 'toolResult');
+
                 this.messages.push({
                     tool_call_id: toolCall.id,
                     role: "tool",
@@ -364,10 +362,9 @@ export class Agent {
                 } as any); 
             }
 
-            // Call again to let LLM summarize the function result
-            await this.runLoop(model, updateUiCallback, depth + 1);
+            await this.runLoop(model, onUpdate, depth + 1);
         } else if (responseMessage.content) {
-            updateUiCallback(responseMessage.content as string);
+            onUpdate(responseMessage.content as string);
         }
     }
 }

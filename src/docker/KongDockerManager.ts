@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import axios from 'axios';
 import { PortUtil } from '../utils/PortUtil';
 
 const execAsync = promisify(exec);
@@ -147,6 +148,37 @@ export class KongDockerManager {
             }
         } catch (e) {
             console.error(`Failed to initialize cache: ${e}`);
+        }
+    }
+
+    public async verifyConnectivity(): Promise<{ admin: boolean, proxy: boolean, error?: string }> {
+        const config = vscode.workspace.getConfiguration('kongAgent');
+        const proxyPort = config.get<number>('proxyPort') || 8000;
+        const adminPort = config.get<number>('adminApiPort') || 8001;
+
+        const results = { admin: false, proxy: false, error: "" };
+
+        try {
+            // Check Admin API
+            try {
+                const adminResp = await axios.get(`http://localhost:${adminPort}/`, { timeout: 2000 });
+                results.admin = adminResp.status === 200;
+            } catch (e: any) {
+                results.error += `Admin API unreachable: ${e.message}. `;
+            }
+
+            // Check Proxy
+            try {
+                // Proxy might return 404 if no routes, but that means it's ALIVE
+                const proxyResp = await axios.get(`http://localhost:${proxyPort}/`, { timeout: 2000, validateStatus: () => true });
+                results.proxy = proxyResp.status !== 0;
+            } catch (e: any) {
+                results.error += `Proxy unreachable: ${e.message}. `;
+            }
+
+            return results;
+        } catch (e: any) {
+            return { admin: false, proxy: false, error: e.message };
         }
     }
 

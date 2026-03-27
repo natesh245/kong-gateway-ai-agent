@@ -18,7 +18,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         private dockerManager: KongDockerManager
     ) {
         this._agent = new Agent(context, dockerManager);
-        this.dockerManager.initializeCache(); // Initial scan of storage folder
+        this.dockerManager.initializeCache();
         this._setupWatcher();
     }
 
@@ -31,7 +31,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const storagePath = config.get<string>('storagePath');
 
         if (storagePath && fs.existsSync(storagePath)) {
-            // Watch for .yml, .yaml, .json files
             this._watcher = vscode.workspace.createFileSystemWatcher(
                 new vscode.RelativePattern(storagePath, '**/*.{yml,yaml,json}')
             );
@@ -54,7 +53,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     filename: filename
                 });
             }
-        }, 2000); // 2 second debounce
+        }, 2000);
     }
 
     public resolveWebviewView(
@@ -78,8 +77,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'prompt':
                     {
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: data.value });
-                        await this._agent.processMessage(data.value, (content: string) => {
-                            webviewView.webview.postMessage({ type: 'addMessage', role: 'agent', content });
+                        await this._agent.processMessage(data.value, (content: string, type: string = 'agent') => {
+                            webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
                         });
                         break;
                     }
@@ -122,19 +121,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (fs.existsSync(fullPath)) {
                             const newContent = fs.readFileSync(fullPath, 'utf8');
                             const oldContent = this.dockerManager.getFileCache(filename) || "";
-                            
                             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(diff);
-                            
-                            const prompt = `I just manually updated ${filename}. Here is the diff of my changes:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nPlease review my changes and provide feedback.`;
+                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nPlease review it.`;
                             
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
-                            
-                            // Important: baseline the cache to this version so next edit is tracked accurately
                             this.dockerManager.updateFileCache(filename, newContent);
 
-                            await this._agent.processMessage(prompt, (content: string) => {
-                                webviewView.webview.postMessage({ type: 'addMessage', role: 'agent', content });
+                            await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
+                                webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
                             });
                         }
                         break;
@@ -166,10 +161,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
         
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-            margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+            font-family: 'Inter', sans-serif; background-color: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
         }
 
         .header {
@@ -186,6 +179,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         .message.user { align-self: flex-end; background: rgba(46, 134, 171, 0.2); border: 1px solid rgba(46, 134, 171, 0.4); }
         .message.agent { align-self: flex-start; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #F51A56; }
+        
+        .message.toolCall {
+            align-self: flex-start; background: rgba(43, 43, 43, 0.4); border: 1px dashed rgba(255,255,255,0.2);
+            font-size: 11px; color: #aaa; font-family: 'Courier New', Courier, monospace; padding: 8px; border-radius: 8px;
+        }
+        .message.toolResult {
+            align-self: flex-start; background: rgba(30, 30, 30, 0.6); border: 1px solid rgba(255,255,255,0.1);
+            font-size: 10px; color: #888; font-family: 'Courier New', Courier, monospace;
+            margin-top: -8px; max-width: 95%; display: none; padding: 8px; border-radius: 8px;
+        }
+        .tool-toggle { cursor: pointer; color: #2E86AB; font-size: 10px; margin-top: 4px; text-decoration: underline; margin-left: 4px; }
 
         .message pre { background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 11px; margin: 8px 0; }
         .message code { font-family: 'Courier New', Courier, monospace; }
@@ -197,24 +201,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             padding: 12px; border-radius: 8px; margin: 8px 16px; display: none; flex-direction: column; gap: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid var(--vscode-widget-border);
         }
-        .notification-toast .toast-content { display: flex; justify-content: space-between; align-items: center; }
-        .notification-toast b { font-size: 12px; }
-        .dismiss-btn { background: none; color: inherit; border: none; cursor: pointer; font-size: 16px; }
-        .notification-toast button#review-btn {
-            background: var(--vscode-button-background); color: var(--vscode-button-foreground);
-            border: none; padding: 6px; cursor: pointer; border-radius: 4px; font-size: 11px; width: 100%;
-        }
-
         .input-container { padding: 16px; background: var(--vscode-sideBar-background); border-top: 1px solid var(--vscode-widget-border); display: flex; flex-direction: column; gap: 12px; }
         .settings-panel { padding: 12px; background: rgba(0, 0, 0, 0.1); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
         .settings-row { display: flex; align-items: center; gap: 8px; }
         .settings-row label { width: 60px; color: var(--vscode-descriptionForeground); }
         .settings-row input, .settings-row select { flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 4px; border-radius: 4px; }
-
         .chat-input-row { display: flex; gap: 8px; }
         #prompt { flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 10px; border-radius: 8px; outline: none; }
         #send { background: #F51A56; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-        
         .typing { display: none; margin-left:16px; color:#888; font-size:11px; margin-bottom: 8px; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
@@ -222,11 +216,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 <body>
     <div class="header">🦍 Kong Agent</div>
     <div id="notification" class="notification-toast">
-        <div class="toast-content">
-            <span>Manual changes in <b id="changed-filename">file.yml</b></span>
-            <button id="dismiss-btn" class="dismiss-btn">&times;</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Changes detected in <b id="changed-filename">file.yml</b></span>
+            <button id="dismiss-btn" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;">&times;</button>
         </div>
-        <button id="review-btn">🔍 Review Changes</button>
+        <button id="review-btn" style="background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;padding:6px;border-radius:4px;font-size:11px;cursor:pointer;">🔍 Review Changes</button>
     </div>
     <div class="chat-container" id="chat"></div>
     <div class="typing" id="typing">Kong Agent is thinking...</div>
@@ -253,6 +247,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const div = document.createElement('div');
             div.className = 'message ' + role;
             
+            if (role === 'toolResult') {
+                const toggle = document.createElement('div');
+                toggle.className = 'tool-toggle';
+                toggle.innerText = 'Show Command Result [+]';
+                toggle.onclick = () => {
+                   const isHidden = div.style.display === 'none' || div.style.display === '';
+                   div.style.display = isHidden ? 'block' : 'none';
+                   toggle.innerText = isHidden ? 'Hide Result [-]' : 'Show Result [+]';
+                };
+                chat.appendChild(toggle);
+            }
+
             if (content.includes('\`\`\`diff')) {
                 const parts = content.split('\`\`\`diff');
                 const textBefore = parts[0];
@@ -289,7 +295,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
         window.addEventListener('message', event => {
             const m = event.data;
-            if (m.type === 'addMessage') { typing.style.display = 'none'; appendMessage(m.role, m.content); }
+            if (m.type === 'addMessage') { 
+                if (m.role === 'agent') typing.style.display = 'none'; 
+                appendMessage(m.role, m.content); 
+            }
             else if (m.type === 'setConfig') {
                 document.getElementById('provider-select').value = m.provider;
                 document.getElementById('api-key-input').value = m.apiKey || '';
