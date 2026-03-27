@@ -89,6 +89,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('model', data.model, vscode.ConfigurationTarget.Global);
                         await config.update('openRouterApiKey', data.apiKey, vscode.ConfigurationTarget.Global);
                         await config.update('storagePath', data.storagePath, vscode.ConfigurationTarget.Global);
+                        
+                        if (data.proxyPort) await config.update('proxyPort', parseInt(data.proxyPort), vscode.ConfigurationTarget.Global);
+                        if (data.adminPort) await config.update('adminApiPort', parseInt(data.adminPort), vscode.ConfigurationTarget.Global);
+                        if (data.managerPort) await config.update('managerGuiPort', parseInt(data.managerPort), vscode.ConfigurationTarget.Global);
+                        
                         this.dockerManager.initializeCache();
                         this._setupWatcher();
                         break;
@@ -134,6 +139,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         }
                         break;
                     }
+                case 'checkPorts':
+                    {
+                        const { PortUtil } = require('../utils/PortUtil');
+                        const results: any = {};
+                        const ports = [
+                            { key: 'proxy', value: parseInt(data.proxyPort) },
+                            { key: 'admin', value: parseInt(data.adminPort) },
+                            { key: 'manager', value: parseInt(data.managerPort) }
+                        ];
+
+                        let report = "";
+                        let hasCollision = false;
+                        for (const p of ports) {
+                            const inUse = await PortUtil.isPortInUse(p.value);
+                            if (inUse) {
+                                hasCollision = true;
+                                const next = await PortUtil.findNextAvailablePort(p.value);
+                                results[p.key] = { inUse: true, next };
+                                report += `- **${p.key.toUpperCase()}** port ${p.value} is in use. Suggested: **${next}**\n`;
+                            } else {
+                                results[p.key] = { inUse: false };
+                            }
+                        }
+
+                        webviewView.webview.postMessage({ type: 'portCheckResults', results, report, hasCollision });
+                        break;
+                    }
+                case 'resetConfig':
+                    {
+                        const config = vscode.workspace.getConfiguration('kongAgent');
+                        await config.update('provider', undefined, vscode.ConfigurationTarget.Global);
+                        await config.update('model', undefined, vscode.ConfigurationTarget.Global);
+                        await config.update('openRouterApiKey', undefined, vscode.ConfigurationTarget.Global);
+                        await config.update('storagePath', undefined, vscode.ConfigurationTarget.Global);
+                        await config.update('proxyPort', undefined, vscode.ConfigurationTarget.Global);
+                        await config.update('adminApiPort', undefined, vscode.ConfigurationTarget.Global);
+                        await config.update('managerGuiPort', undefined, vscode.ConfigurationTarget.Global);
+                        
+                        await this.dockerManager.stop();
+                        this._updateWebviewConfig();
+                        vscode.window.showInformationMessage('Kong Gateway Agent configuration has been reset to defaults.');
+                        break;
+                    }
             }
         });
     }
@@ -146,7 +194,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 provider: config.get('provider'),
                 model: config.get('model'),
                 apiKey: config.get('openRouterApiKey'),
-                storagePath: config.get('storagePath')
+                storagePath: config.get('storagePath'),
+                proxyPort: config.get('proxyPort'),
+                adminPort: config.get('adminApiPort'),
+                managerPort: config.get('managerGuiPort')
             });
         }
     }
@@ -201,7 +252,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             border-bottom-left-radius: 4px; border-left: 3px solid var(--accent);
         }
         
-        /* Timeline styling for tools */
         .message.toolCall {
             align-self: flex-start; background: rgba(0,0,0,0.2); border: 1px dashed var(--border);
             font-size: 11px; color: #888; font-family: 'Courier New', Courier, monospace; 
@@ -220,10 +270,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
         .tool-toggle { cursor: pointer; color: #2E86AB; font-size: 10px; margin-top: 4px; text-decoration: underline; margin-left: 24px; font-weight: 500; }
 
-        /* Markdown Overrides */
         .message h1, .message h2, .message h3 { margin-top: 5px; color: #eee; }
-        .message p { margin: 8px 0; }
-        .message ul, .message ol { padding-left: 20px; }
         .message code { background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 4px; font-family: 'Courier New', Courier, monospace; color: #F51A56; }
         .message pre { background: #1e1e1e !important; padding: 12px; border-radius: 10px; overflow-x: auto; border: 1px solid var(--border); margin: 12px 0; }
         .message pre code { background: none; padding: 0; color: inherit; font-size: 11px; }
@@ -237,14 +284,43 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             box-shadow: 0 10px 40px rgba(0,0,0,0.5); border: 1px solid var(--accent); animation: slideUp 0.3s ease-out;
         }
 
-        .input-container { padding: 20px; background: var(--vscode-sideBar-background); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
-        .settings-panel { padding: 14px; background: var(--panel-bg); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 11px; border: 1px solid var(--border); }
+        .input-container { 
+            padding: 16px; background: var(--bg); border-top: 1px solid var(--border); 
+            display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; position: relative; z-index: 100;
+        }
+        .settings-container { margin-bottom: 4px; border: 1px solid transparent; border-radius: 8px; transition: border-color 0.2s; }
+        .settings-container[open] { border-color: var(--border); background: rgba(0,0,0,0.1); }
+        
+        details summary { 
+            list-style: none; outline: none; cursor: pointer; padding: 10px 12px; border-radius: 8px;
+            transition: all 0.2s; font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 0.8px;
+            display: flex; justify-content: space-between; align-items: center; font-weight: 600;
+            background: rgba(255,255,255,0.03);
+        }
+        details summary::-webkit-details-marker { display: none; }
+        details summary:hover { background: rgba(255,255,255,0.08); color: white; }
+        details summary .toggle-icon { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-size: 10px; }
+        details[open] summary .toggle-icon { transform: rotate(180deg); color: var(--accent); }
+        details[open] summary { margin-bottom: 12px; background: none; }
+
+        .settings-panel { 
+            padding: 14px; background: var(--panel-bg); border-radius: 12px; 
+            display: flex; flex-direction: column; gap: 8px; font-size: 11px; 
+            border: 1px solid var(--border); overflow: hidden;
+        }
         .settings-row { display: flex; align-items: center; gap: 10px; }
         .settings-row label { width: 70px; color: var(--vscode-descriptionForeground); font-weight: 500; }
         .settings-row input, .settings-row select { 
             flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); 
             border: 1px solid var(--vscode-input-border); padding: 6px 10px; border-radius: 6px; outline: none;
         }
+
+        .reset-btn {
+            background: none; border: 1px solid rgba(255,255,255,0.1); color: #888;
+            padding: 8px; border-radius: 8px; font-size: 10px; cursor: pointer;
+            margin-top: 8px; transition: all 0.2s; text-align: center;
+        }
+        .reset-btn:hover { background: rgba(244, 71, 71, 0.1); color: #f44747; border-color: #f44747; }
         
         .chat-input-row { display: flex; gap: 10px; }
         #prompt { 
@@ -265,7 +341,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* Table Styling */
         table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
         th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
         th { background: rgba(255,255,255,0.05); }
@@ -284,130 +359,159 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         <button id="review-btn" style="background:var(--accent);color:white;border:none;padding:8px;border-radius:8px;font-size:11px;cursor:pointer;font-weight:600;">🔍 Review & Analyze Diffs</button>
     </div>
     <div class="chat-container" id="chat">
-        <div class="message agent">Hello! I am your **Kong Gateway Agent**. \n\nI can help you manage your local Kong setup with professional precision:
+        <div class="message agent">Hello! I am your **Kong Gateway Agent**. \n\nI can help you manage your local Kong setup:
 - 🚀 **Start/Stop** Kong via Docker
 - 🛠️ **Configure** Services, Routes, and Consumers
-- 🔍 **Review** your manual configuration edits
-- ⚡ **Verify** connectivity and health
+- 🔍 **Review** your edits
+- ⚡ **Verify** connectivity
 
 What can I do for you today?</div>
     </div>
     <div class="typing" id="typing">Agent is processing...</div>
     <div class="input-container">
-        <div class="settings-panel">
-            <div class="settings-row"><label>Provider</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
-            <div class="settings-row" id="api-key-row"><label>API Key</label><input type="password" id="api-key-input"/></div>
-            <div class="settings-row"><label>Model</label><input type="text" id="model-input"/></div>
-            <div class="settings-row"><label>Storage</label><div style="display:flex;gap:4px;flex:1;"><input type="text" id="storage-input" readonly/><button id="browse-btn" style="background:var(--vscode-button-secondaryBackground);padding:4px 8px;font-size:10px;border:none;border-radius:4px;cursor:pointer;">Browse</button></div></div>
-        </div>
+        <details class="settings-container">
+            <summary>
+                <span>Configuration Settings</span>
+                <span class="toggle-icon">▼</span>
+            </summary>
+            <div class="settings-panel">
+                <div class="settings-row"><label>Provider</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
+                <div class="settings-row" id="api-key-row"><label>API Key</label><input type="password" id="api-key-input"/></div>
+                <div class="settings-row"><label>Model</label><input type="text" id="model-input"/></div>
+                <div class="settings-row"><label>Storage</label><div style="display:flex;gap:4px;flex:1;"><input type="text" id="storage-input" readonly/><button id="browse-btn" style="background:var(--vscode-button-secondaryBackground);padding:4px 8px;font-size:10px;border:none;border-radius:4px;cursor:pointer;">Browse</button></div></div>
+                <div class="settings-row" style="margin-top:4px; padding-top:4px; border-top: 1px solid rgba(255,255,255,0.05);">
+                    <label>Ports</label>
+                    <div style="display:flex; gap:4px; flex:1;">
+                        <input type="number" id="proxy-port-input" placeholder="Proxy" title="Proxy Port" style="width:45px; flex:none;"/>
+                        <input type="number" id="admin-port-input" placeholder="Admin" title="Admin API Port" style="width:45px; flex:none;"/>
+                        <input type="number" id="manager-port-input" placeholder="Manager" title="Manager GUI Port" style="width:45px; flex:none;"/>
+                        <button id="check-ports-btn" title="Check Availability" style="background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:4px; padding:0 6px; cursor:pointer; font-size:10px;">🔍</button>
+                        <button id="save-config-btn" style="background:var(--accent); color:white; border:none; border-radius:4px; padding:0 8px; cursor:pointer; font-size:10px; font-weight:600;">Save</button>
+                    </div>
+                </div>
+                <button class="reset-btn" id="reset-config-btn">Reset to Default Settings</button>
+            </div>
+        </details>
         <div class="chat-input-row"><input type="text" id="prompt" placeholder="Message Kong Agent..."/><button id="send">Send</button></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
-        const vscode = acquireVsCodeApi();
-        const chat = document.getElementById('chat');
-        const input = document.getElementById('prompt');
-        const sendBtn = document.getElementById('send');
-        const typing = document.getElementById('typing');
-        const notification = document.getElementById('notification');
-        const filenameDisplay = document.getElementById('changed-filename');
-
-        // Configure marked to use highlight.js
-        marked.setOptions({
-            highlight: function(code, lang) {
-                if (lang && hljs.getLanguage(lang)) {
-                    return hljs.highlight(code, { language: lang }).value;
-                }
-                return hljs.highlightAuto(code).value;
-            },
-            breaks: true,
-            gfm: true
-        });
-
-        function appendMessage(role, content) {
-            const div = document.createElement('div');
-            div.className = 'message ' + role;
+        (function() {
+            const vscode = acquireVsCodeApi();
+            const chat = document.getElementById('chat');
+            const input = document.getElementById('prompt');
+            const sendBtn = document.getElementById('send');
+            const typing = document.getElementById('typing');
             
-            if (role === 'toolResult') {
-                const toggle = document.createElement('div');
-                toggle.className = 'tool-toggle';
-                toggle.innerText = 'Show System Output [+]';
-                toggle.onclick = () => {
-                   const isHidden = div.style.display === 'none' || div.style.display === '';
-                   div.style.display = isHidden ? 'block' : 'none';
-                   toggle.innerText = isHidden ? 'Hide System Output [-]' : 'Show System Output [+]';
-                };
-                chat.appendChild(toggle);
-            }
+            window.onerror = function(m, u, l) {
+                const e = document.createElement('div');
+                e.style.color = 'red'; e.style.fontSize = '10px'; e.style.padding = '10px';
+                e.innerText = 'Script Error: ' + m + ' (Line: ' + l + ')';
+                chat.appendChild(e);
+            };
 
-            // Handle diff blocks within markdown or as standalone
-            let htmlContent = content;
-            if (content.includes('\`\`\`diff')) {
-                const parts = content.split('\`\`\`diff');
-                const textBefore = marked.parse(parts[0]);
-                const rest = parts[1].split('\`\`\`');
-                const diffLines = rest[0].split('\\n').map(line => {
-                    if (line.startsWith('+')) return '<span class="diff-added">' + line + '</span>';
-                    if (line.startsWith('-')) return '<span class="diff-removed">' + line + '</span>';
-                    return line;
-                }).join('\\n');
-                const textAfter = marked.parse(rest[1] || "");
+            function appendMessage(role, content) {
+                const div = document.createElement('div');
+                div.className = 'message ' + role;
                 
-                div.innerHTML = textBefore + '<pre><code>' + diffLines + '</code></pre>' + textAfter;
-            } else if (role === 'toolCall' || role === 'toolResult') {
-                // Tool calls/results are kept simple Mono
-                div.innerText = content;
-            } else {
-                div.innerHTML = marked.parse(content);
+                if (content.indexOf('\x60\x60\x60diff') !== -1) {
+                    const parts = content.split('\x60\x60\x60diff');
+                    const textBefore = (typeof marked !== 'undefined') ? marked.parse(parts[0]) : parts[0];
+                    const rest = parts[1].split('\x60\x60\x60');
+                    const diffLines = rest[0].split('\\n').map(line => {
+                        if (line.indexOf('+') === 0) return '<span class="diff-added">' + line + '</span>';
+                        if (line.indexOf('-') === 0) return '<span class="diff-removed">' + line + '</span>';
+                        return line;
+                    }).join('\\n');
+                    const textAfter = (rest[1] && typeof marked !== 'undefined') ? marked.parse(rest[1]) : (rest[1] || "");
+                    div.innerHTML = textBefore + '<pre><code>' + diffLines + '</code></pre>' + textAfter;
+                } else if (role === 'toolCall' || role === 'toolResult') {
+                    div.innerText = content;
+                } else {
+                    div.innerHTML = (typeof marked !== 'undefined') ? marked.parse(content) : content;
+                }
+
+                chat.appendChild(div);
+                if (typeof hljs !== 'undefined') {
+                    div.querySelectorAll('pre code').forEach((b) => { hljs.highlightElement(b); });
+                }
+                chat.scrollTop = chat.scrollHeight;
             }
 
-            chat.appendChild(div);
-            // Apply highlighting to all new code blocks
-            div.querySelectorAll('pre code').forEach((block) => {
-                hljs.highlightElement(block);
+            if (sendBtn) {
+                sendBtn.onclick = () => {
+                    const val = input.value.trim();
+                    if (val) {
+                        vscode.postMessage({ type: 'prompt', value: val });
+                        input.value = '';
+                        typing.style.display = 'block';
+                    }
+                };
+                input.onkeypress = (e) => { if (e.key === 'Enter') sendBtn.click(); };
+            }
+
+            const browseBtn = document.getElementById('browse-btn');
+            if (browseBtn) browseBtn.onclick = () => vscode.postMessage({ type: 'selectFolder' });
+
+            const saveBtn = document.getElementById('save-config-btn');
+            if (saveBtn) saveBtn.onclick = () => {
+                vscode.postMessage({
+                    type: 'updateConfig',
+                    provider: document.getElementById('provider-select').value,
+                    apiKey: document.getElementById('api-key-input').value,
+                    model: document.getElementById('model-input').value,
+                    storagePath: document.getElementById('storage-input').value,
+                    proxyPort: document.getElementById('proxy-port-input').value,
+                    adminPort: document.getElementById('admin-port-input').value,
+                    managerPort: document.getElementById('manager-port-input').value
+                });
+            };
+
+            const resetBtn = document.getElementById('reset-config-btn');
+            if (resetBtn) resetBtn.onclick = () => vscode.postMessage({ type: 'resetConfig' });
+
+            const checkBtn = document.getElementById('check-ports-btn');
+            if (checkBtn) checkBtn.onclick = (e) => {
+                e.stopPropagation();
+                vscode.postMessage({
+                    type: 'checkPorts',
+                    proxyPort: document.getElementById('proxy-port-input').value,
+                    adminPort: document.getElementById('admin-port-input').value,
+                    managerPort: document.getElementById('manager-port-input').value
+                });
+            };
+
+            window.addEventListener('message', (event) => {
+                const m = event.data;
+                if (m.type === 'addMessage') {
+                    if (m.role === 'agent') typing.style.display = 'none';
+                    appendMessage(m.role, m.content);
+                } else if (m.type === 'setConfig') {
+                    document.getElementById('provider-select').value = m.provider || 'openrouter';
+                    document.getElementById('api-key-input').value = m.apiKey || '';
+                    document.getElementById('model-input').value = m.model || '';
+                    document.getElementById('storage-input').value = m.storagePath || 'Default';
+                    document.getElementById('proxy-port-input').value = m.proxyPort || 8000;
+                    document.getElementById('admin-port-input').value = m.adminPort || 8001;
+                    document.getElementById('manager-port-input').value = m.managerPort || 8002;
+                } else if (m.type === 'portCheckResults') {
+                    for (const [key, res] of Object.entries(m.results)) {
+                        const el = document.getElementById(key + '-port-input');
+                        if (el) {
+                            el.style.borderColor = res.inUse ? '#f44747' : '';
+                        }
+                    }
+                    if (m.hasCollision) appendMessage('agent', '⚠️ **Port Issues**:\\n\\n' + m.report);
+                    else appendMessage('agent', '✅ Ports available!');
+                }
             });
-            
-            chat.scrollTop = chat.scrollHeight;
-        }
-
-        // Initialize welcome message with markdown
-        const welcomeMsg = document.querySelector('.message.agent');
-        welcomeMsg.innerHTML = marked.parse(welcomeMsg.innerText);
-
-        sendBtn.onclick = () => {
-            const val = input.value.trim();
-            if (val) { vscode.postMessage({ type: 'prompt', value: val }); input.value = ''; typing.style.display = 'block'; }
-        };
-        input.onkeypress = (e) => { if(e.key === 'Enter') sendBtn.click(); };
-
-        document.getElementById('review-btn').onclick = () => {
-             vscode.postMessage({ type: 'requestReview', filename: filenameDisplay.innerText });
-             notification.style.display = 'none';
-        };
-        document.getElementById('dismiss-btn').onclick = () => { notification.style.display = 'none'; };
-        document.getElementById('browse-btn').onclick = () => { vscode.postMessage({ type: 'selectFolder' }); };
-
-        window.addEventListener('message', event => {
-            const m = event.data;
-            if (m.type === 'addMessage') { 
-                if (m.role === 'agent') typing.style.display = 'none'; 
-                appendMessage(m.role, m.content); 
-            }
-            else if (m.type === 'setConfig') {
-                document.getElementById('provider-select').value = m.provider;
-                document.getElementById('api-key-input').value = m.apiKey || '';
-                document.getElementById('model-input').value = m.model;
-                document.getElementById('storage-input').value = m.storagePath || 'Default';
-                document.getElementById('api-key-row').style.display = m.provider === 'local' ? 'none' : 'flex';
-            }
-            else if (m.type === 'fileChanged') {
-                notification.style.display = 'flex';
-                filenameDisplay.innerText = m.filename;
-            }
-        });
+        })();
     </script>
+</body>
+</html>\x60;
+    }   </script>
 </body>
 </html>`;
     }
