@@ -93,6 +93,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (data.proxyPort) await config.update('proxyPort', parseInt(data.proxyPort), vscode.ConfigurationTarget.Global);
                         if (data.adminPort) await config.update('adminApiPort', parseInt(data.adminPort), vscode.ConfigurationTarget.Global);
                         if (data.managerPort) await config.update('managerGuiPort', parseInt(data.managerPort), vscode.ConfigurationTarget.Global);
+                        if (data.databasePort) await config.update('databasePort', parseInt(data.databasePort), vscode.ConfigurationTarget.Global);
+                        if (data.maxDepth) await config.update('maxToolDepth', parseInt(data.maxDepth), vscode.ConfigurationTarget.Global);
                         
                         this.dockerManager.initializeCache();
                         this._setupWatcher();
@@ -146,7 +148,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         const ports = [
                             { key: 'proxy', value: parseInt(data.proxyPort) },
                             { key: 'admin', value: parseInt(data.adminPort) },
-                            { key: 'manager', value: parseInt(data.managerPort) }
+                            { key: 'manager', value: parseInt(data.managerPort) },
+                            { key: 'db', value: parseInt(data.databasePort) }
                         ];
 
                         let report = "";
@@ -198,7 +201,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 proxyPort: config.get('proxyPort'),
                 adminPort: config.get('adminApiPort'),
                 managerPort: config.get('managerGuiPort'),
-                databasePort: config.get('databasePort') || 5432
+                databasePort: config.get('databasePort') || 5432,
+                maxDepth: config.get('maxToolDepth') || 10
             });
         }
     }
@@ -306,15 +310,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
         .settings-panel { 
             padding: 14px; background: var(--panel-bg); border-radius: 12px; 
-            display: flex; flex-direction: column; gap: 8px; font-size: 11px; 
+            display: flex; flex-direction: column; gap: 10px; font-size: 11px; 
             border: 1px solid var(--border); overflow: hidden;
         }
         .settings-row { display: flex; align-items: center; gap: 10px; }
-        .settings-row label { width: 70px; color: var(--vscode-descriptionForeground); font-weight: 500; }
+        .settings-row label { width: 80px; color: var(--vscode-descriptionForeground); font-weight: 500; }
         .settings-row input, .settings-row select { 
             flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); 
             border: 1px solid var(--vscode-input-border); padding: 6px 10px; border-radius: 6px; outline: none;
         }
+        
+        .ports-grid { 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; 
+            margin-top: 4px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); 
+        }
+        .port-card {
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+            padding: 8px; border-radius: 8px; display: flex; flex-direction: column; gap: 4px;
+        }
+        .port-card label { font-size: 9px; color: #888; text-transform: uppercase; }
+        .port-card input { width: 100%; border: none; background: none; font-size: 13px; font-weight: 600; padding: 0; color: white; }
+        .port-card input:focus { outline: none; color: var(--accent); }
 
         .reset-btn {
             background: none; border: 1px solid rgba(255,255,255,0.1); color: #888;
@@ -378,18 +394,17 @@ What can I do for you today?</div>
             <div class="settings-panel">
                 <div class="settings-row"><label>Provider</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
                 <div class="settings-row" id="api-key-row"><label>API Key</label><input type="password" id="api-key-input"/></div>
-                <div class="settings-row"><label>Model</label><input type="text" id="model-input"/></div>
+                <div class="settings-row"><label>Max Depth</label><input type="number" id="max-depth-input" value="10" title="Max Tool Depth"/></div>
                 <div class="settings-row"><label>Storage</label><div style="display:flex;gap:4px;flex:1;"><input type="text" id="storage-input" readonly/><button id="browse-btn" style="background:var(--vscode-button-secondaryBackground);padding:4px 8px;font-size:10px;border:none;border-radius:4px;cursor:pointer;">Browse</button></div></div>
-                <div class="settings-row" style="margin-top:4px; padding-top:4px; border-top: 1px solid rgba(255,255,255,0.05);">
-                    <label>Ports</label>
-                    <div style="display:flex; gap:4px; flex:1;">
-                        <input type="number" id="proxy-port-input" placeholder="Proxy" title="Proxy Port" style="width:40px; flex:none;"/>
-                        <input type="number" id="admin-port-input" placeholder="Admin" title="Admin API Port" style="width:40px; flex:none;"/>
-                        <input type="number" id="manager-port-input" placeholder="Manager" title="Manager GUI Port" style="width:40px; flex:none;"/>
-                        <input type="number" id="db-port-input" placeholder="DB" title="Postgres Port" style="width:40px; flex:none;"/>
-                        <button id="check-ports-btn" title="Check Availability" style="background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:4px; padding:0 4px; cursor:pointer; font-size:10px;">🔍</button>
-                        <button id="save-config-btn" style="background:var(--accent); color:white; border:none; border-radius:4px; padding:0 8px; cursor:pointer; font-size:10px; font-weight:600;">Save</button>
-                    </div>
+                <div class="ports-grid">
+                    <div class="port-card" id="proxy-card"><label>Proxy Port</label><input type="number" id="proxy-port-input" value="8000"/></div>
+                    <div class="port-card" id="admin-card"><label>Admin Port</label><input type="number" id="admin-port-input" value="8001"/></div>
+                    <div class="port-card" id="manager-card"><label>Manager Port</label><input type="number" id="manager-port-input" value="8002"/></div>
+                    <div class="port-card" id="db-card"><label>Postgres Port</label><input type="number" id="db-port-input" value="5432"/></div>
+                </div>
+                <div style="display:flex; gap:6px; margin-top:4px;">
+                    <button id="check-ports-btn" style="flex:1; background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:10px;">🔍 Check Availability</button>
+                    <button id="save-config-btn" style="flex:2; background:var(--accent); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:11px; font-weight:600;">Save Configuration</button>
                 </div>
                 <button class="reset-btn" id="reset-config-btn">Reset to Default Settings</button>
             </div>
@@ -463,11 +478,12 @@ What can I do for you today?</div>
                     type: 'updateConfig',
                     provider: document.getElementById('provider-select').value,
                     apiKey: document.getElementById('api-key-input').value,
-                    model: document.getElementById('model-input').value,
+                    maxDepth: document.getElementById('max-depth-input').value,
                     storagePath: document.getElementById('storage-input').value,
                     proxyPort: document.getElementById('proxy-port-input').value,
                     adminPort: document.getElementById('admin-port-input').value,
-                    managerPort: document.getElementById('manager-port-input').value
+                    managerPort: document.getElementById('manager-port-input').value,
+                    databasePort: document.getElementById('db-port-input').value
                 });
             };
 
@@ -481,7 +497,8 @@ What can I do for you today?</div>
                     type: 'checkPorts',
                     proxyPort: document.getElementById('proxy-port-input').value,
                     adminPort: document.getElementById('admin-port-input').value,
-                    managerPort: document.getElementById('manager-port-input').value
+                    managerPort: document.getElementById('manager-port-input').value,
+                    databasePort: document.getElementById('db-port-input').value
                 });
             };
 
@@ -493,7 +510,7 @@ What can I do for you today?</div>
                 } else if (m.type === 'setConfig') {
                     document.getElementById('provider-select').value = m.provider || 'openrouter';
                     document.getElementById('api-key-input').value = m.apiKey || '';
-                    document.getElementById('model-input').value = m.model || '';
+                    document.getElementById('max-depth-input').value = m.maxDepth || 10;
                     document.getElementById('storage-input').value = m.storagePath || 'Default';
                     document.getElementById('proxy-port-input').value = m.proxyPort || 8000;
                     document.getElementById('admin-port-input').value = m.adminPort || 8001;
@@ -501,13 +518,14 @@ What can I do for you today?</div>
                     document.getElementById('db-port-input').value = m.databasePort || 5432;
                 } else if (m.type === 'portCheckResults') {
                     for (const [key, res] of Object.entries(m.results)) {
-                        const el = document.getElementById(key + '-port-input');
+                        const el = document.getElementById(key + '-card');
                         if (el) {
                             el.style.borderColor = res.inUse ? '#f44747' : '';
+                            el.style.background = res.inUse ? 'rgba(244, 71, 71, 0.05)' : '';
                         }
                     }
                     if (m.hasCollision) appendMessage('agent', '⚠️ **Port Issues**:\\n\\n' + m.report);
-                    else appendMessage('agent', '✅ Ports available!');
+                    else appendMessage('agent', '✅ All ports are available!');
                 }
             });
         })();

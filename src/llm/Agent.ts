@@ -84,9 +84,12 @@ export class Agent {
     private async runLoop(model: string, onUpdate: (content: string, type?: string) => void, depth: number) {
         if (!this.openai) return;
 
+        const config = vscode.workspace.getConfiguration('kongAgent');
+        const maxDepth = config.get<number>('maxToolDepth') || 10;
+
         // Prevent infinite loops
-        if (depth > 10) {
-            onUpdate("Agent Error: Max tool call depth reached to prevent infinite loop.");
+        if (depth > maxDepth) {
+            onUpdate(`Agent Error: Max tool call depth (${maxDepth}) reached to prevent infinite loop.`);
             return;
         }
 

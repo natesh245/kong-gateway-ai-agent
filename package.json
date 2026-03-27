@@ -69,6 +69,16 @@
           "default": 8002,
           "description": "The local port for the Kong Manager GUI."
         },
+        "kongAgent.databasePort": {
+          "type": "number",
+          "default": 5432,
+          "description": "The local port for the Postgres Database."
+        },
+        "kongAgent.maxToolDepth": {
+          "type": "number",
+          "default": 10,
+          "description": "Maximum tool call depth per message to prevent loops."
+        },
         "kongAgent.storagePath": {
           "type": "string",
           "default": "",
