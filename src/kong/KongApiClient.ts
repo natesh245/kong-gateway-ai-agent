@@ -1,31 +1,63 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import * as vscode from 'vscode';
+import * as https from 'https';
 
 export class KongApiClient {
     private getBaseUrl(): string {
         const config = vscode.workspace.getConfiguration('kongAgent');
         const mode = config.get<string>('kongMode') || 'local';
+        const workspace = config.get<string>('kongWorkspace') || '';
         
+        let url = '';
         if (mode === 'remote') {
-            return config.get<string>('remoteAdminApiUrl') || 'http://localhost:8001';
+            url = config.get<string>('remoteAdminApiUrl') || 'http://localhost:8001';
+        } else {
+            const adminPort = config.get<number>('adminApiPort') || 8001;
+            url = `http://localhost:${adminPort}`;
         }
 
-        const adminPort = config.get<number>('adminApiPort') || 8001;
-        return `http://localhost:${adminPort}`;
+        // Handle workspace prefix (ensure no double slashes)
+        if (workspace && workspace !== 'default') {
+            const cleanUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+            return `${cleanUrl}/${workspace}`;
+        }
+        return url;
+    }
+
+    private getRequestConfig(): AxiosRequestConfig {
+        const config = vscode.workspace.getConfiguration('kongAgent');
+        const token = config.get<string>('kongAdminToken');
+        const skipTls = config.get<boolean>('skipTlsVerify') === true;
+
+        const requestConfig: AxiosRequestConfig = {
+            headers: {}
+        };
+
+        if (token && token.trim() !== '') {
+            requestConfig.headers!['Kong-Admin-Token'] = token;
+        }
+
+        if (skipTls) {
+            requestConfig.httpsAgent = new https.Agent({
+                rejectUnauthorized: false
+            });
+        }
+
+        return requestConfig;
     }
 
     public async getStatus(): Promise<string> {
         try {
-            const res = await axios.get(`${this.getBaseUrl()}/status`);
+            const res = await axios.get(`${this.getBaseUrl()}/status`, this.getRequestConfig());
             return JSON.stringify(res.data, null, 2);
         } catch (e: any) {
-            return `Kong Admin API unreachable: ${e.message}`;
+            return `Kong Admin API unreachable: ${e.message} at ${this.getBaseUrl()}`;
         }
     }
 
     public async getInstanceInfo(): Promise<string> {
         try {
-            const res = await axios.get(`${this.getBaseUrl()}/`);
+            const res = await axios.get(`${this.getBaseUrl()}/`, this.getRequestConfig());
             return JSON.stringify(res.data, null, 2);
         } catch (e: any) {
             return `Failed to fetch instance info: ${e.message}`;
@@ -37,7 +69,7 @@ export class KongApiClient {
             const res = await axios.post(`${this.getBaseUrl()}/services`, {
                 name,
                 url
-            });
+            }, this.getRequestConfig());
             return `Service created successfully: ${JSON.stringify(res.data.id)}`;
         } catch (e: any) {
             return `Failed to create service: ${e.response?.data?.message || e.message}`;
@@ -49,10 +81,10 @@ export class KongApiClient {
             const res = await axios.post(`${this.getBaseUrl()}/services/${serviceName}/routes`, {
                 paths,
                 name: `${serviceName}-route`
-            });
+            }, this.getRequestConfig());
             return `Route created successfully: ${JSON.stringify(res.data.id)}`;
         } catch (e: any) {
-             return `Failed to create route: ${e.response?.data?.message || e.message}`;
+            return `Failed to create route: ${e.response?.data?.message || e.message}`;
         }
     }
 
@@ -60,7 +92,7 @@ export class KongApiClient {
         try {
             const res = await axios.post(`${this.getBaseUrl()}/consumers`, {
                 username
-            });
+            }, this.getRequestConfig());
             return `Consumer created successfully: ${JSON.stringify(res.data.id)}`;
         } catch (e: any) {
              return `Failed to create consumer: ${e.response?.data?.message || e.message}`;
@@ -70,8 +102,9 @@ export class KongApiClient {
     public async getDeclarativeConfig(): Promise<string> {
         try {
             const baseUrl = this.getBaseUrl();
-            const servicesRes = await axios.get(`${baseUrl}/services`);
-            const routesRes = await axios.get(`${baseUrl}/routes`);
+            const config = this.getRequestConfig();
+            const servicesRes = await axios.get(`${baseUrl}/services`, config);
+            const routesRes = await axios.get(`${baseUrl}/routes`, config);
 
             const services = servicesRes.data.data || [];
             const routes = routesRes.data.data || [];
