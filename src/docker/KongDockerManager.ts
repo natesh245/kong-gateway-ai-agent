@@ -308,6 +308,82 @@ export class KongDockerManager {
     }
   }
 
+  public async dumpWithDeck(filename: string): Promise<string> {
+    try {
+      const storagePath = this.getStoragePath();
+      const filePath = path.join(storagePath, filename);
+      const isHostInstalled = await this.isDeckInstalled();
+      const config = vscode.workspace.getConfiguration('kongAgent');
+      const adminPort = config.get<number>('adminApiPort') || 8001;
+
+      if (isHostInstalled) {
+        // Option 1: Use Host deck
+        let command = `deck gateway dump -o "${filePath}" --kong-addr http://localhost:${adminPort}`;
+        try {
+          const { stdout } = await execAsync(command);
+          return stdout || `Exported configuration to ${filename} (Host CLI).`;
+        } catch (e: any) {
+          command = `deck dump -o "${filePath}" --kong-addr http://localhost:${adminPort}`;
+          const { stdout } = await execAsync(command);
+          return stdout || `Exported configuration to ${filename} (Host CLI fallback).`;
+        }
+      } else {
+        // Option 2: Use Docker deck
+        const dockerFilePath = `/storage/${filename}`;
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway dump -o "${dockerFilePath}" --kong-addr http://host.docker.internal:${adminPort}`;
+        
+        try {
+          const { stdout } = await execAsync(dockerCommand);
+          return stdout || `Exported configuration to ${filename} (Dockerized decK).`;
+        } catch (e: any) {
+          // Fallback for older decK images
+          const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck dump -o "${dockerFilePath}" --kong-addr http://host.docker.internal:${adminPort}`;
+          const { stdout } = await execAsync(fallbackDocker);
+          return stdout || `Exported configuration to ${filename} (Dockerized fallback).`;
+        }
+      }
+    } catch (e: any) {
+      return `decK dump failed: ${e.message}`;
+    }
+  }
+
+  public async resetWithDeck(): Promise<string> {
+    try {
+      const isHostInstalled = await this.isDeckInstalled();
+      const config = vscode.workspace.getConfiguration('kongAgent');
+      const adminPort = config.get<number>('adminApiPort') || 8001;
+
+      if (isHostInstalled) {
+        // Option 1: Use Host deck
+        let command = `deck gateway reset --force --kong-addr http://localhost:${adminPort}`;
+        try {
+          const { stdout } = await execAsync(command);
+          return stdout || "Kong configuration reset successfully (Host CLI).";
+        } catch (e: any) {
+          command = `deck reset --force --kong-addr http://localhost:${adminPort}`;
+          const { stdout } = await execAsync(command);
+          return stdout || "Kong configuration reset successfully (Host CLI fallback).";
+        }
+      } else {
+        // Option 2: Use Docker deck
+        const storagePath = this.getStoragePath();
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway reset --force --kong-addr http://host.docker.internal:${adminPort}`;
+        
+        try {
+          const { stdout } = await execAsync(dockerCommand);
+          return stdout || "Kong configuration reset successfully (Dockerized decK).";
+        } catch (e: any) {
+          // Fallback for older decK images
+          const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck reset --force --kong-addr http://host.docker.internal:${adminPort}`;
+          const { stdout } = await execAsync(fallbackDocker);
+          return stdout || "Kong configuration reset successfully (Dockerized fallback).";
+        }
+      }
+    } catch (e: any) {
+      return `decK reset failed: ${e.message}`;
+    }
+  }
+
   public updateFileCache(filename: string, content: string) {
     this._fileCache.set(filename, content);
   }

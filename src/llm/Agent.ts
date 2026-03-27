@@ -32,9 +32,10 @@ export class Agent {
                 "**MANDATORY DECLARATIVE WORKFLOW**: When the user asks to create or modify a Service, Route, or Consumer, you MUST follow this sequence:\n" +
                 "1. **Edit File**: Use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml'.\n" +
                 "2. **Validate**: Immediately call 'validate_kong_config'. If validation fails, use the error output to fix the YAML and repeat Step 1. Do NOT proceed until validation passes.\n" +
-                "3. **Request Review**: Once validated, show the changes and say: 'The configuration is validated and ready. Should I apply these changes to the Kong instance using decK?'\n" +
-                "4. **Sync**: Only after the user approves, use the 'sync_to_kong_using_deck' tool.\n" +
+                "3. **Request Review**: Once validated, show the changes and ask: 'The configuration is validated and ready. Should I apply these changes to the Kong instance using decK?'\n" +
+                "4. **Sync**: Only AFTER the user gives verbal approval, use the 'sync_to_kong_using_deck' tool.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
+                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation (e.g. 'Are you sure you want to delete all configuration?') before calling the tool.\n" +
                 "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image)."
         });
     }
@@ -374,6 +375,13 @@ export class Agent {
                         required: ["filename"]
                     }
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "reset_kong_instance",
+                    description: "Wipes all current configuration (Services, Routes, Plugins, etc.) from the live Kong instance. Use ONLY after explicit user confirmation."
+                }
             }
         ];
 
@@ -485,9 +493,7 @@ export class Agent {
                             functionResult = await this.dockerManager.openFile(functionArgs.filename);
                             break;
                         case "export_live_to_storage_file":
-                            const declarativeYaml = await this.kongApi.getDeclarativeConfig();
-                            await this.dockerManager.writeStorageFile('kong.yml', declarativeYaml);
-                            functionResult = "Successfully exported the current live Kong configuration to 'kong.yml' in your storage directory.";
+                            functionResult = await this.dockerManager.dumpWithDeck('kong.yml');
                             break;
                         case "apply_config_from_file":
                             const filePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
@@ -521,6 +527,9 @@ export class Agent {
                             break;
                         case "validate_kong_config":
                             functionResult = await this.dockerManager.validateWithDeck(functionArgs.filename);
+                            break;
+                        case "reset_kong_instance":
+                            functionResult = await this.dockerManager.resetWithDeck();
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

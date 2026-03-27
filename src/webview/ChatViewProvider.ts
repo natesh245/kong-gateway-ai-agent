@@ -179,6 +179,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         webviewView.webview.postMessage({ type: 'portCheckResults', results, report, hasCollision });
                         break;
                     }
+                case 'resetInstance':
+                    {
+                        const prompt = "I have requested a full reset of the Kong instance configuration from the UI dashboard. Please explain the consequences and, if I confirm, perform the reset using decK.";
+                        webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
+                        await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
+                            webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                        });
+                        break;
+                    }
                 case 'resetConfig':
                     {
                         const config = vscode.workspace.getConfiguration('kongAgent');
@@ -376,9 +385,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         .reset-btn {
             background: none; border: 1px solid rgba(255,255,255,0.1); color: #888;
             padding: 8px; border-radius: 8px; font-size: 10px; cursor: pointer;
-            margin-top: 8px; transition: all 0.2s; text-align: center;
+            margin-top: 8px; transition: all 0.2s; text-align: center; width: 100%;
         }
-        .reset-btn:hover { background: rgba(244, 71, 71, 0.1); color: #f44747; border-color: #f44747; }
+        .reset-btn:hover { background: rgba(255,255,255,0.05); color: white; border-color: rgba(255,255,255,0.2); }
+        .danger-btn {
+            background: rgba(244, 71, 71, 0.1); border: 1px solid rgba(244, 71, 71, 0.2); color: #f44747;
+            padding: 8px; border-radius: 8px; font-size: 10px; cursor: pointer;
+            margin-top: 8px; transition: all 0.2s; text-align: center; width: 100%; font-weight: 600;
+        }
+        .danger-btn:hover { background: #f44747; color: white; border-color: #f44747; box-shadow: 0 0 15px rgba(244, 71, 71, 0.3); }
         
         .chat-input-row { display: flex; gap: 10px; }
         #prompt { 
@@ -470,7 +485,8 @@ What can I do for you today?</div>
                     <button id="check-ports-btn" style="flex:1; background:var(--vscode-button-secondaryBackground); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:10px;">🔍 Check Local</button>
                     <button id="save-config-btn" style="flex:2; background:var(--accent); color:white; border:none; border-radius:8px; padding:8px; cursor:pointer; font-size:11px; font-weight:600;">Save Configuration</button>
                 </div>
-                <button class="reset-btn" id="reset-config-btn">Reset to Default Settings</button>
+                <button class="danger-btn" id="reset-instance-btn">🗑️ Reset Kong Instance (Deletes All Config)</button>
+                <button class="reset-btn" id="reset-config-btn">Reset UI Settings to Default</button>
             </div>
         </details>
         <div class="chat-input-row"><textarea id="prompt" placeholder="Message Kong Agent..." rows="1"></textarea><button id="send">Send</button></div>
@@ -583,8 +599,12 @@ What can I do for you today?</div>
                 });
             };
 
-            const resetBtn = document.getElementById('reset-config-btn');
-            if (resetBtn) resetBtn.onclick = () => vscode.postMessage({ type: 'resetConfig' });
+            const resetInstBtn = document.getElementById('reset-instance-btn');
+            if (resetInstBtn) resetInstBtn.onclick = () => {
+                if (confirm('Are you SURE you want to delete ALL configuration from your Kong instance? This action cannot be undone.')) {
+                    vscode.postMessage({ type: 'resetInstance' });
+                }
+            };
 
             const checkBtn = document.getElementById('check-ports-btn');
             if (checkBtn) checkBtn.onclick = (e) => {
