@@ -17,6 +17,15 @@ export class KongApiClient {
         }
     }
 
+    public async getInstanceInfo(): Promise<string> {
+        try {
+            const res = await axios.get(`${this.getBaseUrl()}/`);
+            return JSON.stringify(res.data, null, 2);
+        } catch (e: any) {
+            return `Failed to fetch instance info: ${e.message}`;
+        }
+    }
+
     public async createService(name: string, url: string): Promise<string> {
         try {
             const res = await axios.post(`${this.getBaseUrl()}/services`, {

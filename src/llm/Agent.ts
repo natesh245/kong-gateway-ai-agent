@@ -23,10 +23,10 @@ export class Agent {
                      "If any containers related to Kong or Postgres are already running, you MUST present their details (Name, Image, Ports) and ask the user if they want to use the existing setup or start a fresh one. " +
                      "If they choose to use an existing instance, use the 'connect_to_existing_instance' tool to adopt those ports. " +
                      "ONCE KONG IS CONFIRMED RUNNING AND ACCESSIBLE, STOP CALLING SETUP TOOLS. Simply summarize the access details for the user and wait for their next request. " +
+                     "PORT ACCURACY: NEVER assume ports 8000/8001/8002. ALWAYS use the specific port results returned by 'start_kong', 'verify_connectivity', or 'connect_to_existing_instance' in your final response. " +
+                     "TECHNICAL DETAILS: Use the 'get_instance_details' tool when the user asks for deep technical info like versions or configuration. Summarize these using Markdown tables for maximum readability. " +
                      "CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. " +
                      "If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. " +
-                     "If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. " +
-                     "Always use the provided tool functions when the user asks you to perform an action on Kong. " +
                      "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
                      "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
                      "When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. " +
@@ -241,6 +241,20 @@ export class Agent {
                     name: "verify_connectivity",
                     description: "Pings the Kong Admin API and Proxy to verify they are reachable and ready."
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "open_kong_manager",
+                    description: "Opens the Kong Manager GUI in the user's default browser."
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "get_instance_details",
+                    description: "Fetches technical details like Kong version, database engine, and runtime configuration."
+                }
             }
         ];
 
@@ -344,6 +358,12 @@ export class Agent {
                         case "verify_connectivity":
                             const connStatus = await this.dockerManager.verifyConnectivity();
                             functionResult = `Connectivity: Admin=${connStatus.admin ? 'READY' : 'DOWN'}, Proxy=${connStatus.proxy ? 'READY' : 'DOWN'}. ${connStatus.error || ''}`;
+                            break;
+                        case "open_kong_manager":
+                            functionResult = await this.dockerManager.openManager();
+                            break;
+                        case "get_instance_details":
+                            functionResult = await this.kongApi.getInstanceInfo();
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;
