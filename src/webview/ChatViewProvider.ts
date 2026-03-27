@@ -1,0 +1,328 @@
+import * as vscode from 'vscode';
+import { Agent } from '../llm/Agent';
+import { KongDockerManager } from '../docker/KongDockerManager';
+
+export class ChatViewProvider implements vscode.WebviewViewProvider {
+    public static readonly viewType = 'kongAgentChat';
+    private _view?: vscode.WebviewView;
+    private agent: Agent;
+
+    constructor(
+        private readonly _extensionUri: vscode.Uri,
+        private context: vscode.ExtensionContext,
+        private dockerManager: KongDockerManager
+    ) {
+        this.agent = new Agent(context, dockerManager);
+    }
+
+    public resolveWebviewView(
+        webviewView: vscode.WebviewView,
+        context: vscode.WebviewViewResolveContext,
+        _token: vscode.CancellationToken,
+    ) {
+        this._view = webviewView;
+
+        webviewView.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [this._extensionUri]
+        };
+
+        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+
+        // Send initial configuration to the webview
+        this._updateWebviewConfig();
+
+        webviewView.webview.onDidReceiveMessage(async (data) => {
+            switch (data.type) {
+                case 'prompt':
+                    {
+                        webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: data.value });
+                        await this.agent.processMessage(data.value, (content: string) => {
+                            webviewView.webview.postMessage({ type: 'addMessage', role: 'agent', content });
+                        });
+                        break;
+                    }
+                case 'updateConfig':
+                    {
+                        const config = vscode.workspace.getConfiguration('kongAgent');
+                        await config.update('provider', data.provider, vscode.ConfigurationTarget.Global);
+                        await config.update('model', data.model, vscode.ConfigurationTarget.Global);
+                        await config.update('openRouterApiKey', data.apiKey, vscode.ConfigurationTarget.Global);
+                        break;
+                    }
+            }
+        });
+    }
+
+    private _updateWebviewConfig() {
+        if (this._view) {
+            const config = vscode.workspace.getConfiguration('kongAgent');
+            this._view.webview.postMessage({
+                type: 'setConfig',
+                provider: config.get('provider'),
+                model: config.get('model'),
+                apiKey: config.get('openRouterApiKey')
+            });
+        }
+    }
+
+    private _getHtmlForWebview(webview: vscode.Webview) {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kong Agent</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 16px;
+            background: linear-gradient(135deg, #0A2540, #2E86AB);
+            color: white;
+            font-weight: 600;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border-bottom-left-radius: 12px;
+            border-bottom-right-radius: 12px;
+            margin-bottom: 10px;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            max-width: 85%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.4;
+            animation: fadeIn 0.3s ease-out forwards;
+            word-wrap: break-word;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: rgba(46, 134, 171, 0.2);
+            border: 1px solid rgba(46, 134, 171, 0.4);
+            backdrop-filter: blur(10px);
+        }
+
+        .message.agent {
+            align-self: flex-start;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-left: 4px solid #F51A56; /* Kong Red */
+        }
+
+        .input-container {
+            padding: 16px;
+            background: var(--vscode-sideBar-background);
+            border-top: 1px solid var(--vscode-widget-border);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .settings-panel {
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 11px;
+            border: 1px solid var(--vscode-widget-border);
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .settings-row label {
+            width: 60px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .settings-row select, .settings-row input {
+            flex: 1;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .chat-input-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        input {
+            flex: 1;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            padding: 10px 14px;
+            border-radius: 8px;
+            outline: none;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s ease;
+            font-size: 13px;
+        }
+
+        input:focus {
+            border-color: #2E86AB;
+            box-shadow: 0 0 0 2px rgba(46, 134, 171, 0.3);
+        }
+
+        button {
+            background: linear-gradient(135deg, #F51A56, #d90f46);
+            color: white;
+            border: none;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+        
+        button:hover {
+            box-shadow: 0 4px 10px rgba(245, 26, 86, 0.4);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .typing { display: none; align-self: flex-start; margin-left: 16px; color: #888; font-style: italic; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">🦍 Kong Agent</div>
+    <div class="chat-container" id="chat">
+        <div class="message agent">Hello! I am your Kong Gateway Agent. I can start your local Kong via Docker, create routes, and configure services. How can I assist you today?</div>
+    </div>
+    <div class="typing" id="typing">Kong Agent is thinking...</div>
+    <div class="input-container">
+        <div class="settings-panel">
+            <div class="settings-row">
+                <label>Provider</label>
+                <select id="provider-select">
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="local">Local (Ollama)</option>
+                </select>
+            </div>
+            <div class="settings-row" id="api-key-row">
+                <label>API Key</label>
+                <input type="password" id="api-key-input" placeholder="OpenRouter API key" />
+            </div>
+            <div class="settings-row">
+                <label>Model</label>
+                <input type="text" id="model-input" placeholder="e.g. openai/gpt-4o" />
+            </div>
+        </div>
+        <div class="chat-input-row">
+            <input type="text" id="prompt" placeholder="Ask me to start Kong..." />
+            <button id="send">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+        const chat = document.getElementById('chat');
+        const input = document.getElementById('prompt');
+        const sendBtn = document.getElementById('send');
+        const typing = document.getElementById('typing');
+
+        const providerSelect = document.getElementById('provider-select');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const modelInput = document.getElementById('model-input');
+        const apiKeyRow = document.getElementById('api-key-row');
+
+        function updateConfig() {
+            vscode.postMessage({
+                type: 'updateConfig',
+                provider: providerSelect.value,
+                apiKey: apiKeyInput.value,
+                model: modelInput.value
+            });
+            
+            // Toggle visibility of API key row
+            apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
+        }
+
+        providerSelect.addEventListener('change', updateConfig);
+        apiKeyInput.addEventListener('input', updateConfig);
+        modelInput.addEventListener('input', updateConfig);
+
+        function appendMessage(role, content) {
+            const div = document.createElement('div');
+            div.className = 'message ' + role;
+            div.innerText = content;
+            chat.appendChild(div);
+            // Auto scroll down to latest message
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        sendBtn.addEventListener('click', () => {
+            const text = input.value.trim();
+            if (text) {
+                vscode.postMessage({ type: 'prompt', value: text });
+                input.value = '';
+                typing.style.display = 'block';
+            }
+        });
+
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendBtn.click();
+        });
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.type) {
+                case 'addMessage':
+                    typing.style.display = 'none';
+                    appendMessage(message.role, message.content);
+                    break;
+                case 'setConfig':
+                    providerSelect.value = message.provider || 'openrouter';
+                    apiKeyInput.value = message.apiKey || '';
+                    modelInput.value = message.model || 'openai/gpt-4o';
+                    apiKeyRow.style.display = providerSelect.value === 'local' ? 'none' : 'flex';
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>`;
+    }
+}

@@ -1,0 +1,73 @@
+{
+  "name": "kong-gateway-agent",
+  "displayName": "Kong Gateway Agent",
+  "description": "A VS Code extension to interact with a local Kong Gateway instance using LLM via OpenRouter.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.86.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:kongAgentChat"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kong-agent-explorer",
+          "title": "Kong Agent",
+          "icon": "$(zap)"
+        }
+      ]
+    },
+    "views": {
+      "kong-agent-explorer": [
+        {
+          "type": "webview",
+          "id": "kongAgentChat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Kong Agent",
+      "properties": {
+        "kongAgent.provider": {
+          "type": "string",
+          "enum": ["openrouter", "local"],
+          "default": "openrouter",
+          "description": "The AI API provider (OpenRouter or Local/Ollama)"
+        },
+        "kongAgent.openRouterApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your OpenRouter API Key for the LLM agent"
+        },
+        "kongAgent.model": {
+          "type": "string",
+          "default": "openai/gpt-4o",
+          "description": "The LLM model name (e.g. openai/gpt-4o or llama3.1)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "tsc -p ./",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node"
+  },
+  "devDependencies": {
+    "@types/node": "18.x",
+    "@types/vscode": "^1.86.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "openai": "^4.28.0",
+    "axios": "^1.6.7"
+  }
+}
