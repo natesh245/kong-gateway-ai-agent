@@ -30,8 +30,8 @@ export class Agent {
                 "Use the 'verify_connectivity' tool to definitively confirm if Kong is ready before finishing a setup or adoption task. " +
                 "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
                 "When reviewing manual changes, analyze the diff between the previous and current versions to provide specific feedback. " +
-                "**CRITICAL LOOP PREVENTION**: Once you have the information from a tool call that answers the user's question, STOP calling more tools. Summarize the result and wait. " +
-                "**OPENING FILES**: If the user asks to 'open', 'show in editor', or 'see' a file locally, use the 'open_file_in_editor' tool. " +
+                "**APPLY CHANGES**: When you detect a manual update to 'kong.yml' (via a user review prompt), you should offer to 'Apply these changes to Kong'. " +
+                "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image), ensuring the GitOps workflow works even without local installations. " +
                 "Be concise and confirm when an action is done."
         });
     }
@@ -274,6 +274,89 @@ export class Agent {
                         required: ["filename"]
                     }
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "sync_to_storage_file",
+                    description: "Exports the current Kong configuration (Services, Routes) to 'kong.yml' in the storage directory to ensure persistence and GitOps compatibility."
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "apply_config_from_file",
+                    description: "Reads the 'kong.yml' file from storage and applies its configuration (Services and Routes) to the live Kong Gateway.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            filename: { type: "string" }
+                        },
+                        required: ["filename"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "apply_parsed_config",
+                    description: "Takes a list of Services and their Routes (in JSON format) and applies them to the live Kong instance (Fallback method).",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            services: {
+                                type: "array",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        name: { type: "string" },
+                                        url: { type: "string" },
+                                        routes: {
+                                            type: "array",
+                                            items: {
+                                                type: "object",
+                                                properties: {
+                                                    name: { type: "string" },
+                                                    paths: { type: "array", items: { type: "string" } }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    required: ["name", "url"]
+                                }
+                            }
+                        },
+                        required: ["services"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "check_deck_installation",
+                    description: "Verifies if the Kong decK CLI is installed on the host system."
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "install_deck_cli",
+                    description: "Installs the Kong decK CLI via Homebrew. Use this only after the user has approved installation."
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "sync_to_kong_using_deck",
+                    description: "Uses the official decK CLI to synchronize a configuration file (e.g., kong.yml) to the live Kong instance.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            filename: { type: "string" }
+                        },
+                        required: ["filename"]
+                    }
+                }
             }
         ];
 
@@ -344,23 +427,12 @@ export class Agent {
                             }
                             break;
                         case "write_storage_file":
-                            const writePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
-                            let oldContent = "";
-                            if (fs.existsSync(writePath)) {
-                                oldContent = fs.readFileSync(writePath, 'utf8');
-                            }
+                            const oldContent = this.dockerManager.getFileCache(functionArgs.filename) || "";
                             const newContent = functionArgs.content;
-                            fs.writeFileSync(writePath, newContent, 'utf8');
+                            await this.dockerManager.writeStorageFile(functionArgs.filename, newContent);
 
                             const writeDiff = DiffUtil.generateUnifiedDiff(functionArgs.filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(writeDiff);
-                            this.dockerManager.updateFileCache(functionArgs.filename, newContent);
-
-                            try {
-                                const writeDoc = await vscode.workspace.openTextDocument(writePath);
-                                await vscode.window.showTextDocument(writeDoc);
-                            } catch (err: any) { }
-
                             functionResult = `Successfully wrote to '${functionArgs.filename}'.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
                             break;
                         case "check_existing_containers":
@@ -386,6 +458,41 @@ export class Agent {
                             break;
                         case "open_file_in_editor":
                             functionResult = await this.dockerManager.openFile(functionArgs.filename);
+                            break;
+                        case "sync_to_storage_file":
+                            const declarativeYaml = await this.kongApi.getDeclarativeConfig();
+                            await this.dockerManager.writeStorageFile('kong.yml', declarativeYaml);
+                            functionResult = "Successfully exported the current Kong configuration to 'kong.yml' in your storage directory.";
+                            break;
+                        case "apply_config_from_file":
+                            const filePath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
+                            if (!fs.existsSync(filePath)) {
+                                functionResult = `Error: File '${functionArgs.filename}' not found.`;
+                                break;
+                            }
+                            const yamlContent = fs.readFileSync(filePath, 'utf8');
+                            // Helper to parse simple services/routes from YAML without heavy lib
+                            // We use the agent's ability to interpret, but we'll do a basic iteration here
+                            // Actually, I'll let the agent parse the YAML into JSON and then call the apply method
+                            functionResult = `Got content from ${functionArgs.filename}. Please parse the services and routes from this content and confirm which ones to apply. \n\nCONTENT:\n${yamlContent}`;
+                            break;
+                        case "apply_parsed_config":
+                            let finalLogs = [];
+                            for (const svc of (functionArgs.services || [])) {
+                                const svcLogs = await this.kongApi.applyServiceState(svc);
+                                finalLogs.push(...svcLogs);
+                            }
+                            functionResult = `Apply Results:\n${finalLogs.join('\n')}`;
+                            break;
+                        case "check_deck_installation":
+                            const isInstalled = await this.dockerManager.isDeckInstalled();
+                            functionResult = isInstalled ? "decK is installed and ready." : "decK is NOT installed. You should recommend installing it via 'install_deck_cli' with user approval.";
+                            break;
+                        case "install_deck_cli":
+                            functionResult = await this.dockerManager.installDeck();
+                            break;
+                        case "sync_to_kong_using_deck":
+                            functionResult = await this.dockerManager.syncWithDeck(functionArgs.filename);
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

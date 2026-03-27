@@ -189,6 +189,88 @@ export class KongDockerManager {
     }
   }
 
+  public async writeStorageFile(filename: string, content: string): Promise<void> {
+    try {
+      const storagePath = this.getStoragePath();
+      const filePath = path.join(storagePath, filename);
+      fs.writeFileSync(filePath, content, 'utf8');
+      this.updateFileCache(filename, content);
+
+      // Try to open it in the editor for visibility
+      try {
+        const doc = await vscode.workspace.openTextDocument(filePath);
+        await vscode.window.showTextDocument(doc);
+      } catch (err) {}
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`Failed to write file ${filename}: ${e.message}`);
+      throw e;
+    }
+  }
+
+  public async isDeckInstalled(): Promise<boolean> {
+    try {
+      await execAsync('deck version');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  public async installDeck(): Promise<string> {
+    try {
+      // Step 1: Tap the repo
+      await execAsync('brew tap kong/tap');
+      // Step 2: Install
+      await execAsync('brew install deck');
+      return "Successfully installed decK CLI via Homebrew.";
+    } catch (e: any) {
+      throw new Error(`Failed to install decK: ${e.message}`);
+    }
+  }
+
+  public async syncWithDeck(filename: string): Promise<string> {
+    try {
+      const storagePath = this.getStoragePath();
+      const filePath = path.join(storagePath, filename);
+      const config = vscode.workspace.getConfiguration('kongAgent');
+      const adminPort = config.get<number>('adminApiPort') || 8001;
+      
+      const isHostInstalled = await this.isDeckInstalled();
+
+      if (isHostInstalled) {
+        // Option 1: Use Host deck
+        let command = `deck gateway sync "${filePath}" --kong-addr http://localhost:${adminPort}`;
+        try {
+          const { stdout } = await execAsync(command);
+          return stdout || "Sync completed successfully (Host CLI).";
+        } catch (e: any) {
+          command = `deck sync -s "${filePath}" --kong-addr http://localhost:${adminPort}`;
+          const { stdout } = await execAsync(command);
+          return stdout || "Sync completed successfully (Host CLI fallback).";
+        }
+      } else {
+        // Option 2: Use Docker deck (Mac/Win)
+        const dockerFilePath = `/storage/${filename}`;
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway sync -s "${dockerFilePath}" --kong-addr http://host.docker.internal:${adminPort}`;
+        
+        try {
+          const { stdout } = await execAsync(dockerCommand);
+          return stdout || "Sync completed successfully (Dockerized decK).";
+        } catch (e: any) {
+          // Fallback for older decK images
+          const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck sync -s "${dockerFilePath}" --kong-addr http://host.docker.internal:${adminPort}`;
+          const { stdout } = await execAsync(fallbackDocker);
+          return stdout || "Sync completed successfully (Dockerized fallback).";
+        }
+      }
+    } catch (e: any) {
+      if (e.message.includes('docker')) {
+        return `decK sync failed: Docker is not running or image 'kong/deck' could not be pulled. \n\nError: ${e.message}`;
+      }
+      return `decK sync failed: ${e.message}\n\nMake sure your kong.yml is valid and Kong is reachable at http://localhost:${vscode.workspace.getConfiguration('kongAgent').get('adminApiPort')}`;
+    }
+  }
+
   public updateFileCache(filename: string, content: string) {
     this._fileCache.set(filename, content);
   }
