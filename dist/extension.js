@@ -28018,7 +28018,7 @@ var Agent = class {
     this.kongApi = new KongApiClient();
     this.messages.push({
       role: "system",
-      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
+      content: "You are the Kong Gateway Agent. You help users manage their local Kong Gateway. You can start or stop the Kong Gateway using Docker, and interact with the Admin API to create routes, services, and consumers. CRITICAL: Always call 'check_existing_containers' BEFORE calling 'start_kong'. If any containers related to Kong or Postgres are already running, you MUST ask the user if they want to use the existing setup or start a fresh one. CRITICAL: You have local file system access to your configured storage directory. You can list, read, and write files there. If the user asks you to review manual edits (like kong.yml or docker-compose.yml), use the 'read_storage_file' tool to inspect the content and provide suggestions. If starting Kong fails due to a 'PORT_CONFLICT', you should inform the user which ports are taken and suggest the provided alternatives. You can use the 'update_kong_ports' tool to update the configuration to the suggested ports if the user agrees. Always use the provided tool functions when the user asks you to perform an action on Kong. Be concise and confirm when an action is done."
     });
   }
   openai = null;
@@ -28188,6 +28188,13 @@ var Agent = class {
             required: ["filename", "content"]
           }
         }
+      },
+      {
+        type: "function",
+        function: {
+          name: "check_existing_containers",
+          description: "Checks if any Docker containers related to Kong or Postgres are currently running on the system."
+        }
       }
     ];
     let response = await this.openai.chat.completions.create({
@@ -28262,6 +28269,14 @@ ${files.join("\n")}`;
                 console.error(`Failed to open document: ${err.message}`);
               }
               functionResult = `Successfully wrote to '${functionArgs.filename}' and opened it in the editor.`;
+              break;
+            case "check_existing_containers":
+              const existing = await this.dockerManager.findExistingContainers();
+              if (existing.length > 0) {
+                functionResult = `Found existing containers: ${existing.join(", ")}. Ask the user if they want to USE these or START FRESH.`;
+              } else {
+                functionResult = "No existing Kong/Postgres containers found. Safe to proceed.";
+              }
               break;
             default:
               functionResult = `Error: Unknown function ${functionName}`;
@@ -28746,6 +28761,18 @@ var KongDockerManager = class {
 ${stdout}`;
     } catch (e2) {
       return `Error fetching status: ${e2.message}`;
+    }
+  }
+  async findExistingContainers() {
+    try {
+      const { stdout: nameOut } = await execAsync('docker ps --format "{{.Names}}"');
+      const names = nameOut.split("\n").filter((n2) => n2.trim() !== "");
+      const existing = names.filter(
+        (name) => name.toLowerCase().includes("kong") || name.toLowerCase().includes("postgres") || name.toLowerCase().includes("database")
+      );
+      return existing;
+    } catch (e2) {
+      return [];
     }
   }
   composeContent(proxyPort, adminPort, managerPort) {

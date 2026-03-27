@@ -101,6 +101,22 @@ export class KongDockerManager {
         }
     }
 
+    public async findExistingContainers(): Promise<string[]> {
+        try {
+            // Find any running containers with 'kong' or 'postgres' in the name
+            const { stdout: nameOut } = await execAsync('docker ps --format "{{.Names}}"');
+            const names = nameOut.split('\n').filter(n => n.trim() !== '');
+            const existing = names.filter(name => 
+                name.toLowerCase().includes('kong') || 
+                name.toLowerCase().includes('postgres') ||
+                name.toLowerCase().includes('database')
+            );
+            return existing;
+        } catch (e) {
+            return [];
+        }
+    }
+
     private composeContent(proxyPort: number, adminPort: number, managerPort: number): string {
         return `version: '3.9'
 x-kong-config: &kong-env
