@@ -31,11 +31,12 @@ export class Agent {
                 "When you modify a file, you MUST explain your 'Thinking' (why you are making the change) and then describe the changes you made based on the provided diff. " +
                 "**MANDATORY DECLARATIVE WORKFLOW**: When the user asks to create or modify a Service, Route, or Consumer, you MUST follow this sequence:\n" +
                 "1. **Edit File**: Use 'write_storage_file' to save your proposed YAML configuration to 'kong.yml'.\n" +
-                "2. **Validate**: Immediately call 'validate_kong_config'. If validation fails, use the error output to fix the YAML and repeat Step 1. Do NOT proceed until validation passes.\n" +
-                "3. **Request Review**: Once validated, show the changes and ask: 'The configuration is validated and ready. Should I apply these changes to the Kong instance using decK?'\n" +
-                "4. **Sync**: Only AFTER the user gives verbal approval, use the 'sync_to_kong_using_deck' tool.\n" +
+                "2. **Validate**: Call 'validate_kong_config'. If validation fails, fix the YAML and repeat Step 1.\n" +
+                "3. **Preview Diff**: Call 'preview_sync_diff' to compare your file against the live Kong Gateway. You MUST show the output of this tool to the user so they see the exact live changes.\n" +
+                "4. **Request Review**: Once the diff is shown, ask: 'The configuration is validated and the diff is above. Should I apply these changes to the Kong instance using decK?'\n" +
+                "5. **Sync & Status**: Only AFTER the user gives verbal approval, use the 'sync_to_kong_using_deck' tool. You MUST then summarize the sync results (e.g., 'Successfully created 1 entity') to the user.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
-                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation (e.g. 'Are you sure you want to delete all configuration?') before calling the tool.\n" +
+                "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation before calling the tool.\n" +
                 "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image)."
         });
     }
@@ -382,6 +383,20 @@ export class Agent {
                     name: "reset_kong_instance",
                     description: "Wipes all current configuration (Services, Routes, Plugins, etc.) from the live Kong instance. Use ONLY after explicit user confirmation."
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "preview_sync_diff",
+                    description: "Compares the local configuration file against the live Kong Gateway to show exact differences before syncing.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            filename: { type: "string" }
+                        },
+                        required: ["filename"]
+                    }
+                }
             }
         ];
 
@@ -530,6 +545,9 @@ export class Agent {
                             break;
                         case "reset_kong_instance":
                             functionResult = await this.dockerManager.resetWithDeck();
+                            break;
+                        case "preview_sync_diff":
+                            functionResult = await this.dockerManager.diffWithDeck(functionArgs.filename);
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

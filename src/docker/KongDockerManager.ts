@@ -228,46 +228,87 @@ export class KongDockerManager {
     }
   }
 
+  public async getAdminUrl(isHost: boolean): Promise<string> {
+    const config = vscode.workspace.getConfiguration('kongAgent');
+    const mode = config.get<string>('kongMode') || 'local';
+    
+    if (mode === 'remote') {
+      return config.get<string>('remoteAdminApiUrl') || 'http://localhost:8001';
+    }
+
+    const adminPort = config.get<number>('adminApiPort') || 8001;
+    return isHost ? `http://localhost:${adminPort}` : `http://host.docker.internal:${adminPort}`;
+  }
+
+  public async getDeckArgs(isHost: boolean): Promise<string[]> {
+    const config = vscode.workspace.getConfiguration('kongAgent');
+    const adminUrl = await this.getAdminUrl(isHost);
+    const args = [`--kong-addr`, adminUrl];
+
+    const workspace = config.get<string>('kongWorkspace');
+    if (workspace && workspace !== 'default') {
+      args.push('--workspace', workspace);
+    }
+
+    const token = config.get<string>('kongAdminToken');
+    if (token) {
+      args.push('--headers', `Kong-Admin-Token:${token}`);
+    }
+
+    if (config.get<boolean>('skipTlsVerify')) {
+      args.push('--tls-skip-verify');
+    }
+
+    return args;
+  }
+
   public async syncWithDeck(filename: string): Promise<string> {
     try {
       const storagePath = this.getStoragePath();
       const filePath = path.join(storagePath, filename);
-      const config = vscode.workspace.getConfiguration('kongAgent');
-      const adminPort = config.get<number>('adminApiPort') || 8001;
-      
       const isHostInstalled = await this.isDeckInstalled();
 
       if (isHostInstalled) {
         // Option 1: Use Host deck
-        let command = `deck gateway sync "${filePath}" --kong-addr http://localhost:${adminPort}`;
+        const args = await this.getDeckArgs(true);
+        let command = `deck gateway sync -s "${filePath}" ${args.join(' ')}`;
         try {
           const { stdout } = await execAsync(command);
           return stdout || "Sync completed successfully (Host CLI).";
         } catch (e: any) {
-          command = `deck sync -s "${filePath}" --kong-addr http://localhost:${adminPort}`;
-          const { stdout } = await execAsync(command);
-          return stdout || "Sync completed successfully (Host CLI fallback).";
+          // Only fallback if the modern 'gateway' command is unrecognized
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            command = `deck sync -s "${filePath}" ${args.join(' ')}`;
+            const { stdout } = await execAsync(command);
+            return stdout || "Sync completed successfully (Host CLI fallback).";
+          }
+          throw e; // Rethrow connection or schema errors
         }
       } else {
-        // Option 2: Use Docker deck (Mac/Win)
+        // Option 2: Use Docker deck
         const dockerFilePath = `/storage/${filename}`;
-        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway sync -s "${dockerFilePath}" --kong-addr http://host.docker.internal:${adminPort}`;
+        const args = await this.getDeckArgs(false);
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway sync -s "${dockerFilePath}" ${args.join(' ')}`;
         
         try {
           const { stdout } = await execAsync(dockerCommand);
           return stdout || "Sync completed successfully (Dockerized decK).";
         } catch (e: any) {
-          // Fallback for older decK images
-          const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck sync -s "${dockerFilePath}" --kong-addr http://host.docker.internal:${adminPort}`;
-          const { stdout } = await execAsync(fallbackDocker);
-          return stdout || "Sync completed successfully (Dockerized fallback).";
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck sync -s "${dockerFilePath}" ${args.join(' ')}`;
+            const { stdout } = await execAsync(fallbackDocker);
+            return stdout || "Sync completed successfully (Dockerized fallback).";
+          }
+          throw e;
         }
       }
     } catch (e: any) {
       if (e.message.includes('docker')) {
         return `decK sync failed: Docker is not running or image 'kong/deck' could not be pulled. \n\nError: ${e.message}`;
       }
-      return `decK sync failed: ${e.message}\n\nMake sure your kong.yml is valid and Kong is reachable at http://localhost:${vscode.workspace.getConfiguration('kongAgent').get('adminApiPort')}`;
+      return `decK sync failed: ${e.stderr || e.message}\n\nMake sure your kong.yml is valid and Kong is reachable at ${await this.getAdminUrl(true)}`;
     }
   }
 
@@ -279,32 +320,41 @@ export class KongDockerManager {
 
       if (isHostInstalled) {
         // Option 1: Use Host deck
-        let command = `deck gateway validate "${filePath}"`;
+        const args = await this.getDeckArgs(true);
+        let command = `deck gateway validate "${filePath}" ${args.join(' ')}`;
         try {
           const { stdout } = await execAsync(command);
           return stdout || "Configuration is valid.";
         } catch (e: any) {
-          command = `deck validate -s "${filePath}"`;
-          const { stdout } = await execAsync(command);
-          return stdout || "Configuration is valid (fallback mode).";
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            command = `deck validate -s "${filePath}" ${args.join(' ')}`;
+            const { stdout } = await execAsync(command);
+            return stdout || "Configuration is valid (fallback mode).";
+          }
+          throw e;
         }
       } else {
         // Option 2: Use Docker deck
         const dockerFilePath = `/storage/${filename}`;
-        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway validate -s "${dockerFilePath}"`;
+        const args = await this.getDeckArgs(false);
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway validate -s "${dockerFilePath}" ${args.join(' ')}`;
         
         try {
           const { stdout } = await execAsync(dockerCommand);
           return stdout || "Configuration is valid (Dockerized decK).";
         } catch (e: any) {
-          // Fallback for older decK images
-          const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck validate -s "${dockerFilePath}"`;
-          const { stdout } = await execAsync(fallbackDocker);
-          return stdout || "Configuration is valid (Dockerized fallback).";
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck validate -s "${dockerFilePath}" ${args.join(' ')}`;
+            const { stdout } = await execAsync(fallbackDocker);
+            return stdout || "Configuration is valid (Dockerized fallback).";
+          }
+          throw e;
         }
       }
     } catch (e: any) {
-      return `Validation failed: ${e.message}`;
+      return `Validation failed: ${e.stderr || e.message}`;
     }
   }
 
@@ -313,74 +363,149 @@ export class KongDockerManager {
       const storagePath = this.getStoragePath();
       const filePath = path.join(storagePath, filename);
       const isHostInstalled = await this.isDeckInstalled();
-      const config = vscode.workspace.getConfiguration('kongAgent');
-      const adminPort = config.get<number>('adminApiPort') || 8001;
 
       if (isHostInstalled) {
         // Option 1: Use Host deck
-        let command = `deck gateway dump -o "${filePath}" --kong-addr http://localhost:${adminPort}`;
+        const args = await this.getDeckArgs(true);
+        let command = `deck gateway dump -o "${filePath}" ${args.join(' ')}`;
         try {
           const { stdout } = await execAsync(command);
           return stdout || `Exported configuration to ${filename} (Host CLI).`;
         } catch (e: any) {
-          command = `deck dump -o "${filePath}" --kong-addr http://localhost:${adminPort}`;
-          const { stdout } = await execAsync(command);
-          return stdout || `Exported configuration to ${filename} (Host CLI fallback).`;
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            command = `deck dump -o "${filePath}" ${args.join(' ')}`;
+            const { stdout } = await execAsync(command);
+            return stdout || `Exported configuration to ${filename} (Host CLI fallback).`;
+          }
+          throw e;
         }
       } else {
-        // Option 2: Use Docker deck
-        const dockerFilePath = `/storage/${filename}`;
-        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway dump -o "${dockerFilePath}" --kong-addr http://host.docker.internal:${adminPort}`;
+        // Option 2: Use Docker deck (Volume-less for reliability)
+        const args = await this.getDeckArgs(false);
+        const dockerCommand = `docker run --rm kong/deck gateway dump ${args.join(' ')}`;
         
         try {
           const { stdout } = await execAsync(dockerCommand);
-          return stdout || `Exported configuration to ${filename} (Dockerized decK).`;
+          if (stdout && stdout.trim().length > 0) {
+            fs.writeFileSync(filePath, stdout);
+            return `Exported configuration to ${filename} (Dockerized decK - Volume-less).`;
+          }
+          throw new Error("decK dump returned empty output.");
         } catch (e: any) {
-          // Fallback for older decK images
-          const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck dump -o "${dockerFilePath}" --kong-addr http://host.docker.internal:${adminPort}`;
-          const { stdout } = await execAsync(fallbackDocker);
-          return stdout || `Exported configuration to ${filename} (Dockerized fallback).`;
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            const fallbackDocker = `docker run --rm kong/deck dump ${args.join(' ')}`;
+            const { stdout } = await execAsync(fallbackDocker);
+            if (stdout && stdout.trim().length > 0) {
+              fs.writeFileSync(filePath, stdout);
+              return `Exported configuration to ${filename} (Dockerized fallback - Volume-less).`;
+            }
+          }
+          throw e;
         }
       }
     } catch (e: any) {
-      return `decK dump failed: ${e.message}`;
+      return `decK dump failed: ${e.stderr || e.message}`;
     }
   }
 
   public async resetWithDeck(): Promise<string> {
     try {
       const isHostInstalled = await this.isDeckInstalled();
-      const config = vscode.workspace.getConfiguration('kongAgent');
-      const adminPort = config.get<number>('adminApiPort') || 8001;
 
       if (isHostInstalled) {
         // Option 1: Use Host deck
-        let command = `deck gateway reset --force --kong-addr http://localhost:${adminPort}`;
+        const args = await this.getDeckArgs(true);
+        let command = `deck gateway reset --force ${args.join(' ')}`;
         try {
           const { stdout } = await execAsync(command);
           return stdout || "Kong configuration reset successfully (Host CLI).";
         } catch (e: any) {
-          command = `deck reset --force --kong-addr http://localhost:${adminPort}`;
-          const { stdout } = await execAsync(command);
-          return stdout || "Kong configuration reset successfully (Host CLI fallback).";
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            command = `deck reset --force ${args.join(' ')}`;
+            const { stdout } = await execAsync(command);
+            return stdout || "Kong configuration reset successfully (Host CLI fallback).";
+          }
+          throw e;
         }
       } else {
         // Option 2: Use Docker deck
         const storagePath = this.getStoragePath();
-        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway reset --force --kong-addr http://host.docker.internal:${adminPort}`;
+        const args = await this.getDeckArgs(false);
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway reset --force ${args.join(' ')}`;
         
         try {
           const { stdout } = await execAsync(dockerCommand);
           return stdout || "Kong configuration reset successfully (Dockerized decK).";
         } catch (e: any) {
-          // Fallback for older decK images
-          const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck reset --force --kong-addr http://host.docker.internal:${adminPort}`;
-          const { stdout } = await execAsync(fallbackDocker);
-          return stdout || "Kong configuration reset successfully (Dockerized fallback).";
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck reset --force ${args.join(' ')}`;
+            const { stdout } = await execAsync(fallbackDocker);
+            return stdout || "Kong configuration reset successfully (Dockerized fallback).";
+          }
+          throw e;
         }
       }
     } catch (e: any) {
-      return `decK reset failed: ${e.message}`;
+      return `decK reset failed: ${e.stderr || e.message}`;
+    }
+  }
+
+  public async diffWithDeck(filename: string): Promise<string> {
+    try {
+      const storagePath = this.getStoragePath();
+      const filePath = path.join(storagePath, filename);
+      const isHostInstalled = await this.isDeckInstalled();
+
+      if (isHostInstalled) {
+        // Option 1: Use Host deck
+        const args = await this.getDeckArgs(true);
+        let command = `deck gateway diff "${filePath}" ${args.join(' ')}`;
+        try {
+          const { stdout, stderr } = await execAsync(command);
+          return stdout || stderr || "No differences found. Configuration is in sync.";
+        } catch (e: any) {
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            command = `deck diff -s "${filePath}" ${args.join(' ')}`;
+            const { stdout, stderr } = await execAsync(command);
+            return stdout || stderr || "No differences found (fallback diff).";
+          }
+          
+          // Some deck versions return non-zero exit code if differences exist
+          if (e.stdout || e.stderr) {
+            return e.stdout + e.stderr;
+          }
+          throw e;
+        }
+      } else {
+        // Option 2: Use Docker deck
+        const dockerFilePath = `/storage/${filename}`;
+        const args = await this.getDeckArgs(false);
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway diff -s "${dockerFilePath}" ${args.join(' ')}`;
+        
+        try {
+          const { stdout, stderr } = await execAsync(dockerCommand);
+          return stdout || stderr || "No differences found (Dockerized decK).";
+        } catch (e: any) {
+          const errorMsg = e.stderr || e.message || "";
+          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
+            const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck diff -s "${dockerFilePath}" ${args.join(' ')}`;
+            const { stdout, stderr } = await execAsync(fallbackDocker);
+            return stdout || stderr || "No differences found (Dockerized fallback).";
+          }
+          
+          if (e.stdout || e.stderr) {
+            return e.stdout + e.stderr;
+          }
+          throw e;
+        }
+      }
+    } catch (e: any) {
+      return `decK diff failed: ${e.stderr || e.message}`;
     }
   }
 

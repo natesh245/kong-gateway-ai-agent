@@ -100,6 +100,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('remoteAdminApiUrl', data.remoteAdminUrl, vscode.ConfigurationTarget.Global);
                         await config.update('remoteProxyBaseUrl', data.remoteProxyUrl, vscode.ConfigurationTarget.Global);
                         await config.update('remoteManagerGuiUrl', data.remoteManagerUrl, vscode.ConfigurationTarget.Global);
+                        
+                        await config.update('kongWorkspace', data.kongWorkspace, vscode.ConfigurationTarget.Global);
+                        await config.update('kongAdminToken', data.kongAdminToken, vscode.ConfigurationTarget.Global);
+                        await config.update('skipTlsVerify', data.skipTlsVerify, vscode.ConfigurationTarget.Global);
 
                         this.dockerManager.initializeCache();
                         this._setupWatcher();
@@ -188,6 +192,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         });
                         break;
                     }
+                case 'updateThinkingPref':
+                    {
+                        const config = vscode.workspace.getConfiguration('kongAgent');
+                        await config.update('showThinking', data.show, vscode.ConfigurationTarget.Global);
+                        break;
+                    }
                 case 'resetConfig':
                     {
                         const config = vscode.workspace.getConfiguration('kongAgent');
@@ -225,7 +235,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 remoteAdminUrl: config.get('remoteAdminApiUrl'),
                 remoteProxyUrl: config.get('remoteProxyBaseUrl'),
                 remoteManagerUrl: config.get('remoteManagerGuiUrl'),
+                kongWorkspace: config.get('kongWorkspace') || 'default',
+                kongAdminToken: config.get('kongAdminToken'),
+                skipTlsVerify: config.get('skipTlsVerify') === true,
                 maxDepth: config.get('maxToolDepth') || 10,
+                showThinking: config.get('showThinking') !== false,
                 files: await this.dockerManager.listStorageFiles()
             });
         }
@@ -418,6 +432,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
         th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
         th { background: rgba(255,255,255,0.05); }
+        
+        /* Thinking & Error Styles */
+        .thinking { 
+            font-size: 11px; color: #888; background: rgba(255,255,255,0.02); 
+            border-left: 2px dashed #444; padding: 6px 12px; margin: 4px 16px; border-radius: 4px; 
+        }
+        .error-message { 
+            background: rgba(244, 71, 71, 0.1) !important; color: #f44747 !important; 
+            border: 1px solid rgba(244, 71, 71, 0.3) !important; padding: 12px !important; border-radius: 8px !important;
+            font-weight: 500; font-family: monospace;
+        }
+        .hidden-thinking { display: none !important; }
     </style>
 </head>
 <body>
@@ -451,6 +477,12 @@ What can I do for you today?</div>
             <div class="settings-panel">
                 <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
                 <div class="settings-row" id="api-key-row"><label>API Key</label><input type="password" id="api-key-input"/></div>
+                <div class="settings-row" style="margin-top:8px; background:rgba(255,255,255,0.03); padding:8px; border-radius:8px;">
+                    <label style="color:var(--accent); font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="show-thinking-toggle" checked /> 
+                        🧠 Show Agent Thinking
+                    </label>
+                </div>
                 <div class="settings-row"><label>Max Depth</label><input type="number" id="max-depth-input" value="10" title="Max Tool Depth"/></div>
                 
                 <div class="section-header">GitOps & Storage</div>
@@ -474,6 +506,15 @@ What can I do for you today?</div>
                         <div class="settings-row"><label title="Proxy URL">Proxy URL</label><input type="text" id="remote-proxy-input" placeholder="http://kong:8000"/></div>
                         <div class="settings-row"><label title="Manager URL">Manager URL</label><input type="text" id="remote-manager-input" placeholder="http://kong:8002"/></div>
                     </div>
+                </div>
+
+                <div class="section-header">Auth & Advanced</div>
+                <div class="settings-row"><label>Workspace</label><input type="text" id="workspace-input" placeholder="default"/></div>
+                <div class="settings-row"><label>Admin Token</label><input type="password" id="admin-token-input" placeholder="RBAC Token"/></div>
+                <div class="settings-row">
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:8px; font-size:11px;">
+                        <input type="checkbox" id="skip-tls-input" /> 🛡️ Skip TLS Verification
+                    </label>
                 </div>
                 
                 <div class="managed-files" id="file-list-container">
@@ -513,6 +554,19 @@ What can I do for you today?</div>
                 const div = document.createElement('div');
                 div.className = 'message ' + role;
                 
+                // Classify "Thinking" process (tool calls and results)
+                const isThinking = (role === 'toolCall' || role === 'toolResult');
+                if (isThinking) {
+                    div.classList.add('thinking');
+                    const showThinking = document.getElementById('show-thinking-toggle').checked;
+                    if (!showThinking) div.classList.add('hidden-thinking');
+                }
+
+                // Highlight Errors
+                if (content && (content.toLowerCase().startsWith('error') || content.toLowerCase().includes('failed:'))) {
+                    div.classList.add('error-message');
+                }
+                
                 if (content.indexOf('\x60\x60\x60diff') !== -1) {
                     const parts = content.split('\x60\x60\x60diff');
                     const textBefore = (typeof marked !== 'undefined') ? marked.parse(parts[0]) : parts[0];
@@ -535,6 +589,18 @@ What can I do for you today?</div>
                     div.querySelectorAll('pre code').forEach((b) => { hljs.highlightElement(b); });
                 }
                 chat.scrollTop = chat.scrollHeight;
+            }
+
+            const thinkingToggle = document.getElementById('show-thinking-toggle');
+            if (thinkingToggle) {
+                thinkingToggle.onchange = (e) => {
+                    const show = e.target.checked;
+                    document.querySelectorAll('.thinking').forEach(el => {
+                        el.classList.toggle('hidden-thinking', !show);
+                    });
+                    // Save to config via extension post message
+                    vscode.postMessage({ type: 'updateThinkingPref', show: show });
+                };
             }
 
             if (sendBtn) {
@@ -595,7 +661,10 @@ What can I do for you today?</div>
                     databasePort: document.getElementById('db-port-input').value,
                     remoteAdminUrl: document.getElementById('remote-admin-input').value,
                     remoteProxyUrl: document.getElementById('remote-proxy-input').value,
-                    remoteManagerUrl: document.getElementById('remote-manager-input').value
+                    remoteManagerUrl: document.getElementById('remote-manager-input').value,
+                    kongWorkspace: document.getElementById('workspace-input').value,
+                    kongAdminToken: document.getElementById('admin-token-input').value,
+                    skipTlsVerify: document.getElementById('skip-tls-input').checked
                 });
             };
 
@@ -644,6 +713,16 @@ What can I do for you today?</div>
                     document.getElementById('remote-proxy-input').value = m.remoteProxyUrl || '';
                     document.getElementById('remote-manager-input').value = m.remoteManagerUrl || '';
                     
+                    document.getElementById('workspace-input').value = m.kongWorkspace || 'default';
+                    document.getElementById('admin-token-input').value = m.kongAdminToken || '';
+                    document.getElementById('skip-tls-input').checked = m.skipTlsVerify === true;
+                    
+                    const showThinking = m.showThinking !== false;
+                    document.getElementById('show-thinking-toggle').checked = showThinking;
+                    document.querySelectorAll('.thinking').forEach(el => {
+                        el.classList.toggle('hidden-thinking', !showThinking);
+                    });
+                    
                     if (m.files) {
                         const list = document.getElementById('file-list');
                         list.innerHTML = '';
@@ -687,9 +766,6 @@ What can I do for you today?</div>
             });
         })();
     </script>
-</body>
-</html>\x60;
-    }   </script>
 </body>
 </html>`;
     }
