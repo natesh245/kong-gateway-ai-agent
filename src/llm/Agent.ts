@@ -37,7 +37,8 @@ export class Agent {
                 "5. **Sync & Status**: Only AFTER the user gives verbal approval, use the 'sync_to_kong_using_deck' tool. You MUST then summarize the sync results (e.g., 'Successfully created 1 entity') to the user.\n" +
                 "**KONG INSTANCES**: You support both 'Local' (Docker-based) and 'Remote' (any URL) Kong Gateway instances.\n" +
                 "**DESTRUCTIVE ACTIONS**: For tools like 'reset_kong_instance', you MUST ask for explicit confirmation before calling the tool.\n" +
-                "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image)."
+                "**decK CLI**: ALWAYS prefer using the 'sync_to_kong_using_deck' tool for applying changes. If decK is not installed on the host, the tool will automatically fall back to a Docker-based decK sync (using the 'kong/deck' image).\n" +
+                "**GITOPS SYNC**: Your ultimate goal is a GitOps-first workflow. If a Git repository is set up in the storage folder (check via 'git_get_status'), you should favor a 'Commit -> Push -> Sync' flow. If the user has 'Auto-Commit' enabled, tell them you will automatically update their Git repository after a successful sync."
         });
     }
 
@@ -397,6 +398,46 @@ export class Agent {
                         required: ["filename"]
                     }
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "git_setup_repo",
+                    description: "Initializes the storage folder as a Git repository and connects it to a remote URL."
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "git_sync_push",
+                    description: "Manually commits and pushes all current changes in the storage folder to the remote Git repository.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            message: { type: "string", description: "The commit message" }
+                        }
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "git_sync_pull",
+                    description: "Pulls the latest configuration from the remote Git repository.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            sync_to_kong: { type: "boolean", description: "Whether to automatically sync the pulled 'kong.yml' to the live Kong Gateway." }
+                        }
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "git_get_status",
+                    description: "Checks the current status of the Git repository in the storage folder."
+                }
             }
         ];
 
@@ -538,7 +579,44 @@ export class Agent {
                             functionResult = await this.dockerManager.installDeck();
                             break;
                         case "sync_to_kong_using_deck":
-                            functionResult = await this.dockerManager.syncWithDeck(functionArgs.filename);
+                            {
+                                functionResult = await this.dockerManager.syncWithDeck(functionArgs.filename);
+                                if (!functionResult.includes('failed')) {
+                                    const config = vscode.workspace.getConfiguration('kongAgent');
+                                    if (config.get('autoCommit')) {
+                                        const commitRes = await this.dockerManager.gitCommit(`Auto-sync from Kong Agent: updated ${functionArgs.filename}`);
+                                        const pushRes = await this.dockerManager.gitPush();
+                                        functionResult += `\n\n[GitOps Sync]: ${commitRes}\n${pushRes}`;
+                                    }
+                                }
+                                break;
+                            }
+                        case "git_setup_repo":
+                            {
+                                const config = vscode.workspace.getConfiguration('kongAgent');
+                                const remoteUrl = config.get<string>('gitRemoteUrl');
+                                functionResult = await this.dockerManager.gitInit(remoteUrl);
+                                break;
+                            }
+                        case "git_sync_push":
+                            {
+                                const commitRes = await this.dockerManager.gitCommit(functionArgs.message || `Manual sync from Kong Agent`);
+                                const pushRes = await this.dockerManager.gitPush();
+                                functionResult = `${commitRes}\n${pushRes}`;
+                                break;
+                            }
+                        case "git_sync_pull":
+                            {
+                                const pullRes = await this.dockerManager.gitPull();
+                                functionResult = pullRes;
+                                if (!pullRes.includes('failed') && functionArgs.sync_to_kong) {
+                                    const syncRes = await this.dockerManager.syncWithDeck('kong.yml');
+                                    functionResult += `\n\nSync Result:\n${syncRes}`;
+                                }
+                                break;
+                            }
+                        case "git_get_status":
+                            functionResult = await this.dockerManager.gitStatus();
                             break;
                         case "validate_kong_config":
                             functionResult = await this.dockerManager.validateWithDeck(functionArgs.filename);

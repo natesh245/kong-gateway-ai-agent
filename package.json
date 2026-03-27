@@ -107,6 +107,16 @@
           "type": "string",
           "default": "",
           "description": "The absolute path to a folder where Kong configuration and Docker files will be stored."
+        },
+        "kongAgent.gitRemoteUrl": {
+          "type": "string",
+          "default": "",
+          "description": "The remote Git URL for the Kong configuration repository."
+        },
+        "kongAgent.autoCommit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically commit and push changes to Git after a successful decK sync."
         }
       }
     }

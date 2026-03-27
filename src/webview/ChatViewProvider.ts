@@ -104,9 +104,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('kongWorkspace', data.kongWorkspace, vscode.ConfigurationTarget.Global);
                         await config.update('kongAdminToken', data.kongAdminToken, vscode.ConfigurationTarget.Global);
                         await config.update('skipTlsVerify', data.skipTlsVerify, vscode.ConfigurationTarget.Global);
+                        await config.update('gitRemoteUrl', data.gitRemoteUrl, vscode.ConfigurationTarget.Global);
+                        await config.update('autoCommit', data.autoCommit, vscode.ConfigurationTarget.Global);
 
                         this.dockerManager.initializeCache();
                         this._setupWatcher();
+                        await this._updateWebviewConfig();
                         break;
                     }
                 case 'selectFolder':
@@ -238,6 +241,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 kongWorkspace: config.get('kongWorkspace') || 'default',
                 kongAdminToken: config.get('kongAdminToken'),
                 skipTlsVerify: config.get('skipTlsVerify') === true,
+                gitRemoteUrl: config.get('gitRemoteUrl') || '',
+                autoCommit: config.get('autoCommit') === true,
                 maxDepth: config.get('maxToolDepth') || 10,
                 showThinking: config.get('showThinking') !== false,
                 files: await this.dockerManager.listStorageFiles()
@@ -328,11 +333,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
 
         .input-container { 
-            padding: 16px; background: var(--bg); border-top: 1px solid var(--border); 
-            display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; position: relative; z-index: 100;
+            padding: 12px 16px; background: var(--bg); border-top: 1px solid var(--border); 
+            display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; position: relative; z-index: 100;
         }
-        .settings-container { margin-bottom: 4px; border: 1px solid transparent; border-radius: 8px; transition: border-color 0.2s; }
-        .settings-container[open] { border-color: var(--border); background: rgba(0,0,0,0.1); }
+        .settings-container { margin-bottom: 2px; border: 1px solid transparent; border-radius: 8px; transition: all 0.2s; }
+        .settings-container[open] { border-color: var(--border); background: rgba(0,0,0,0.1); margin-bottom: 12px; }
         
         details summary { 
             list-style: none; outline: none; cursor: pointer; padding: 10px 12px; border-radius: 8px;
@@ -349,8 +354,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         .settings-panel { 
             padding: 14px; background: var(--panel-bg); border-radius: 12px; 
             display: flex; flex-direction: column; gap: 10px; font-size: 11px; 
-            border: 1px solid var(--border); overflow: hidden;
+            border: 1px solid var(--border); overflow-y: auto; max-height: 250px;
         }
+        .settings-panel::-webkit-scrollbar { width: 4px; }
+        .settings-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        .settings-panel::-webkit-scrollbar-thumb:hover { background: var(--accent); }
         .settings-row { display: flex; align-items: center; gap: 10px; }
         .settings-row label { width: 80px; color: var(--vscode-descriptionForeground); font-weight: 500; }
         .settings-row input, .settings-row select { 
@@ -476,6 +484,7 @@ What can I do for you today?</div>
             </summary>
             <div class="settings-panel">
                 <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="local">Ollama</option></select></div>
+                <div class="settings-row"><label>Model</label><input type="text" id="model-input" placeholder="e.g. openai/gpt-4o"/></div>
                 <div class="settings-row" id="api-key-row"><label>API Key</label><input type="password" id="api-key-input"/></div>
                 <div class="settings-row" style="margin-top:8px; background:rgba(255,255,255,0.03); padding:8px; border-radius:8px;">
                     <label style="color:var(--accent); font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px;">
@@ -516,7 +525,15 @@ What can I do for you today?</div>
                         <input type="checkbox" id="skip-tls-input" /> 🛡️ Skip TLS Verification
                     </label>
                 </div>
-                
+
+                <div class="section-header">GitOps Sync</div>
+                <div class="settings-row"><label>Remote URL</label><input type="text" id="git-remote-input" placeholder="https://github.com/user/repo.git"/></div>
+                <div class="settings-row">
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:8px; font-size:11px;">
+                        <input type="checkbox" id="auto-commit-input" /> 🔄 Auto-Commit Changes
+                    </label>
+                </div>
+
                 <div class="managed-files" id="file-list-container">
                     <div class="section-header">Managed Files</div>
                     <div id="file-list"></div>
@@ -651,6 +668,7 @@ What can I do for you today?</div>
                 vscode.postMessage({
                     type: 'updateConfig',
                     provider: document.getElementById('provider-select').value,
+                    model: document.getElementById('model-input').value,
                     apiKey: document.getElementById('api-key-input').value,
                     maxDepth: document.getElementById('max-depth-input').value,
                     storagePath: document.getElementById('storage-input').value,
@@ -664,7 +682,9 @@ What can I do for you today?</div>
                     remoteManagerUrl: document.getElementById('remote-manager-input').value,
                     kongWorkspace: document.getElementById('workspace-input').value,
                     kongAdminToken: document.getElementById('admin-token-input').value,
-                    skipTlsVerify: document.getElementById('skip-tls-input').checked
+                    skipTlsVerify: document.getElementById('skip-tls-input').checked,
+                    gitRemoteUrl: document.getElementById('git-remote-input').value,
+                    autoCommit: document.getElementById('auto-commit-input').checked
                 });
             };
 
@@ -694,6 +714,7 @@ What can I do for you today?</div>
                     appendMessage(m.role, m.content);
                 } else if (m.type === 'setConfig') {
                     document.getElementById('provider-select').value = m.provider || 'openrouter';
+                    document.getElementById('model-input').value = m.model || 'openai/gpt-4o';
                     document.getElementById('api-key-input').value = m.apiKey || '';
                     document.getElementById('max-depth-input').value = m.maxDepth || 10;
                     document.getElementById('storage-input').value = m.storagePath || 'Default';
@@ -716,6 +737,8 @@ What can I do for you today?</div>
                     document.getElementById('workspace-input').value = m.kongWorkspace || 'default';
                     document.getElementById('admin-token-input').value = m.kongAdminToken || '';
                     document.getElementById('skip-tls-input').checked = m.skipTlsVerify === true;
+                    document.getElementById('git-remote-input').value = m.gitRemoteUrl || '';
+                    document.getElementById('auto-commit-input').checked = m.autoCommit === true;
                     
                     const showThinking = m.showThinking !== false;
                     document.getElementById('show-thinking-toggle').checked = showThinking;
