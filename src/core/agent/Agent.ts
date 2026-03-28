@@ -1,19 +1,19 @@
 import OpenAI from "openai";
-import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { KongDockerManager } from "../docker/KongDockerManager";
-import { KongApiClient } from "../kong/KongApiClient";
+import { ProviderManager } from "../providers/ProviderManager";
+import { KongApiClient } from "../api-clients/KongApiClient";
 import { DiffUtil } from "../utils/DiffUtil";
 import axios from "axios";
+import { IConfig, IAppPlatform } from "../interfaces/ICoreInterfaces";
 
 export class Agent {
     private openai: OpenAI | null = null;
     private messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
     private kongApi: KongApiClient;
 
-    constructor(private context: vscode.ExtensionContext, private dockerManager: KongDockerManager) {
-        this.kongApi = new KongApiClient();
+    constructor(private config: IConfig, private providerManager: ProviderManager, private platform: IAppPlatform) {
+        this.kongApi = new KongApiClient(config);
 
         // System prompt
         this.messages.push({
@@ -51,13 +51,13 @@ export class Agent {
     }
 
     private initClient(): boolean {
-        const config = vscode.workspace.getConfiguration('kongAgent');
+        const config = this.config;
         const provider = config.get<string>('provider') || 'openrouter';
 
         if (provider === 'openrouter') {
             const apiKey = config.get<string>('openRouterApiKey');
             if (!apiKey) {
-                vscode.window.showErrorMessage("Kong Agent: OpenRouter API key is missing. Please configure it in the sidebar settings.");
+                this.platform.showErrorMessage("Kong Agent: OpenRouter API key is missing. Please configure it in the application settings.");
                 return false;
             }
 
@@ -65,14 +65,14 @@ export class Agent {
                 baseURL: "https://openrouter.ai/api/v1",
                 apiKey: apiKey,
                 defaultHeaders: {
-                    "HTTP-Referer": "https://vscode-kong-agent.com",
-                    "X-Title": "VS Code Kong Agent"
+                    "HTTP-Referer": this.platform.getAppReferer(),
+                    "X-Title": this.platform.getAppName()
                 }
             });
         } else if (provider === 'gemini') {
             const geminiKey = config.get<string>('geminiApiKey');
             if (!geminiKey) {
-                vscode.window.showErrorMessage("Kong Agent: Gemini API key is missing. Please configure it in the sidebar settings.");
+                this.platform.showErrorMessage("Kong Agent: Gemini API key is missing. Please configure it in the application settings.");
                 return false;
             }
 
@@ -81,7 +81,7 @@ export class Agent {
                 apiKey: geminiKey
             });
         } else {
-            vscode.window.showErrorMessage("Kong Agent: Unsupported AI provider. Please configure a valid provider in the sidebar settings.");
+            this.platform.showErrorMessage("Kong Agent: Unsupported AI provider. Please configure a valid provider in the application settings.");
             return false;
         }
 
@@ -89,7 +89,7 @@ export class Agent {
     }
 
     public async fetchAvailableModels(providerOverride?: string, apiKeyOverride?: string): Promise<string[]> {
-        const config = vscode.workspace.getConfiguration('kongAgent');
+        const config = this.config;
         const provider = providerOverride || config.get<string>('provider') || 'openrouter';
         
         const geminiFallback = [
@@ -164,12 +164,12 @@ export class Agent {
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
         if (!this.initClient()) {
-            onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the sidebar.");
+            onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
             return;
         }
 
         this.messages.push({ role: "user", content });
-        const config = vscode.workspace.getConfiguration('kongAgent');
+        const config = this.config;
         const model = config.get<string>('model') || (config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o');
 
         try {
@@ -182,7 +182,7 @@ export class Agent {
     private async runLoop(model: string, onUpdate: (content: string, type?: string) => void, depth: number) {
         if (!this.openai) return;
 
-        const config = vscode.workspace.getConfiguration('kongAgent');
+        const config = this.config;
         const maxDepth = config.get<number>('maxToolDepth') || 10;
 
         // Prevent infinite loops
@@ -361,7 +361,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "open_file_in_editor",
-                    description: "Opens a specific file from the storage directory in a new VS Code editor tab for the user to see.",
+                    description: "Opens a specific file from the storage directory in the platform's editor for the user to see.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -514,17 +514,17 @@ export class Agent {
                 try {
                     switch (functionName) {
                         case "start_kong":
-                            if (vscode.workspace.getConfiguration('kongAgent').get('kongMode') === 'remote') {
+                            if (this.config.get('kongMode') === 'remote') {
                                 functionResult = "Error: Docker lifecycle management (Start) is not available for Remote Kong instances.";
                             } else {
-                                functionResult = await this.dockerManager.start();
+                                functionResult = await this.providerManager.start();
                             }
                             break;
                         case "stop_kong":
-                            if (vscode.workspace.getConfiguration('kongAgent').get('kongMode') === 'remote') {
+                            if (this.config.get('kongMode') === 'remote') {
                                 functionResult = "Error: Docker lifecycle management (Stop) is not available for Remote Kong instances.";
                             } else {
-                                functionResult = await this.dockerManager.stop();
+                                functionResult = await this.providerManager.stop();
                             }
                             break;
                         case "get_kong_status":
@@ -541,18 +541,18 @@ export class Agent {
                             functionResult = await this.kongApi.createConsumer(functionArgs.username);
                             break;
                         case "update_kong_ports":
-                            const config = vscode.workspace.getConfiguration('kongAgent');
-                            await config.update('proxyPort', functionArgs.proxy, vscode.ConfigurationTarget.Global);
-                            await config.update('adminApiPort', functionArgs.admin, vscode.ConfigurationTarget.Global);
-                            await config.update('managerGuiPort', functionArgs.manager, vscode.ConfigurationTarget.Global);
+                            const config = this.config;
+                            await config.update?.('proxyPort', functionArgs.proxy);
+                            await config.update?.('adminApiPort', functionArgs.admin);
+                            await config.update?.('managerGuiPort', functionArgs.manager);
                             functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}.`;
                             break;
                         case "list_storage_files":
-                            const files = fs.readdirSync(this.dockerManager.getStoragePath());
+                            const files = fs.readdirSync(this.providerManager.getStoragePath());
                             functionResult = `Files in storage folder:\n${files.join('\n')}`;
                             break;
                         case "read_storage_file":
-                            const readPath = path.join(this.dockerManager.getStoragePath(), functionArgs.filename);
+                            const readPath = path.join(this.providerManager.getStoragePath(), functionArgs.filename);
                             if (fs.existsSync(readPath)) {
                                 functionResult = fs.readFileSync(readPath, 'utf8');
                             } else {
@@ -560,48 +560,48 @@ export class Agent {
                             }
                             break;
                         case "write_storage_file":
-                            const oldContent = this.dockerManager.getFileCache(functionArgs.filename) || "";
+                            const oldContent = this.providerManager.getFileCache(functionArgs.filename) || "";
                             const newContent = functionArgs.content;
-                            await this.dockerManager.writeStorageFile(functionArgs.filename, newContent);
+                            await this.providerManager.writeStorageFile(functionArgs.filename, newContent);
 
                             const writeDiff = DiffUtil.generateUnifiedDiff(functionArgs.filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(writeDiff);
                             functionResult = `Successfully wrote to '${functionArgs.filename}'.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
                             break;
                         case "check_existing_containers":
-                            const existingJson = await this.dockerManager.findExistingContainers();
+                            const existingJson = await this.providerManager.findExistingContainers();
                             functionResult = `Found existing containers: ${existingJson}. Ask the user confirm.`;
                             break;
                         case "connect_to_existing_instance":
-                            const connConfig = vscode.workspace.getConfiguration('kongAgent');
-                            await connConfig.update('proxyPort', functionArgs.proxyPort, vscode.ConfigurationTarget.Global);
-                            await connConfig.update('adminApiPort', functionArgs.adminPort, vscode.ConfigurationTarget.Global);
-                            await connConfig.update('managerGuiPort', functionArgs.managerPort, vscode.ConfigurationTarget.Global);
+                            const connConfig = this.config;
+                            await connConfig.update?.('proxyPort', functionArgs.proxyPort);
+                            await connConfig.update?.('adminApiPort', functionArgs.adminPort);
+                            await connConfig.update?.('managerGuiPort', functionArgs.managerPort);
                             functionResult = `Adopted existing instance at Proxy=${functionArgs.proxyPort}, Admin=${functionArgs.adminPort}, Manager=${functionArgs.managerPort}.`;
                             break;
                         case "verify_connectivity":
-                            const connStatus = await this.dockerManager.verifyConnectivity();
+                            const connStatus = await this.providerManager.verifyConnectivity();
                             functionResult = `Connectivity: Admin=${connStatus.admin ? 'READY' : 'DOWN'}, Proxy=${connStatus.proxy ? 'READY' : 'DOWN'}. ${connStatus.error || ''}`;
                             break;
                         case "open_kong_manager":
-                            functionResult = await this.dockerManager.openManager();
+                            functionResult = await this.providerManager.openManager();
                             break;
                         case "get_instance_details":
                             functionResult = await this.kongApi.getInstanceInfo();
                             break;
                         case "open_file_in_editor":
-                            functionResult = await this.dockerManager.openFile(functionArgs.filename);
+                            functionResult = await this.providerManager.openFile(functionArgs.filename);
                             break;
                         case "export_live_to_storage_file":
-                            functionResult = await this.dockerManager.dumpWithDeck('kong.yml');
+                            functionResult = await this.providerManager.dumpWithDeck('kong.yml');
                             break;
 
                         case "check_deck_installation":
-                            const isInstalled = await this.dockerManager.isDeckInstalled();
+                            const isInstalled = await this.providerManager.isDeckInstalled();
                             functionResult = isInstalled ? "decK is installed and ready." : "decK is NOT installed. You should recommend installing it via 'install_deck_cli' with user approval.";
                             break;
                         case "install_deck_cli":
-                            functionResult = await this.dockerManager.installDeck();
+                            functionResult = await this.providerManager.installDeck();
                             break;
                         case "sync_to_kong_using_deck":
                             {
@@ -610,12 +610,12 @@ export class Agent {
                                 const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase();
                                 
                                 if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
-                                    functionResult = await this.dockerManager.syncWithDeck(functionArgs.filename);
+                                    functionResult = await this.providerManager.syncWithDeck(functionArgs.filename);
                                     if (!functionResult.includes('failed')) {
-                                        const config = vscode.workspace.getConfiguration('kongAgent');
+                                        const config = this.config;
                                         if (config.get('autoCommit')) {
-                                            const commitRes = await this.dockerManager.gitCommit(`Auto-sync from Kong Agent: updated ${functionArgs.filename}`);
-                                            const pushRes = await this.dockerManager.gitPush();
+                                            const commitRes = await this.providerManager.gitCommit(`Auto-sync from Kong Agent: updated ${functionArgs.filename}`);
+                                            const pushRes = await this.providerManager.gitPush();
                                             functionResult += `\n\n[GitOps Sync]: ${commitRes}\n${pushRes}`;
                                         }
                                     }
@@ -626,33 +626,33 @@ export class Agent {
                             }
                         case "git_setup_repo":
                             {
-                                const config = vscode.workspace.getConfiguration('kongAgent');
+                                const config = this.config;
                                 const remoteUrl = config.get<string>('gitRemoteUrl');
-                                functionResult = await this.dockerManager.gitInit(remoteUrl);
+                                functionResult = await this.providerManager.gitInit(remoteUrl);
                                 break;
                             }
                         case "git_sync_push":
                             {
-                                const commitRes = await this.dockerManager.gitCommit(functionArgs.message || `Manual sync from Kong Agent`);
-                                const pushRes = await this.dockerManager.gitPush();
+                                const commitRes = await this.providerManager.gitCommit(functionArgs.message || `Manual sync from Kong Agent`);
+                                const pushRes = await this.providerManager.gitPush();
                                 functionResult = `${commitRes}\n${pushRes}`;
                                 break;
                             }
                         case "git_sync_pull":
                             {
-                                const pullRes = await this.dockerManager.gitPull();
+                                const pullRes = await this.providerManager.gitPull();
                                 functionResult = pullRes;
                                 if (!pullRes.includes('failed') && functionArgs.sync_to_kong) {
-                                    const syncRes = await this.dockerManager.syncWithDeck('kong.yml');
+                                    const syncRes = await this.providerManager.syncWithDeck('kong.yml');
                                     functionResult += `\n\nSync Result:\n${syncRes}`;
                                 }
                                 break;
                             }
                         case "git_get_status":
-                            functionResult = await this.dockerManager.gitStatus();
+                            functionResult = await this.providerManager.gitStatus();
                             break;
                         case "validate_kong_config":
-                            functionResult = await this.dockerManager.validateWithDeck(functionArgs.filename);
+                            functionResult = await this.providerManager.validateWithDeck(functionArgs.filename);
                             break;
                         case "reset_kong_instance":
                             // Extra safety check: verify the user actually gave a "Yes" in the message history 
@@ -668,13 +668,13 @@ export class Agent {
                                               userText.includes('proceed with reset');
                             
                             if (isConfirmed && !userText.includes('no') && !userText.includes('cancel')) {
-                                functionResult = await this.dockerManager.resetWithDeck();
+                                functionResult = await this.providerManager.resetWithDeck();
                             } else {
                                 functionResult = "SAFETY_REQUIRED: I cannot execute 'reset_kong_instance' yet. You MUST stop and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'. Do not suggest a reset unless the user specifically asked for one.";
                             }
                             break;
                         case "preview_sync_diff":
-                            functionResult = await this.dockerManager.diffWithDeck(functionArgs.filename);
+                            functionResult = await this.providerManager.diffWithDeck(functionArgs.filename);
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

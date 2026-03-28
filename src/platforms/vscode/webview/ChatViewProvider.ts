@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Agent } from '../llm/Agent';
-import { KongDockerManager } from '../docker/KongDockerManager';
-import { DiffUtil } from '../utils/DiffUtil';
+import { Agent } from '../../../core/agent/Agent';
+import { ProviderManager } from '../../../core/providers/ProviderManager';
+import { DiffUtil } from '../../../core/utils/DiffUtil';
+import { IConfig, IAppPlatform } from '../../../core/interfaces/ICoreInterfaces';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kongAgentChat';
@@ -15,10 +16,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly _extensionUri: vscode.Uri,
         private context: vscode.ExtensionContext,
-        private dockerManager: KongDockerManager
+        private providerManager: ProviderManager,
+        private config: IConfig,
+        private platform: IAppPlatform
     ) {
-        this._agent = new Agent(context, dockerManager);
-        this.dockerManager.initializeCache();
+        this._agent = new Agent(config, providerManager, platform);
+        this.providerManager.initializeCache();
         this._setupWatcher();
     }
 
@@ -27,7 +30,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this._watcher.dispose();
         }
 
-        const storagePath = this.dockerManager.getStoragePath();
+        const storagePath = this.providerManager.getStoragePath();
 
         if (storagePath && fs.existsSync(storagePath)) {
             const storageUri = vscode.Uri.file(storagePath);
@@ -84,33 +87,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     }
                 case 'updateConfig':
                     {
-                        const config = vscode.workspace.getConfiguration('kongAgent');
-                        await config.update('provider', data.provider, vscode.ConfigurationTarget.Global);
-                        await config.update('model', data.model, vscode.ConfigurationTarget.Global);
-                        await config.update('openRouterApiKey', data.apiKey, vscode.ConfigurationTarget.Global);
-                        await config.update('geminiApiKey', data.geminiApiKey, vscode.ConfigurationTarget.Global);
-                        await config.update('storagePath', data.storagePath, vscode.ConfigurationTarget.Global);
-                        await config.update('kongMode', data.kongMode, vscode.ConfigurationTarget.Global);
+                        await this.config.update?.('provider', data.provider);
+                        await this.config.update?.('model', data.model);
+                        await this.config.update?.('openRouterApiKey', data.apiKey);
+                        await this.config.update?.('geminiApiKey', data.geminiApiKey);
+                        await this.config.update?.('storagePath', data.storagePath);
+                        await this.config.update?.('kongMode', data.kongMode);
                         
-                        if (data.proxyPort) await config.update('proxyPort', parseInt(data.proxyPort), vscode.ConfigurationTarget.Global);
-                        if (data.adminPort) await config.update('adminApiPort', parseInt(data.adminPort), vscode.ConfigurationTarget.Global);
-                        if (data.managerPort) await config.update('managerGuiPort', parseInt(data.managerPort), vscode.ConfigurationTarget.Global);
-                        if (data.databasePort) await config.update('databasePort', parseInt(data.databasePort), vscode.ConfigurationTarget.Global);
-                        if (data.maxDepth) await config.update('maxToolDepth', parseInt(data.maxDepth), vscode.ConfigurationTarget.Global);
+                        if (data.proxyPort) await this.config.update?.('proxyPort', parseInt(data.proxyPort));
+                        if (data.adminPort) await this.config.update?.('adminApiPort', parseInt(data.adminPort));
+                        if (data.managerPort) await this.config.update?.('managerGuiPort', parseInt(data.managerPort));
+                        if (data.databasePort) await this.config.update?.('databasePort', parseInt(data.databasePort));
+                        if (data.maxDepth) await this.config.update?.('maxToolDepth', parseInt(data.maxDepth));
                         
-                        await config.update('remoteAdminApiUrl', data.remoteAdminUrl, vscode.ConfigurationTarget.Global);
-                        await config.update('remoteProxyBaseUrl', data.remoteProxyUrl, vscode.ConfigurationTarget.Global);
-                        await config.update('remoteManagerGuiUrl', data.remoteManagerUrl, vscode.ConfigurationTarget.Global);
+                        await this.config.update?.('remoteAdminApiUrl', data.remoteAdminUrl);
+                        await this.config.update?.('remoteProxyBaseUrl', data.remoteProxyUrl);
+                        await this.config.update?.('remoteManagerGuiUrl', data.remoteManagerUrl);
                         
-                        await config.update('kongWorkspace', data.kongWorkspace, vscode.ConfigurationTarget.Global);
-                        await config.update('kongAdminToken', data.kongAdminToken, vscode.ConfigurationTarget.Global);
-                        await config.update('skipTlsVerify', data.skipTlsVerify, vscode.ConfigurationTarget.Global);
-                        await config.update('gitRemoteUrl', data.gitRemoteUrl, vscode.ConfigurationTarget.Global);
-                        await config.update('autoCommit', data.autoCommit, vscode.ConfigurationTarget.Global);
+                        await this.config.update?.('kongWorkspace', data.kongWorkspace);
+                        await this.config.update?.('kongAdminToken', data.kongAdminToken);
+                        await this.config.update?.('skipTlsVerify', data.skipTlsVerify);
+                        await this.config.update?.('gitRemoteUrl', data.gitRemoteUrl);
+                        await this.config.update?.('autoCommit', data.autoCommit);
 
-                        this.dockerManager.initializeCache();
+                        this.providerManager.initializeCache();
                         this._setupWatcher();
-                        vscode.window.showInformationMessage('Kong Gateway Agent: Configuration saved successfully.');
+                        this.platform.showInformationMessage('Kong Gateway Agent: Configuration saved successfully.');
                         this._updateWebviewConfig();
                         break;
                     }
@@ -125,9 +127,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
                         if (result && result.length > 0) {
                             const folderPath = result[0].fsPath;
-                            const config = vscode.workspace.getConfiguration('kongAgent');
-                            await config.update('storagePath', folderPath, vscode.ConfigurationTarget.Global);
-                            this.dockerManager.initializeCache();
+                            await this.config.update?.('storagePath', folderPath);
+                            this.providerManager.initializeCache();
                             this._setupWatcher();
                             await this._updateWebviewConfig();
                         }
@@ -136,18 +137,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'requestReview':
                     {
                         const filename = data.filename;
-                        const storagePath = this.dockerManager.getStoragePath();
+                        const storagePath = this.providerManager.getStoragePath();
                         const fullPath = path.join(storagePath, filename);
                         
                         if (fs.existsSync(fullPath)) {
                             const newContent = fs.readFileSync(fullPath, 'utf8');
-                            const oldContent = this.dockerManager.getFileCache(filename) || "";
+                            const oldContent = this.providerManager.getFileCache(filename) || "";
                             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(diff);
                             const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nPlease review it according to the DECLARATIVE WORKFLOW. **DO NOT CALL SYNC TOOLS**. Stop after showing the preview diff.`;
                             
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
-                            this.dockerManager.updateFileCache(filename, newContent);
+                            this.providerManager.updateFileCache(filename, newContent);
 
                             await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
                                 webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
@@ -157,12 +158,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     }
                 case 'openFile':
                     {
-                        if (data.filename) this.dockerManager.openFile(data.filename);
+                        if (data.filename) this.providerManager.openFile(data.filename);
                         break;
                     }
                 case 'checkPorts':
                     {
-                        const { PortUtil } = require('../utils/PortUtil');
+                        const { PortUtil } = require('../../../core/utils/PortUtil');
                         const results: any = {};
                         const ports = [
                             { key: 'proxy', value: parseInt(data.proxyPort) },
@@ -199,8 +200,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     }
                 case 'updateThinkingPref':
                     {
-                        const config = vscode.workspace.getConfiguration('kongAgent');
-                        await config.update('showThinking', data.show, vscode.ConfigurationTarget.Global);
+                        await this.config.update?.('showThinking', data.show);
                         break;
                     }
                 case 'resetConfig':
@@ -215,7 +215,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('adminApiPort', undefined, vscode.ConfigurationTarget.Global);
                         await config.update('managerGuiPort', undefined, vscode.ConfigurationTarget.Global);
                         
-                        await this.dockerManager.stop();
+                        await this.providerManager.stop();
                         await this._updateWebviewConfig();
                         vscode.window.showInformationMessage('Kong Gateway Agent configuration has been reset to defaults.');
                         break;
@@ -232,31 +232,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     private async _updateWebviewConfig() {
         if (this._view) {
-            const config = vscode.workspace.getConfiguration('kongAgent');
             this._view.webview.postMessage({
                 type: 'setConfig',
-                provider: config.get('provider'),
-                model: config.get('model'),
-                apiKey: config.get('openRouterApiKey'),
-                geminiApiKey: config.get('geminiApiKey'),
-                storagePath: config.get('storagePath'),
-                kongMode: config.get('kongMode') || 'local',
-                proxyPort: config.get('proxyPort'),
-                adminPort: config.get('adminApiPort'),
-                managerPort: config.get('managerGuiPort'),
-                databasePort: config.get('databasePort') || 5432,
-                remoteAdminUrl: config.get('remoteAdminApiUrl'),
-                remoteProxyUrl: config.get('remoteProxyBaseUrl'),
-                remoteManagerUrl: config.get('remoteManagerGuiUrl'),
-                kongWorkspace: config.get('kongWorkspace') || 'default',
-                kongAdminToken: config.get('kongAdminToken'),
-                skipTlsVerify: config.get('skipTlsVerify') === true,
-                gitRemoteUrl: config.get('gitRemoteUrl') || '',
-                autoCommit: config.get('autoCommit') === true,
-                maxDepth: config.get('maxToolDepth') || 10,
-                showThinking: config.get('showThinking') !== false,
+                provider: this.config.get('provider'),
+                model: this.config.get('model'),
+                apiKey: this.config.get('openRouterApiKey'),
+                geminiApiKey: this.config.get('geminiApiKey'),
+                storagePath: this.config.get('storagePath'),
+                kongMode: this.config.get('kongMode') || 'local',
+                proxyPort: this.config.get('proxyPort'),
+                adminPort: this.config.get('adminApiPort'),
+                managerPort: this.config.get('managerGuiPort'),
+                databasePort: this.config.get('databasePort') || 5432,
+                remoteAdminUrl: this.config.get('remoteAdminApiUrl'),
+                remoteProxyUrl: this.config.get('remoteProxyBaseUrl'),
+                remoteManagerUrl: this.config.get('remoteManagerGuiUrl'),
+                kongWorkspace: this.config.get('kongWorkspace') || 'default',
+                kongAdminToken: this.config.get('kongAdminToken'),
+                skipTlsVerify: this.config.get('skipTlsVerify') === true,
+                gitRemoteUrl: this.config.get('gitRemoteUrl') || '',
+                autoCommit: this.config.get('autoCommit') === true,
+                maxDepth: this.config.get('maxToolDepth') || 10,
+                showThinking: this.config.get('showThinking') !== false,
                 models: await this._agent.fetchAvailableModels(),
-                files: await this.dockerManager.listStorageFiles()
+                files: await this.providerManager.listStorageFiles()
             });
         }
     }

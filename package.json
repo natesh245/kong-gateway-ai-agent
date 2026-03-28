@@ -129,8 +129,8 @@
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "tsc -p ./",
-    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
-    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node"
+    "watch": "esbuild src/platforms/vscode/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
+    "build": "esbuild src/platforms/vscode/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node"
   },
   "devDependencies": {
     "@types/node": "18.x",

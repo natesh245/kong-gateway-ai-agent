@@ -1,18 +1,19 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import * as vscode from 'vscode';
 import * as https from 'https';
+import { IConfig } from '../interfaces/ICoreInterfaces';
 
 export class KongApiClient {
+    constructor(private config: IConfig) {}
+
     private getBaseUrl(): string {
-        const config = vscode.workspace.getConfiguration('kongAgent');
-        const mode = config.get<string>('kongMode') || 'local';
-        const workspace = config.get<string>('kongWorkspace') || '';
+        const mode = this.config.get<string>('kongMode') || 'local';
+        const workspace = this.config.get<string>('kongWorkspace') || '';
         
         let url = '';
         if (mode === 'remote') {
-            url = config.get<string>('remoteAdminApiUrl') || 'http://localhost:8001';
+            url = this.config.get<string>('remoteAdminApiUrl') || 'http://localhost:8001';
         } else {
-            const adminPort = config.get<number>('adminApiPort') || 8001;
+            const adminPort = this.config.get<number>('adminApiPort') || 8001;
             url = `http://localhost:${adminPort}`;
         }
 
@@ -25,9 +26,8 @@ export class KongApiClient {
     }
 
     private getRequestConfig(): AxiosRequestConfig {
-        const config = vscode.workspace.getConfiguration('kongAgent');
-        const token = config.get<string>('kongAdminToken');
-        const skipTls = config.get<boolean>('skipTlsVerify') === true;
+        const token = this.config.get<string>('kongAdminToken');
+        const skipTls = this.config.get<boolean>('skipTlsVerify') === true;
 
         const requestConfig: AxiosRequestConfig = {
             headers: {}
