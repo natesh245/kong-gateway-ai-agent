@@ -47,6 +47,7 @@ export class Agent {
                 "**GITOPS SYNC**: If a Git repository is set up, favor 'Commit -> Push -> Sync'. If Auto-Commit is enabled, update Git after a successful sync.\n" +
                 "**EFFICIENCY**: BUNDLE tool calls whenever possible. For the declarative workflow, you SHOULD call 'write_storage_file', 'validate_kong_config', and 'preview_sync_diff' in a SINGLE response turn. Avoid redundant status checks if you just performed one.\n" +
                 "**STRICTLY DECLARATIVE**: You are PROHIBITED from using direct API calls to create Services, Routes, or Consumers. All configuration MUST be managed via 'kong.yml' and synced using the 'sync_to_kong_using_deck' tool. There are no 'Direct API' creation tools available to you.\n" +
+                "**REASONING & THOUGHTS**: You MUST start EVERY response with your internal reasoning wrapped in `<thought>` tags. Explain what you understood, what you plan to do, and why you are choosing certain tools. This block will be moved into a specialized UI and NOT shown directly to the user.\n" +
                 "**NEXT STEPS & SUGGESTIONS**: When you finish a task, ALWAYS provide 2-3 specific 'Next Steps' as a bulleted list. Each item should be a clear, actionable command (e.g., '- Check Kong status'). These will be rendered as clickable items in the UI."
         });
     }
