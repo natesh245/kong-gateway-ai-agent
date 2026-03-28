@@ -342,8 +342,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             padding: 10px 14px; border-radius: 10px; font-size: 12px; line-height: 1.4;
             transition: all 0.2s ease;
         }
-        .message.agent li:hover { border-color: var(--accent); transform: translateX(4px); background: rgba(255, 255, 255, 0.05); }
-        .message.agent li strong { color: var(--accent); }
+        .welcome-message li { cursor: pointer; }
+        .welcome-message li:hover { border-color: var(--accent); transform: translateX(4px); background: rgba(255, 255, 255, 0.05); }
+        .welcome-message li strong { color: var(--accent); }
 
         .message code { background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 4px; font-family: 'Courier New', Courier, monospace; color: #F51A56; }
         .message pre { background: #1e1e1e !important; padding: 12px; border-radius: 10px; overflow-x: auto; border: 1px solid var(--border); margin: 12px 0; }
@@ -691,9 +692,10 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
                 chat.appendChild(e);
             };
 
-            function appendMessage(role, content) {
+            function appendMessage(role, content, className) {
                 const div = document.createElement('div');
                 div.className = 'message ' + role;
+                if (className) div.classList.add(className);
                 
                 // Classify "Thinking" process (tool calls and results)
                 const isThinking = (role === 'toolCall' || role === 'toolResult');
@@ -763,6 +765,18 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
                 }
 
                 chat.appendChild(div);
+
+                if (className === 'welcome-message') {
+                    div.querySelectorAll('li').forEach(li => {
+                        li.onclick = () => {
+                            const boldPart = li.querySelector('strong');
+                            const prompt = boldPart ? boldPart.innerText : li.innerText.split(':')[0];
+                            vscode.postMessage({ type: 'prompt', value: prompt.trim() });
+                            input.focus();
+                        };
+                    });
+                }
+
                 if (typeof hljs !== 'undefined') {
                     div.querySelectorAll('pre code').forEach((b) => { hljs.highlightElement(b); });
                 }
@@ -942,7 +956,7 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
             // Initial Welcome Message
             const welcomeTemplate = document.getElementById('welcome-template');
             if (welcomeTemplate) {
-                appendMessage('agent', welcomeTemplate.innerHTML.trim());
+                appendMessage('agent', welcomeTemplate.innerHTML.trim(), 'welcome-message');
             }
 
             const resetInstBtn = document.getElementById('reset-instance-btn');
