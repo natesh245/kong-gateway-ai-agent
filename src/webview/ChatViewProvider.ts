@@ -110,7 +110,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
                         this.dockerManager.initializeCache();
                         this._setupWatcher();
-                        await this._updateWebviewConfig();
+                        vscode.window.showInformationMessage('Kong Gateway Agent: Configuration saved successfully.');
+                        this._updateWebviewConfig();
                         break;
                     }
                 case 'selectFolder':
@@ -472,6 +473,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             color: white;
         }
 
+        .toast {
+            position: fixed; bottom: 80px; left: 16px; right: 16px;
+            background: rgba(30, 30, 30, 0.95); color: white; padding: 12px 16px;
+            border-radius: 12px; border: 1px solid var(--accent); z-index: 10000;
+            display: none; justify-content: space-between; align-items: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5); animation: slideUp 0.3s ease-out;
+            backdrop-filter: blur(8px); font-size: 11px; font-weight: 500;
+        }
+
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -515,6 +525,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     </style>
 </head>
 <body>
+    <div id="toast" class="toast">
+        <span id="toast-message"></span>
+        <button onclick="this.parentElement.style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:18px;">&times;</button>
+    </div>
     <div class="header">
         <span class="logo">🦍</span>
         <span>Kong Gateway Agent</span>
@@ -628,6 +642,16 @@ What can I do for you today?</div>
             const sendBtn = document.getElementById('send');
             const typing = document.getElementById('typing');
             
+            function showToast(message, duration = 3000) {
+                const toast = document.getElementById('toast');
+                const msg = document.getElementById('toast-message');
+                if (toast && msg) {
+                    msg.innerText = message;
+                    toast.style.display = 'flex';
+                    setTimeout(() => { toast.style.display = 'none'; }, duration);
+                }
+            }
+
             window.onerror = function(m, u, l) {
                 const e = document.createElement('div');
                 e.style.color = 'red'; e.style.fontSize = '10px'; e.style.padding = '10px';
@@ -862,6 +886,12 @@ What can I do for you today?</div>
                     gitRemoteUrl: document.getElementById('git-remote-input').value,
                     autoCommit: document.getElementById('auto-commit-input').checked
                 });
+                // Minimize settings panel
+                const settingsContainer = document.querySelector('.settings-container');
+                if (settingsContainer) {
+                    settingsContainer.open = false;
+                }
+                showToast('✅ Configuration saved successfully!');
                 // Auto-refresh models when saving if provider or key is new
                 const provider = document.getElementById('provider-select').value;
                 const apiKey = (provider === 'openrouter') ? 
