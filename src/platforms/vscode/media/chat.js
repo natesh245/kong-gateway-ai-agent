@@ -209,11 +209,11 @@
                 displayContent = content.replace('[APPROVAL_REQUIRED]', '').trim();
             }
 
-            // Extract <thought> blocks (Global search for any thinking tokens)
-            if (role === 'agent' && session && /<thought>([\s\S]*?)<\/thought>/gi.test(displayContent)) {
+            // Extract <thought> blocks — always strip them regardless of session state
+            if (role === 'agent' && /<thought>([\s\S]*?)<\/thought>/gi.test(displayContent)) {
                 const thoughtMatches = displayContent.matchAll(/<thought>([\s\S]*?)<\/thought>/gi);
-                const stepsContainer = session.stepsRef || session.querySelector('.thinking-steps');
-                
+                const stepsContainer = currentSession ? (currentSession.stepsRef || currentSession.querySelector('.thinking-steps')) : null;
+
                 for (const match of thoughtMatches) {
                     if (stepsContainer) {
                         const placeholder = stepsContainer.querySelector('.step-placeholder');
@@ -230,6 +230,7 @@
                         stepsContainer.appendChild(thoughtDiv);
                     }
                 }
+                // Always remove the thought tags from the visible bubble content
                 displayContent = displayContent.replace(/<thought>([\s\S]*?)<\/thought>/gi, '').trim();
             }
             // If no content is left after extracting thoughts and no approval is required, skip bubble creation

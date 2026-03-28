@@ -47,7 +47,12 @@ export class Agent {
                 "**GITOPS SYNC**: If a Git repository is set up, favor 'Commit -> Push -> Sync'. If Auto-Commit is enabled, update Git after a successful sync.\n" +
                 "**EFFICIENCY**: BUNDLE tool calls whenever possible. For the declarative workflow, you SHOULD call 'write_storage_file', 'validate_kong_config', and 'preview_sync_diff' in a SINGLE response turn. Avoid redundant status checks if you just performed one.\n" +
                 "**STRICTLY DECLARATIVE**: You are PROHIBITED from using direct API calls to create Services, Routes, or Consumers. All configuration MUST be managed via 'kong.yml' and synced using the 'sync_to_kong_using_deck' tool. There are no 'Direct API' creation tools available to you.\n" +
-                "**REASONING & THOUGHTS**: You MUST think before you act. Start EVERY response turn with your internal reasoning wrapped in `<thought>` tags. Explain what you understood from the user's prompt, what your strategy is, and why you are choosing specific tools. If you are about to call tools, explain each tool's purpose in your thinking. This reasoning BLOCK is mandatory even if you are only calling tools. It will be moved into a specialized UI and NOT shown directly to the user.\n" +
+                "**CRITICAL OUTPUT FORMAT — READ CAREFULLY**: Every single response you generate MUST follow this exact two-part structure:\n" +
+                "PART 1 — HIDDEN REASONING: Wrap ALL internal thinking, planning, analysis, and tool selection rationale inside `<thought>` tags. This block is COMPLETELY HIDDEN from the user and displayed in a separate developer panel.\n" +
+                "PART 2 — USER RESPONSE: Write the user-facing message ONLY after the closing `</thought>` tag. This is the ONLY part the user sees.\n" +
+                "⚠️ WARNING: Any text you write OUTSIDE of `<thought>` tags (before the closing `</thought>`) will appear DIRECTLY in the user's chat as raw, ugly, confusing text. NEVER write planning notes, tooling rationale, or strategy analysis as plain text. ALWAYS put it inside `<thought>` tags.\n" +
+                "MANDATORY FORMAT TEMPLATE:\n" +
+                "<thought>\n[Your full reasoning here: what the user wants, what tools to use, why, and what to check]\n</thought>\n[Your clean, user-facing markdown response here]\n" +
                 "**NEXT STEPS & SUGGESTIONS**: When you finish a task, ALWAYS provide 2-3 specific 'Next Steps' as a bulleted list. Each item should be a clear, actionable command (e.g., '- Check Kong status'). These will be rendered as clickable items in the UI."
         });
     }
@@ -468,13 +473,32 @@ export class Agent {
         this.messages.push(responseMessage);
 
         if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-            // Emitting internal thoughts if they exist alongside tool calls
+            // If the model provided reasoning alongside tool calls, use it
             if (responseMessage.content) {
                 onUpdate(responseMessage.content as string, 'thought');
             } else {
-                // Fallback for models that don't provide content with tool calls (like GPT-4o)
-                const toolNames = responseMessage.tool_calls.map(tc => tc.function.name).join(', ');
-                onUpdate(`<thought>I analyzed your request and determined that the following actions are needed: ${toolNames}.</thought>`, 'thought');
+                // Reasoning pass: ask the model to explain what it's about to do
+                // before executing the tools. This guarantees real reasoning in the UI.
+                try {
+                    const toolNames = responseMessage.tool_calls.map(tc => tc.function.name).join(', ');
+                    const reasoningResponse = await this.openai.chat.completions.create({
+                        model: model,
+                        messages: [
+                            ...this.messages.slice(0, -1), // all messages except the tool_calls response
+                            {
+                                role: "user",
+                                content: `Before you call the tools [${toolNames}], briefly explain in 1-2 sentences WHY you are calling these specific tools and what outcome you expect. Be specific to this request.`
+                            }
+                        ],
+                        // No tools — we only want a text reasoning response
+                    });
+                    const reasoningContent = reasoningResponse.choices[0]?.message?.content;
+                    if (reasoningContent) {
+                        onUpdate(`<thought>${reasoningContent}</thought>`, 'thought');
+                    }
+                } catch (e) {
+                    // Reasoning pass failed — just proceed silently
+                }
             }
 
             let shouldStopTurn = false;
@@ -677,17 +701,31 @@ export class Agent {
             }
         } else if (responseMessage.content) {
             onUpdate("", 'toolStatus'); // Clear status
-            
+
             let content = responseMessage.content as string;
-            const thoughtMatch = content.match(/<thought>([\s\S]*?)<\/thought>/);
-            
-            if (thoughtMatch) {
-                // Send the thought part first
-                onUpdate(thoughtMatch[0], 'thought');
-                // Remove the thought part from the final bubble content
-                content = content.replace(/<thought>([\s\S]*?)<\/thought>/, "").trim();
+
+            // Strategy 1: Explicit <thought> tags (for models that follow the format)
+            const thoughtTagMatch = content.match(/<thought>([\s\S]*?)<\/thought>/i);
+            if (thoughtTagMatch) {
+                onUpdate(thoughtTagMatch[0], 'thought');
+                content = content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+            } else {
+                // Strategy 2: Heuristic boundary detection for models that output
+                // reasoning as plain prose before the formatted markdown answer.
+                // Find the first line that looks like structured markdown output:
+                // a heading (#), bold opener (**), code fence (```), horizontal rule (---), or a bullet (- )
+                const mdBoundary = content.search(/\n(?=#{1,6} |\*\*|```|---|> |- [A-Z*])/);
+
+                if (mdBoundary > 80) {
+                    // There's a meaningful block of prose before the markdown — treat it as reasoning
+                    const reasoningPart = content.substring(0, mdBoundary).trim();
+                    content = content.substring(mdBoundary).trim();
+                    if (reasoningPart) {
+                        onUpdate(`<thought>${reasoningPart}</thought>`, 'thought');
+                    }
+                }
             }
-            
+
             if (content) {
                 onUpdate(content);
             }
