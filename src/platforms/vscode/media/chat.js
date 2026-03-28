@@ -23,82 +23,244 @@
         chat.appendChild(e);
     };
 
+    let currentSession = null;
+    let sessionStartTime = null;
+
+    function startThinkingSession() {
+        if (currentSession) return currentSession;
+        
+        sessionStartTime = Date.now();
+        const container = document.createElement('div');
+        container.className = 'thinking-session forced-visible';
+        
+        const details = document.createElement('details');
+        details.className = 'thinking-details';
+        details.open = true;
+        
+        const summary = document.createElement('summary');
+        summary.className = 'thinking-summary';
+        
+        const icon = document.createElement('div');
+        icon.className = 'status-icon';
+        
+        const info = document.createElement('div');
+        info.className = 'session-info';
+        
+        const label = document.createElement('span');
+        label.className = 'session-label';
+        label.innerText = 'Agent Thinking...';
+        
+        const counter = document.createElement('span');
+        counter.className = 'tool-count';
+        counter.innerText = '[Tools: 0]';
+        
+        info.appendChild(label);
+        info.appendChild(counter);
+        
+        const timer = document.createElement('span');
+        timer.className = 'thought-timer';
+        timer.innerText = '0.0s';
+        
+        summary.appendChild(icon);
+        summary.appendChild(info);
+        summary.appendChild(timer);
+        
+        const steps = document.createElement('div');
+        steps.className = 'thinking-steps';
+        
+        const placeholder = document.createElement('div');
+        placeholder.className = 'step-placeholder';
+        placeholder.innerText = '🔬 Diagnostic: Data-link initialized. Waiting for reasoning...';
+        steps.appendChild(placeholder);
+        
+        details.appendChild(summary);
+        details.appendChild(steps);
+        container.appendChild(details);
+        
+        chat.appendChild(container);
+        
+        // Hard-wire the references
+        currentSession = container;
+        currentSession.stepsRef = steps;
+        currentSession.countRef = counter;
+        currentSession.toolCount = 0;
+        
+        chat.scrollTop = chat.scrollHeight;
+
+        // Start timer and heartbeat
+        const timerEl = timer;
+        const labelEl = label;
+        const timerInterval = setInterval(() => {
+            if (!currentSession || currentSession !== container || currentSession.classList.contains('complete')) {
+                clearInterval(timerInterval);
+                return;
+            }
+            const elapsed = ((Date.now() - sessionStartTime) / 1000).toFixed(1);
+            timerEl.innerText = elapsed + 's';
+            const dots = '.'.repeat(Math.floor(Date.now() / 500) % 4);
+            labelEl.innerText = 'Agent Thinking' + dots;
+        }, 100);
+
+        return currentSession;
+    }
+
+    function stopThinkingSession() {
+        if (!currentSession) return;
+        
+        const elapsed = ((Date.now() - sessionStartTime) / 1000).toFixed(1);
+        const sessionToClose = currentSession;
+        
+        sessionToClose.classList.add('complete');
+        sessionToClose.querySelector('.session-label').innerText = 'Thought for ' + elapsed + 's';
+        sessionToClose.querySelector('.thought-timer').innerText = elapsed + 's';
+        
+        // Explicitly clear placeholder one last time if it's still there
+        const placeholder = sessionToClose.stepsRef?.querySelector('.step-placeholder');
+        if (placeholder) placeholder.remove();
+        
+        // Auto-collapse logic
+        setTimeout(() => {
+            const details = sessionToClose.querySelector('details');
+            if (details) details.open = false;
+        }, 3000);
+        
+        currentSession = null;
+        sessionStartTime = null;
+    }
+
     function appendMessage(role, content, className) {
-        const div = document.createElement('div');
-        div.className = 'message ' + role;
-        if (className) div.classList.add(className);
-        
-        // Classify "Thinking" process (tool calls and results)
+        // TRACE LOG
+        vscode.postMessage({ type: 'log', message: `Incoming message: ${role}` });
+
         const isThinking = (role === 'toolCall' || role === 'toolResult');
-        if (isThinking) {
-            div.classList.add('thinking');
-            const showThinking = document.getElementById('show-thinking-toggle').checked;
-            if (!showThinking) div.classList.add('hidden-thinking');
-        }
 
-        // Highlight Errors
-        if (content && (content.toLowerCase().startsWith('error') || content.toLowerCase().includes('failed:'))) {
-            div.classList.add('error-message');
-        }
-        
-        if (content.includes('```diff') || content.includes('```yaml')) {
-            const type = content.includes('```diff') ? 'diff' : 'yaml';
-            const parts = content.split('```' + type);
-            const textBefore = (typeof marked !== 'undefined') ? marked.parse(parts[0]) : parts[0];
-            const rest = parts[1].split('```');
-            
-            let highlightedLines = rest[0].split('\n').map(line => {
-                const trimmed = line.trim();
-                if (line.startsWith('+') || line.startsWith('  +') || trimmed.startsWith('creating')) return '<span class="diff-added">' + line + '</span>';
-                if (line.startsWith('-') || line.startsWith('  -') || trimmed.startsWith('deleting')) return '<span class="diff-removed">' + line + '</span>';
-                return line;
-            }).join('\n');
-            
-            const textAfter = (rest[1] && typeof marked !== 'undefined') ? marked.parse(rest[1]) : (rest[1] || "");
-            div.innerHTML = textBefore + '<pre><code class="language-' + type + '">' + highlightedLines + '</code></pre>' + textAfter;
-        } else if (role === 'toolCall' || role === 'toolResult') {
+        if (role === 'user') {
+            stopThinkingSession();
+            const div = document.createElement('div');
+            div.className = 'message user';
             div.innerText = content;
-        } else {
-            let processedContent = content;
-            let hasApproval = false;
-            
-            if (content.includes('[APPROVAL_REQUIRED]')) {
-                hasApproval = true;
-                processedContent = content.replace('[APPROVAL_REQUIRED]', '').trim();
-            }
-            
-            div.innerHTML = (typeof marked !== 'undefined') ? marked.parse(processedContent) : processedContent;
-            
-            if (hasApproval) {
-                const approvalDiv = document.createElement('div');
-                approvalDiv.className = 'approval-container';
-                
-                const yesBtn = document.createElement('button');
-                yesBtn.className = 'approval-btn yes';
-                yesBtn.innerText = '✅ Yes, Proceed';
-                yesBtn.onclick = () => {
-                    vscode.postMessage({ type: 'prompt', value: 'Yes' });
-                    approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
-                };
-                
-                const noBtn = document.createElement('button');
-                noBtn.className = 'approval-btn no';
-                noBtn.innerText = '❌ No, Cancel';
-                noBtn.onclick = () => {
-                    vscode.postMessage({ type: 'prompt', value: 'No, cancel this change.' });
-                    approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
-                };
-                
-                approvalDiv.appendChild(yesBtn);
-                approvalDiv.appendChild(noBtn);
-                div.appendChild(approvalDiv);
-            }
+            chat.appendChild(div);
+            startThinkingSession(); 
+            return;
         }
 
-        chat.appendChild(div);
+        let messageEl = null;
 
-        if (role === 'agent' || className === 'welcome-message') {
-            div.querySelectorAll('li').forEach(li => {
+        if (isThinking) {
+            const session = startThinkingSession();
+            const stepsContainer = session.stepsRef || session.querySelector('.thinking-steps');
+            
+            // NUCLEAR FLUSH: Wipe placeholder on the very first tool call of this session
+            if (session.toolCount === 0 && stepsContainer) {
+                stepsContainer.innerHTML = ''; 
+            }
+
+            // Update counter
+            if (role === 'toolCall' && session.countRef) {
+                session.toolCount++;
+                session.countRef.innerText = `[Tools: ${session.toolCount}]`;
+            }
+
+            const div = document.createElement('div');
+            div.className = 'message ' + role;
+            
+            const header = document.createElement('div');
+            header.className = 'tool-header';
+            header.style.color = role === 'toolCall' ? '#f51a56' : '#4ec9b0';
+            header.style.fontWeight = 'bold';
+            header.style.fontSize = '11px';
+            
+            if (role === 'toolCall') {
+                const toolName = content.split('(')[0] || 'Tool';
+                header.innerText = `⚒️ Calling ${toolName}... [LOGGING]`;
+            } else {
+                header.innerText = `✅ Result Received [LOGGING]`;
+            }
+            
+            const payload = document.createElement('div');
+            payload.className = 'thinking-payload';
+            payload.style.marginTop = '4px';
+            payload.style.fontSize = '10px';
+            payload.style.opacity = '0.8';
+            payload.style.fontFamily = 'monospace';
+            payload.style.whiteSpace = 'pre-wrap';
+            payload.textContent = content; // SAFE INJECTION
+            
+            div.appendChild(header);
+            div.appendChild(payload);
+            stepsContainer.appendChild(div);
+            
+            messageEl = div;
+            chat.scrollTop = chat.scrollHeight;
+        } else {
+            stopThinkingSession(); // Close thinking session before showing final answer
+            
+            const div = document.createElement('div');
+            div.className = 'message ' + role;
+            if (className) div.classList.add(className);
+
+            // Highlight Errors
+            if (content && (content.toLowerCase().startsWith('error') || content.toLowerCase().includes('failed:'))) {
+                div.classList.add('error-message');
+            }
+            
+            if (content.includes('```diff') || content.includes('```yaml')) {
+                const type = content.includes('```diff') ? 'diff' : 'yaml';
+                const parts = content.split('```' + type);
+                const textBefore = (typeof marked !== 'undefined') ? marked.parse(parts[0]) : parts[0];
+                const rest = parts[1].split('```');
+                
+                let highlightedLines = rest[0].split('\n').map(line => {
+                    const trimmed = line.trim();
+                    if (line.startsWith('+') || line.startsWith('  +') || trimmed.startsWith('creating')) return '<span class="diff-added">' + line + '</span>';
+                    if (line.startsWith('-') || line.startsWith('  -') || trimmed.startsWith('deleting')) return '<span class="diff-removed">' + line + '</span>';
+                    return line;
+                }).join('\n');
+                
+                const textAfter = (rest[1] && typeof marked !== 'undefined') ? marked.parse(rest[1]) : (rest[1] || "");
+                div.innerHTML = textBefore + '<pre><code class="language-' + type + '">' + highlightedLines + '</code></pre>' + textAfter;
+            } else {
+                let processedContent = content;
+                let hasApproval = false;
+                
+                if (content.includes('[APPROVAL_REQUIRED]')) {
+                    hasApproval = true;
+                    processedContent = content.replace('[APPROVAL_REQUIRED]', '').trim();
+                }
+                
+                div.innerHTML = (typeof marked !== 'undefined') ? marked.parse(processedContent) : processedContent;
+                
+                if (hasApproval) {
+                    const approvalDiv = document.createElement('div');
+                    approvalDiv.className = 'approval-container';
+                    
+                    const yesBtn = document.createElement('button');
+                    yesBtn.className = 'approval-btn yes';
+                    yesBtn.innerText = '✅ Yes, Proceed';
+                    yesBtn.onclick = () => {
+                        vscode.postMessage({ type: 'prompt', value: 'Yes' });
+                        approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+                    };
+                    
+                    const noBtn = document.createElement('button');
+                    noBtn.className = 'approval-btn no';
+                    noBtn.innerText = '❌ No, Cancel';
+                    noBtn.onclick = () => {
+                        vscode.postMessage({ type: 'prompt', value: 'No, cancel this change.' });
+                        approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+                    };
+                    
+                    approvalDiv.appendChild(yesBtn);
+                    approvalDiv.appendChild(noBtn);
+                    div.appendChild(approvalDiv);
+                }
+            }
+            chat.appendChild(div);
+            messageEl = div;
+        }
+
+        if (messageEl && (role === 'agent' || className === 'welcome-message')) {
+            messageEl.querySelectorAll('li').forEach(li => {
                 li.onclick = () => {
                     const boldPart = li.querySelector('strong');
                     const prompt = boldPart ? boldPart.innerText : li.innerText.split(':')[0];
@@ -108,8 +270,8 @@
             });
         }
 
-        if (typeof hljs !== 'undefined') {
-            div.querySelectorAll('pre code').forEach((b) => { hljs.highlightElement(b); });
+        if (messageEl && typeof hljs !== 'undefined') {
+            messageEl.querySelectorAll('pre code').forEach((b) => { hljs.highlightElement(b); });
         }
         chat.scrollTop = chat.scrollHeight;
     }
@@ -118,6 +280,7 @@
         if (status) {
             statusText.innerText = status;
             typing.style.display = 'block';
+            startThinkingSession(); // Ensure session is visible when activity starts
         } else {
             typing.style.display = 'none';
             statusText.innerText = 'Agent is processing...';
@@ -129,7 +292,7 @@
     if (thinkingToggle) {
         thinkingToggle.onchange = (e) => {
             const show = e.target.checked;
-            document.querySelectorAll('.thinking').forEach(el => {
+            document.querySelectorAll('.thinking-session').forEach(el => {
                 el.classList.toggle('hidden-thinking', !show);
             });
             // Save to config via extension post message
@@ -370,7 +533,7 @@
             
             const showThinking = m.showThinking !== false;
             document.getElementById('show-thinking-toggle').checked = showThinking;
-            document.querySelectorAll('.thinking').forEach(el => {
+            document.querySelectorAll('.thinking-session').forEach(el => {
                 el.classList.toggle('hidden-thinking', !showThinking);
             });
             

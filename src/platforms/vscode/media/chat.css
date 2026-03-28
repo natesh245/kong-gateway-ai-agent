@@ -40,23 +40,168 @@ body {
     border-bottom-left-radius: 4px; border-left: 3px solid var(--accent);
 }
 
-.message.toolCall {
-    align-self: flex-start; background: rgba(0,0,0,0.2); border: 1px dashed var(--border);
-    font-size: 11px; color: #888; font-family: 'Courier New', Courier, monospace; 
-    padding: 8px 12px; border-radius: 8px; margin-left: 20px;
+.tool-toggle { cursor: pointer; color: #2E86AB; font-size: 10px; margin-top: 4px; text-decoration: underline; margin-left: 24px; font-weight: 500; }
+
+/* FORCED VISIBILITY Thinking Session */
+.thinking-session.forced-visible {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    margin: 12px;
+    background: #000000 !important; /* Pure Black Background */
+    border: 3px solid #f51a56 !important; /* Thick Pink Border */
+    border-radius: 8px;
+    box-shadow: 0 0 30px rgba(245, 26, 86, 0.4);
+    position: relative;
+    z-index: 9999 !important; /* Highest possible z-index */
 }
-.message.toolCall::before {
-    content: ''; position: absolute; left: -14px; top: 18px; width: 8px; height: 8px;
-    background: var(--accent); border-radius: 50%; box-shadow: 0 0 10px var(--accent);
+
+.thinking-details {
+    width: 100%;
+}
+
+.thinking-summary {
+    list-style: none;
+    padding: 14px;
+    cursor: pointer !important;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #ffffff !important;
+    background: #222 !important;
+    border-bottom: 2px solid #f51a56;
+}
+
+.session-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tool-count {
+    color: #4ec9b0;
+    font-family: monospace;
+    font-size: 10px;
+}
+
+
+.thinking-summary::-webkit-details-marker {
+    display: none;
+}
+
+.thinking-session .status-icon {
+    width: 12px;
+    height: 12px;
+    background: #f51a56;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #f51a56;
+}
+
+.thinking-session.complete .status-icon {
+    background: #4ec9b0;
+    box-shadow: 0 0 10px #4ec9b0;
+}
+
+.thinking-session.complete {
+    border-color: #4ec9b0 !important;
+    box-shadow: 0 0 20px rgba(78, 201, 176, 0.2);
+}
+
+.thinking-session.complete .session-label {
+    color: #4ec9b0 !important;
+}
+
+.thinking-session.complete .thought-timer {
+    color: #4ec9b0;
+}
+
+.thinking-session .thought-timer {
+    margin-left: auto;
+    font-size: 11px;
+    font-family: monospace;
+    font-weight: bold;
+    color: #f51a56;
+}
+
+.thinking-steps {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: #111;
+    max-height: 400px; /* Allow scrolling within the session if it's very long */
+    overflow-y: auto;
+}
+
+.tool-header {
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+
+.thinking-payload {
+    font-family: monospace;
+    font-size: 10px;
+    color: #eee !important;
+    white-space: pre-wrap !important;
+    word-break: break-all;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+}
+
+
+.step-placeholder {
+    font-family: monospace;
+    font-size: 11px;
+    color: #f51a56;
+    background: rgba(245, 26, 86, 0.1);
+    padding: 8px;
+    border-radius: 4px;
+}
+
+/* Tool Call Styles */
+.message.toolCall {
+    background: #1a1a1a;
+    border: 1px dashed #f51a56;
+    font-size: 11px;
+    color: #eee;
+    font-family: monospace;
+    padding: 10px;
 }
 
 .message.toolResult {
-    align-self: flex-start; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
-    font-size: 10px; color: #777; font-family: 'Courier New', Courier, monospace;
-    margin-top: -10px; margin-left: 20px; max-width: 85%; display: none; padding: 10px; border-radius: 8px;
+    background: #111;
+    border: 1px solid #444;
+    font-size: 10px;
+    color: #888;
+    font-family: monospace;
+    padding: 10px;
 }
 
-.tool-toggle { cursor: pointer; color: #2E86AB; font-size: 10px; margin-top: 4px; text-decoration: underline; margin-left: 24px; font-weight: 500; }
+.thinking-payload {
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: var(--vscode-editor-font-family, monospace);
+    opacity: 0.9;
+}
+
+@keyframes thought-pulse {
+    from { opacity: 0.4; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1.1); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 
 .message h1, .message h2, .message h3 { margin-top: 5px; color: #eee; }
 .message.agent h1 { font-size: 18px; margin-bottom: 12px; color: var(--accent); }
@@ -247,9 +392,9 @@ th { background: rgba(255,255,255,0.05); }
 
 /* Thinking & Error Styles */
 .thinking { 
-    font-size: 11px; color: #888; background: rgba(255,255,255,0.02); 
-    border-left: 2px dashed #444; padding: 6px 12px; margin: 4px 16px; border-radius: 4px; 
+    display: contents;
 }
+
 .error-message { 
     background: rgba(244, 71, 71, 0.1) !important; color: #f44747 !important; 
     border: 1px solid rgba(244, 71, 71, 0.3) !important; padding: 12px !important; border-radius: 8px !important;
