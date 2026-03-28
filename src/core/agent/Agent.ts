@@ -35,14 +35,15 @@ export class Agent {
                 "1. Write: 'write_storage_file' → save YAML to config file (skip if user asks for Review of existing file).\n" +
                 "2. Validate: 'validate_kong_config' — always. Show failures; don't auto-fix unless asked.\n" +
                 "3. Diff: 'preview_sync_diff' — wrap output in ```diff blocks.\n" +
-                "4. Ask: summarise diff + '[APPROVAL_REQUIRED]'.\n" +
-                "5. Sync: 'sync_to_kong_using_deck' ONLY after explicit 'Yes'. Never in the same turn as steps 1-3.\n" +
+                "4. Ask: Before calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file', ALWAYS include the FULL diff output in the approval message before adding '[APPROVAL_REQUIRED]'. The user must see the exact changes before approving.\n" +
+                "5. Sync: 'sync_to_kong_using_deck' ONLY after the user has seen the diff in step 4 and said 'Yes'. NEVER call sync without first calling 'preview_sync_diff' in the same workflow — skipping the diff is PROHIBITED regardless of what the user says.\n" +
                 "REVIEWS: Read file first (read_storage_file), then Validate + Diff. Do not sync during a review.\n" +
                 "CANCEL: If user says No/Cancel, stop. Never use 'reset_kong_instance' to revert a config change.\n" +
 
                 // ── Safety & Permissions ────────────────────────────────────────────────────
                 "SAFETY: 'sync_to_kong_using_deck' and 'reset_kong_instance' both have code-level safety blocks requiring recent 'Yes'. If you see 'SAFETY_REQUIRED', stop and ask. Always append '[APPROVAL_REQUIRED]' before expecting Yes/No.\n" +
-                "EXPORT: 'export_live_to_storage_file' is for manual backups only — not part of sync or review flow.\n" +
+                "APPROVAL REQUIRED: You are PROHIBITED from calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file' without explicit user approval. Always show the diff first, then ask with '[APPROVAL_REQUIRED]' and wait for 'Yes' before calling either tool.\n" +
+                "EXPORT: 'export_live_to_storage_file' requires user approval (same as sync). It is for manual backups only — not part of the automatic sync or review flow.\n" +
                 "GITOPS: If Git is configured, prefer Commit → Push → Sync. Auto-commit after a successful sync if enabled.\n" +
 
                 // ── Efficiency ──────────────────────────────────────────────────────────────
