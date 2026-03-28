@@ -250,13 +250,15 @@ export class DeckTool {
         let command = `deck gateway diff "${filePath}" ${args.join(' ')}`;
         try {
           const { stdout, stderr } = await execAsync(command);
-          return stdout || stderr || "No differences found. Configuration is in sync.";
+          const rawResult = stdout || stderr;
+          return rawResult || "✅ No differences found — local config matches live Kong. Nothing to sync.";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             command = `deck diff -s "${filePath}" ${args.join(' ')}`;
             const { stdout, stderr } = await execAsync(command);
-            return stdout || stderr || "No differences found (fallback diff).";
+            const rawFallback = stdout || stderr;
+            return rawFallback || "✅ No differences found — local config matches live Kong. Nothing to sync.";
           }
           if (e.stdout || e.stderr) {
             return e.stdout + e.stderr;
@@ -269,13 +271,15 @@ export class DeckTool {
         const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway diff "${dockerFilePath}" ${args.join(' ')}`;
         try {
           const { stdout, stderr } = await execAsync(dockerCommand);
-          return stdout || stderr || "No differences found (Dockerized decK).";
+          const raw = stdout || stderr;
+          return raw || "✅ No differences found — local config matches live Kong. Nothing to sync.";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck diff -s "${dockerFilePath}" ${args.join(' ')}`;
             const { stdout, stderr } = await execAsync(fallbackDocker);
-            return stdout || stderr || "No differences found (Dockerized fallback).";
+            const rawDockerFallback = stdout || stderr;
+            return rawDockerFallback || "✅ No differences found — local config matches live Kong. Nothing to sync.";
           }
           if (e.stdout || e.stderr) {
             return e.stdout + e.stderr;

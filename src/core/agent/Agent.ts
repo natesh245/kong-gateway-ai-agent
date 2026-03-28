@@ -34,7 +34,7 @@ export class Agent {
                 "DECLARATIVE WORKFLOW (Services, Routes, Consumers):\n" +
                 "1. Write: 'write_storage_file' → save YAML to config file (skip if user asks for Review of existing file).\n" +
                 "2. Validate: 'validate_kong_config' — always. Show failures; don't auto-fix unless asked.\n" +
-                "3. Diff: 'preview_sync_diff' — wrap output in ```diff blocks.\n" +
+                "3. Diff: call 'preview_sync_diff' and show its FULL raw output verbatim inside a ```diff code block. NEVER summarise, paraphrase, or reformat the diff. If the tool returns a no-differences message, show that message exactly as returned.\n" +
                 "4. Ask: Before calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file', ALWAYS include the FULL diff output in the approval message before adding '[APPROVAL_REQUIRED]'. The user must see the exact changes before approving.\n" +
                 "5. Sync: 'sync_to_kong_using_deck' ONLY after the user has seen the diff in step 4 and said 'Yes'. NEVER call sync without first calling 'preview_sync_diff' in the same workflow — skipping the diff is PROHIBITED regardless of what the user says.\n" +
                 "REVIEWS: Read file first (read_storage_file), then Validate + Diff. Do not sync during a review.\n" +
