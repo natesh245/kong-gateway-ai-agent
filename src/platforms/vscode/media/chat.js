@@ -48,11 +48,11 @@
         
         const label = document.createElement('span');
         label.className = 'session-label';
-        label.innerText = 'Agent Thinking...';
+        label.innerText = '🧠 Analyzing request...';
         
         const counter = document.createElement('span');
         counter.className = 'tool-count';
-        counter.innerText = '[Tools: 0]';
+        counter.innerText = ''; // Start empty
         
         info.appendChild(label);
         info.appendChild(counter);
@@ -70,7 +70,7 @@
         
         const placeholder = document.createElement('div');
         placeholder.className = 'step-placeholder';
-        placeholder.innerText = '🔬 Diagnostic: Data-link initialized. Waiting for reasoning...';
+        placeholder.innerText = '🧠 Thinking about your request...';
         steps.appendChild(placeholder);
         
         details.appendChild(summary);
@@ -98,7 +98,7 @@
             const elapsed = ((Date.now() - sessionStartTime) / 1000).toFixed(1);
             timerEl.innerText = elapsed + 's';
             const dots = '.'.repeat(Math.floor(Date.now() / 500) % 4);
-            labelEl.innerText = 'Agent Thinking' + dots;
+            labelEl.innerText = '🧠 Analyzing' + dots;
         }, 100);
 
         return currentSession;
@@ -110,13 +110,15 @@
         const elapsed = ((Date.now() - sessionStartTime) / 1000).toFixed(1);
         const sessionToClose = currentSession;
         
+        // Always keep the session box now, as requested.
         sessionToClose.classList.add('complete');
-        sessionToClose.querySelector('.session-label').innerText = 'Thought for ' + elapsed + 's';
+        sessionToClose.querySelector('.session-label').innerText = '🧠 Analysed in ' + elapsed + 's';
         sessionToClose.querySelector('.thought-timer').innerText = elapsed + 's';
         
-        // Explicitly clear placeholder one last time if it's still there
+        // Nuclear cleanup of placeholders
         const placeholder = sessionToClose.stepsRef?.querySelector('.step-placeholder');
-        if (placeholder) placeholder.remove();
+        if (placeholder && sessionToClose.toolCount > 0) placeholder.remove();
+        else if (placeholder) placeholder.innerText = '🧠 Reasoning complete.';
         
         // Auto-collapse logic
         setTimeout(() => {
@@ -129,9 +131,6 @@
     }
 
     function appendMessage(role, content, className) {
-        // TRACE LOG
-        vscode.postMessage({ type: 'log', message: `Incoming message: ${role}` });
-
         const isThinking = (role === 'toolCall' || role === 'toolResult');
 
         if (role === 'user') {
@@ -140,6 +139,8 @@
             div.className = 'message user';
             div.innerText = content;
             chat.appendChild(div);
+            
+            // Proactive Thinking Start
             startThinkingSession(); 
             return;
         }
@@ -150,12 +151,12 @@
             const session = startThinkingSession();
             const stepsContainer = session.stepsRef || session.querySelector('.thinking-steps');
             
-            // NUCLEAR FLUSH: Wipe placeholder on the very first tool call of this session
+            // Remove placeholder on first tool arrival
             if (session.toolCount === 0 && stepsContainer) {
                 stepsContainer.innerHTML = ''; 
             }
 
-            // Update counter
+            // Update tool counter
             if (role === 'toolCall' && session.countRef) {
                 session.toolCount++;
                 session.countRef.innerText = `[Tools: ${session.toolCount}]`;
@@ -169,44 +170,65 @@
             header.style.color = role === 'toolCall' ? '#f51a56' : '#4ec9b0';
             header.style.fontWeight = 'bold';
             header.style.fontSize = '11px';
-            
-            if (role === 'toolCall') {
-                const toolName = content.split('(')[0] || 'Tool';
-                header.innerText = `⚒️ Calling ${toolName}... [LOGGING]`;
-            } else {
-                header.innerText = `✅ Result Received [LOGGING]`;
-            }
+            header.innerText = role === 'toolCall' ? `⚒️ Executing tool...` : `✅ Result received`;
             
             const payload = document.createElement('div');
             payload.className = 'thinking-payload';
-            payload.style.marginTop = '4px';
-            payload.style.fontSize = '10px';
-            payload.style.opacity = '0.8';
-            payload.style.fontFamily = 'monospace';
-            payload.style.whiteSpace = 'pre-wrap';
-            payload.textContent = content; // SAFE INJECTION
+            payload.textContent = content; 
             
             div.appendChild(header);
             div.appendChild(payload);
             stepsContainer.appendChild(div);
             
             messageEl = div;
-            chat.scrollTop = chat.scrollHeight;
         } else {
-            stopThinkingSession(); // Close thinking session before showing final answer
+            const session = currentSession;
+            let displayContent = content;
+            let hasApproval = false;
+
+            // Extract Approval Requirement
+            if (content.includes('[APPROVAL_REQUIRED]')) {
+                hasApproval = true;
+                displayContent = content.replace('[APPROVAL_REQUIRED]', '').trim();
+            }
+
+            // Extract <thought> blocks
+            if (role === 'agent' && session && displayContent.includes('<thought>')) {
+                const thoughtMatch = displayContent.match(/<thought>([\s\S]*?)<\/thought>/);
+                if (thoughtMatch) {
+                    const stepsContainer = session.stepsRef || session.querySelector('.thinking-steps');
+                    if (stepsContainer) {
+                        if (session.toolCount === 0) stepsContainer.innerHTML = '';
+                        const thoughtDiv = document.createElement('div');
+                        thoughtDiv.className = 'thought-block';
+                        thoughtDiv.style.borderLeft = '2px solid #f51a56';
+                        thoughtDiv.style.paddingLeft = '10px';
+                        thoughtDiv.style.marginBottom = '12px';
+                        thoughtDiv.style.fontSize = '11px';
+                        thoughtDiv.style.fontStyle = 'italic';
+                        thoughtDiv.style.color = '#ccc';
+                        thoughtDiv.innerText = thoughtMatch[1].trim();
+                        stepsContainer.appendChild(thoughtDiv);
+                    }
+                    displayContent = displayContent.replace(/<thought>([\s\S]*?)<\/thought>/, '').trim();
+                }
+            }
+
+            stopThinkingSession(); 
             
             const div = document.createElement('div');
             div.className = 'message ' + role;
             if (className) div.classList.add(className);
 
-            // Highlight Errors
-            if (content && (content.toLowerCase().startsWith('error') || content.toLowerCase().includes('failed:'))) {
+            // Error Styling
+            if (displayContent && (displayContent.toLowerCase().startsWith('error') || displayContent.toLowerCase().includes('failed:'))) {
                 div.classList.add('error-message');
             }
             
-            if (content.includes('```diff') || content.includes('```yaml')) {
-                const type = content.includes('```diff') ? 'diff' : 'yaml';
-                const parts = content.split('```' + type);
+            // Handle Diff/YAML Highlighting
+            if (displayContent.includes('```diff') || displayContent.includes('```yaml')) {
+                const type = displayContent.includes('```diff') ? 'diff' : 'yaml';
+                const parts = displayContent.split('```' + type);
                 const textBefore = (typeof marked !== 'undefined') ? marked.parse(parts[0]) : parts[0];
                 const rest = parts[1].split('```');
                 
@@ -220,59 +242,56 @@
                 const textAfter = (rest[1] && typeof marked !== 'undefined') ? marked.parse(rest[1]) : (rest[1] || "");
                 div.innerHTML = textBefore + '<pre><code class="language-' + type + '">' + highlightedLines + '</code></pre>' + textAfter;
             } else {
-                let processedContent = content;
-                let hasApproval = false;
-                
-                if (content.includes('[APPROVAL_REQUIRED]')) {
-                    hasApproval = true;
-                    processedContent = content.replace('[APPROVAL_REQUIRED]', '').trim();
-                }
-                
-                div.innerHTML = (typeof marked !== 'undefined') ? marked.parse(processedContent) : processedContent;
-                
-                if (hasApproval) {
-                    const approvalDiv = document.createElement('div');
-                    approvalDiv.className = 'approval-container';
-                    
-                    const yesBtn = document.createElement('button');
-                    yesBtn.className = 'approval-btn yes';
-                    yesBtn.innerText = '✅ Yes, Proceed';
-                    yesBtn.onclick = () => {
-                        vscode.postMessage({ type: 'prompt', value: 'Yes' });
-                        approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
-                    };
-                    
-                    const noBtn = document.createElement('button');
-                    noBtn.className = 'approval-btn no';
-                    noBtn.innerText = '❌ No, Cancel';
-                    noBtn.onclick = () => {
-                        vscode.postMessage({ type: 'prompt', value: 'No, cancel this change.' });
-                        approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
-                    };
-                    
-                    approvalDiv.appendChild(yesBtn);
-                    approvalDiv.appendChild(noBtn);
-                    div.appendChild(approvalDiv);
-                }
+                div.innerHTML = (typeof marked !== 'undefined') ? marked.parse(displayContent) : displayContent;
             }
+
+            // Approval Buttons
+            if (hasApproval) {
+                const approvalDiv = document.createElement('div');
+                approvalDiv.className = 'approval-container';
+                
+                const yesBtn = document.createElement('button');
+                yesBtn.className = 'approval-btn yes';
+                yesBtn.innerText = '✅ Yes, Proceed';
+                yesBtn.onclick = () => {
+                    vscode.postMessage({ type: 'prompt', value: 'Yes' });
+                    approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+                };
+                
+                const noBtn = document.createElement('button');
+                noBtn.className = 'approval-btn no';
+                noBtn.innerText = '❌ No, Cancel';
+                noBtn.onclick = () => {
+                    vscode.postMessage({ type: 'prompt', value: 'No, cancel this change.' });
+                    approvalDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+                };
+                
+                approvalDiv.appendChild(yesBtn);
+                approvalDiv.appendChild(noBtn);
+                div.appendChild(approvalDiv);
+            }
+
             chat.appendChild(div);
             messageEl = div;
         }
 
-        if (messageEl && (role === 'agent' || className === 'welcome-message')) {
+        // Interactive "Next Steps" Handlers
+        if (messageEl && (role === 'agent' || (className && className.includes('welcome')))) {
             messageEl.querySelectorAll('li').forEach(li => {
                 li.onclick = () => {
                     const boldPart = li.querySelector('strong');
                     const prompt = boldPart ? boldPart.innerText : li.innerText.split(':')[0];
                     vscode.postMessage({ type: 'prompt', value: prompt.trim() });
-                    input.focus();
+                    document.getElementById('user-input').focus();
                 };
             });
         }
 
+        // Highlight Code
         if (messageEl && typeof hljs !== 'undefined') {
             messageEl.querySelectorAll('pre code').forEach((b) => { hljs.highlightElement(b); });
         }
+
         chat.scrollTop = chat.scrollHeight;
     }
 
