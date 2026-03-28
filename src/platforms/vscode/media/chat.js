@@ -131,7 +131,7 @@
     }
 
     function appendMessage(role, content, className) {
-        const isThinking = (role === 'toolCall' || role === 'toolResult');
+        const isThinking = (role === 'toolCall' || role === 'toolResult' || role === 'thought');
 
         if (role === 'user') {
             stopThinkingSession();
@@ -162,25 +162,40 @@
                 session.countRef.innerText = `[Tools: ${session.toolCount}]`;
             }
 
-            const div = document.createElement('div');
-            div.className = 'message ' + role;
-            
-            const header = document.createElement('div');
-            header.className = 'tool-header';
-            header.style.color = role === 'toolCall' ? '#f51a56' : '#4ec9b0';
-            header.style.fontWeight = 'bold';
-            header.style.fontSize = '11px';
-            header.innerText = role === 'toolCall' ? `⚒️ Executing tool...` : `✅ Result received`;
-            
-            const payload = document.createElement('div');
-            payload.className = 'thinking-payload';
-            payload.textContent = content; 
-            
-            div.appendChild(header);
-            div.appendChild(payload);
-            stepsContainer.appendChild(div);
-            
-            messageEl = div;
+            if (role === 'thought') {
+                const displayContent = content.match(/<thought>([\s\S]*?)<\/thought>/)?.[1] || content;
+                const thoughtDiv = document.createElement('div');
+                thoughtDiv.className = 'thought-block';
+                thoughtDiv.style.borderLeft = '2px solid #f51a56';
+                thoughtDiv.style.paddingLeft = '10px';
+                thoughtDiv.style.marginBottom = '12px';
+                thoughtDiv.style.fontSize = '11px';
+                thoughtDiv.style.fontStyle = 'italic';
+                thoughtDiv.style.color = '#ccc';
+                thoughtDiv.innerText = displayContent.trim();
+                stepsContainer.appendChild(thoughtDiv);
+                messageEl = thoughtDiv;
+            } else {
+                const div = document.createElement('div');
+                div.className = 'message ' + role;
+                
+                const header = document.createElement('div');
+                header.className = 'tool-header';
+                header.style.color = role === 'toolCall' ? '#f51a56' : '#4ec9b0';
+                header.style.fontWeight = 'bold';
+                header.style.fontSize = '11px';
+                header.innerText = role === 'toolCall' ? `⚒️ Executing tool...` : `✅ Result received`;
+                
+                const payload = document.createElement('div');
+                payload.className = 'thinking-payload';
+                payload.textContent = content; 
+                
+                div.appendChild(header);
+                div.appendChild(payload);
+                stepsContainer.appendChild(div);
+                
+                messageEl = div;
+            }
         } else {
             const session = currentSession;
             let displayContent = content;
@@ -280,9 +295,9 @@
             messageEl.querySelectorAll('li').forEach(li => {
                 li.onclick = () => {
                     const boldPart = li.querySelector('strong');
-                    const prompt = boldPart ? boldPart.innerText : li.innerText.split(':')[0];
-                    vscode.postMessage({ type: 'prompt', value: prompt.trim() });
-                    document.getElementById('user-input').focus();
+                    const promptText = boldPart ? boldPart.innerText : li.innerText.split(':')[0];
+                    vscode.postMessage({ type: 'prompt', value: promptText.trim() });
+                    input.focus();
                 };
             });
         }

@@ -467,6 +467,11 @@ export class Agent {
         this.messages.push(responseMessage);
 
         if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+            // Emitting internal thoughts if they exist alongside tool calls
+            if (responseMessage.content) {
+                onUpdate(responseMessage.content as string, 'thought');
+            }
+
             let shouldStopTurn = false;
             for (const toolCall of responseMessage.tool_calls) {
                 const functionName = toolCall.function.name;
