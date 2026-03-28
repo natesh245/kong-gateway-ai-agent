@@ -330,6 +330,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         .tool-toggle { cursor: pointer; color: #2E86AB; font-size: 10px; margin-top: 4px; text-decoration: underline; margin-left: 24px; font-weight: 500; }
 
         .message h1, .message h2, .message h3 { margin-top: 5px; color: #eee; }
+        .message.agent h1 { font-size: 18px; margin-bottom: 12px; color: var(--accent); }
+        .message.agent h3 { 
+            background: rgba(245, 26, 86, 0.08); color: var(--accent); padding: 8px 12px; 
+            border-radius: 8px; font-size: 13px; margin: 18px 0 8px 0; font-weight: 600;
+            border-left: 3px solid var(--accent);
+        }
+        .message.agent ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+        .message.agent li { 
+            background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); 
+            padding: 10px 14px; border-radius: 10px; font-size: 12px; line-height: 1.4;
+            transition: all 0.2s ease;
+        }
+        .message.agent li:hover { border-color: var(--accent); transform: translateX(4px); background: rgba(255, 255, 255, 0.05); }
+        .message.agent li strong { color: var(--accent); }
+
         .message code { background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 4px; font-family: 'Courier New', Courier, monospace; color: #F51A56; }
         .message pre { background: #1e1e1e !important; padding: 12px; border-radius: 10px; overflow-x: auto; border: 1px solid var(--border); margin: 12px 0; }
         .message pre code { background: none; padding: 0; color: inherit; font-size: 11px; }
@@ -540,14 +555,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         </div>
         <button id="review-btn" style="background:var(--accent);color:white;border:none;padding:8px;border-radius:8px;font-size:11px;cursor:pointer;font-weight:600;">🔍 Review & Analyze Diffs</button>
     </div>
-    <div class="chat-container" id="chat">
-        <div class="message agent">Hello! I am your **Kong Gateway Agent**. \n\nI can help you manage your local Kong setup:
-- 🚀 **Start/Stop** Kong via Docker
-- 🛠️ **Configure** Services, Routes, and Consumers
-- 🔍 **Review** your edits
-- ⚡ **Verify** connectivity
+    <template id="welcome-template">
+# Welcome to Kong Gateway Agent! 🦍
 
-What can I do for you today?</div>
+Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, and manage your API infrastructure with ease.
+
+### 🚀 Life-cycle & Management
+- **One-Click Setup**: Boot a fresh Kong instance with a single command.
+- **Deep Adoption**: I'll scan and connect to your existing local or remote gateways automatically.
+- **Port Resolution**: I'll detect port collisions and suggest available ones to keep you moving.
+
+### 🛠️ Declarative Configuration (GitOps)
+- **Smart YAML Generation**: Describe your Service or Route; I'll write the \`kong.yml\` for you.
+- **decK Validation**: I use industrial-strength validation to ensure your config is schema-perfect.
+- **Safe Sync**: I always show a **Preview Diff** for your approval before applying any changes.
+- **Repository Sync**: I can handle Git commits to keep your source-of-truth in sync.
+
+### 🔍 Intelligence & Troubleshooting
+- **Manual Review**: Paste your YAML, and I'll analyze it for errors and best practices.
+- **Live Diagnostics**: Verify your Admin API and Proxy health in real-time.
+
+---
+**What would you like to build today?** Try saying *"Start a fresh Kong instance"* or *"Review my config"*!
+    </template>
+
+    <div class="chat-container" id="chat">
     </div>
     <div class="typing" id="typing">Agent is processing...</div>
     <div class="input-container">
@@ -892,6 +924,12 @@ What can I do for you today?</div>
                     settingsContainer.open = false;
                 }
                 showToast('✅ Configuration saved successfully!');
+                const currentProvider = document.getElementById('provider-select').value;
+                const currentModel = document.getElementById('model-input').value;
+                const currentMode = document.getElementById('kong-mode-select').value;
+
+                appendMessage('agent', \`### Configuration Saved! 🚀\n\nThe **Kong Gateway Agent** has been updated with your new settings:\n\n- 🤖 **Provider**: \${currentProvider}\n- 🧠 **Model**: \${currentModel}\n- 🌐 **Mode**: \${currentMode}\n\nI'm ready to continue. How can I help you today?\`);
+                
                 // Auto-refresh models when saving if provider or key is new
                 const provider = document.getElementById('provider-select').value;
                 const apiKey = (provider === 'openrouter') ? 
@@ -900,6 +938,12 @@ What can I do for you today?</div>
 
                 vscode.postMessage({ type: 'fetchModels', provider, apiKey });
             };
+
+            // Initial Welcome Message
+            const welcomeTemplate = document.getElementById('welcome-template');
+            if (welcomeTemplate) {
+                appendMessage('agent', welcomeTemplate.innerHTML.trim());
+            }
 
             const resetInstBtn = document.getElementById('reset-instance-btn');
             if (resetInstBtn) resetInstBtn.onclick = () => {
