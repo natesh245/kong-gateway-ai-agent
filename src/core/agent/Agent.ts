@@ -473,30 +473,8 @@ export class Agent {
             // If the model provided reasoning alongside tool calls, use it
             if (responseMessage.content) {
                 onUpdate(responseMessage.content as string, 'thought');
-            } else {
-                // Reasoning pass: ask the model to explain what it's about to do
-                // before executing the tools. This guarantees real reasoning in the UI.
-                try {
-                    const toolNames = responseMessage.tool_calls.map(tc => tc.function.name).join(', ');
-                    const reasoningResponse = await this.openai.chat.completions.create({
-                        model: model,
-                        messages: [
-                            ...this.messages.slice(0, -1), // all messages except the tool_calls response
-                            {
-                                role: "user",
-                                content: `Before you call the tools [${toolNames}], briefly explain in 1-2 sentences WHY you are calling these specific tools and what outcome you expect. Be specific to this request.`
-                            }
-                        ],
-                        // No tools — we only want a text reasoning response
-                    });
-                    const reasoningContent = reasoningResponse.choices[0]?.message?.content;
-                    if (reasoningContent) {
-                        onUpdate(`<thought>${reasoningContent}</thought>`, 'thought');
-                    }
-                } catch (e) {
-                    // Reasoning pass failed — just proceed silently
-                }
             }
+
 
             let shouldStopTurn = false;
             for (const toolCall of responseMessage.tool_calls) {
