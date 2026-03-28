@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { IConfig, IAppPlatform } from '../interfaces/ICoreInterfaces';
+import { IConfig, IAppPlatform } from '../../interfaces/ICoreInterfaces';
 
-export class StorageProvider {
+export class StorageTool {
   private _fileCache: Map<string, string> = new Map();
 
   constructor(private config: IConfig, private platform: IAppPlatform) { }

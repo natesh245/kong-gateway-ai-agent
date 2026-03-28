@@ -2,12 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { StorageProvider } from './StorageProvider';
+import { StorageTool } from './StorageTool';
 
 const execAsync = promisify(exec);
 
-export class GitProvider {
-  constructor(private storage: StorageProvider) { }
+export class GitTool {
+  constructor(private storage: StorageTool) { }
 
   public async gitInit(remoteUrl?: string): Promise<string> {
     const storagePath = this.storage.getStoragePath();

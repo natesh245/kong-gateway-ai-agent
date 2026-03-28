@@ -3,14 +3,14 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import axios from 'axios';
-import { PortUtil } from '../utils/PortUtil';
-import { StorageProvider } from './StorageProvider';
-import { IConfig, IAppPlatform } from '../interfaces/ICoreInterfaces';
+import { PortUtil } from '../../utils/PortUtil';
+import { StorageTool } from './StorageTool';
+import { IConfig, IAppPlatform } from '../../interfaces/ICoreInterfaces';
 
 const execAsync = promisify(exec);
 
-export class DockerProvider {
-  constructor(private storage: StorageProvider, private config: IConfig, private platform: IAppPlatform) { }
+export class DockerTool {
+  constructor(private storage: StorageTool, private config: IConfig, private platform: IAppPlatform) { }
 
   public async start(): Promise<string> {
     try {

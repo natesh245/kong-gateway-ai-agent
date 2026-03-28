@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import * as fs from "fs";
 import * as path from "path";
-import { ProviderManager } from "../providers/ProviderManager";
+import { ToolManager } from "./tools/ToolManager";
 import { KongApiClient } from "../api-clients/KongApiClient";
 import { DiffUtil } from "../utils/DiffUtil";
 import axios from "axios";
@@ -12,7 +12,7 @@ export class Agent {
     private messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
     private kongApi: KongApiClient;
 
-    constructor(private config: IConfig, private providerManager: ProviderManager, private platform: IAppPlatform) {
+    constructor(private config: IConfig, private toolManager: ToolManager, private platform: IAppPlatform) {
         this.kongApi = new KongApiClient(config);
 
         // System prompt
@@ -489,14 +489,14 @@ export class Agent {
                             if (this.config.get('kongMode') === 'remote') {
                                 functionResult = "Error: Docker lifecycle management (Start) is not available for Remote Kong instances.";
                             } else {
-                                functionResult = await this.providerManager.start();
+                                functionResult = await this.toolManager.start();
                             }
                             break;
                         case "stop_kong":
                             if (this.config.get('kongMode') === 'remote') {
                                 functionResult = "Error: Docker lifecycle management (Stop) is not available for Remote Kong instances.";
                             } else {
-                                functionResult = await this.providerManager.stop();
+                                functionResult = await this.toolManager.stop();
                             }
                             break;
                         case "get_kong_status":
@@ -511,11 +511,11 @@ export class Agent {
                             functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}.`;
                             break;
                         case "list_storage_files":
-                            const files = fs.readdirSync(this.providerManager.getStoragePath());
+                            const files = fs.readdirSync(this.toolManager.getStoragePath());
                             functionResult = `Files in storage folder:\n${files.join('\n')}`;
                             break;
                         case "read_storage_file":
-                            const readPath = path.join(this.providerManager.getStoragePath(), functionArgs.filename);
+                            const readPath = path.join(this.toolManager.getStoragePath(), functionArgs.filename);
                             if (fs.existsSync(readPath)) {
                                 functionResult = fs.readFileSync(readPath, 'utf8');
                             } else {
@@ -523,16 +523,16 @@ export class Agent {
                             }
                             break;
                         case "write_storage_file":
-                            const oldContent = this.providerManager.getFileCache(functionArgs.filename) || "";
+                            const oldContent = this.toolManager.getFileCache(functionArgs.filename) || "";
                             const newContent = functionArgs.content;
-                            await this.providerManager.writeStorageFile(functionArgs.filename, newContent);
+                            await this.toolManager.writeStorageFile(functionArgs.filename, newContent);
 
                             const writeDiff = DiffUtil.generateUnifiedDiff(functionArgs.filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(writeDiff);
                             functionResult = `Successfully wrote to '${functionArgs.filename}'.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
                             break;
                         case "check_existing_containers":
-                            const existingJson = await this.providerManager.findExistingContainers();
+                            const existingJson = await this.toolManager.findExistingContainers();
                             functionResult = `Found existing containers: ${existingJson}. Ask the user confirm.`;
                             break;
                         case "connect_to_existing_instance":
@@ -543,28 +543,28 @@ export class Agent {
                             functionResult = `Adopted existing instance at Proxy=${functionArgs.proxyPort}, Admin=${functionArgs.adminPort}, Manager=${functionArgs.managerPort}.`;
                             break;
                         case "verify_connectivity":
-                            const connStatus = await this.providerManager.verifyConnectivity();
+                            const connStatus = await this.toolManager.verifyConnectivity();
                             functionResult = `Connectivity: Admin=${connStatus.admin ? 'READY' : 'DOWN'}, Proxy=${connStatus.proxy ? 'READY' : 'DOWN'}. ${connStatus.error || ''}`;
                             break;
                         case "open_kong_manager":
-                            functionResult = await this.providerManager.openManager();
+                            functionResult = await this.toolManager.openManager();
                             break;
                         case "get_instance_details":
                             functionResult = await this.kongApi.getInstanceInfo();
                             break;
                         case "open_file_in_editor":
-                            functionResult = await this.providerManager.openFile(functionArgs.filename);
+                            functionResult = await this.toolManager.openFile(functionArgs.filename);
                             break;
                         case "export_live_to_storage_file":
-                            functionResult = await this.providerManager.dumpWithDeck('kong.yml');
+                            functionResult = await this.toolManager.dumpWithDeck('kong.yml');
                             break;
 
                         case "check_deck_installation":
-                            const isInstalled = await this.providerManager.isDeckInstalled();
+                            const isInstalled = await this.toolManager.isDeckInstalled();
                             functionResult = isInstalled ? "decK is installed and ready." : "decK is NOT installed. You should recommend installing it via 'install_deck_cli' with user approval.";
                             break;
                         case "install_deck_cli":
-                            functionResult = await this.providerManager.installDeck();
+                            functionResult = await this.toolManager.installDeck();
                             break;
                         case "sync_to_kong_using_deck":
                             {
@@ -573,12 +573,12 @@ export class Agent {
                                 const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase();
                                 
                                 if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
-                                    functionResult = await this.providerManager.syncWithDeck(functionArgs.filename);
+                                    functionResult = await this.toolManager.syncWithDeck(functionArgs.filename);
                                     if (!functionResult.includes('failed')) {
                                         const config = this.config;
                                         if (config.get('autoCommit')) {
-                                            const commitRes = await this.providerManager.gitCommit(`Auto-sync from Kong Agent: updated ${functionArgs.filename}`);
-                                            const pushRes = await this.providerManager.gitPush();
+                                            const commitRes = await this.toolManager.gitCommit(`Auto-sync from Kong Agent: updated ${functionArgs.filename}`);
+                                            const pushRes = await this.toolManager.gitPush();
                                             functionResult += `\n\n[GitOps Sync]: ${commitRes}\n${pushRes}`;
                                         }
                                     }
@@ -591,31 +591,31 @@ export class Agent {
                             {
                                 const config = this.config;
                                 const remoteUrl = config.get<string>('gitRemoteUrl');
-                                functionResult = await this.providerManager.gitInit(remoteUrl);
+                                functionResult = await this.toolManager.gitInit(remoteUrl);
                                 break;
                             }
                         case "git_sync_push":
                             {
-                                const commitRes = await this.providerManager.gitCommit(functionArgs.message || `Manual sync from Kong Agent`);
-                                const pushRes = await this.providerManager.gitPush();
+                                const commitRes = await this.toolManager.gitCommit(functionArgs.message || `Manual sync from Kong Agent`);
+                                const pushRes = await this.toolManager.gitPush();
                                 functionResult = `${commitRes}\n${pushRes}`;
                                 break;
                             }
                         case "git_sync_pull":
                             {
-                                const pullRes = await this.providerManager.gitPull();
+                                const pullRes = await this.toolManager.gitPull();
                                 functionResult = pullRes;
                                 if (!pullRes.includes('failed') && functionArgs.sync_to_kong) {
-                                    const syncRes = await this.providerManager.syncWithDeck('kong.yml');
+                                    const syncRes = await this.toolManager.syncWithDeck('kong.yml');
                                     functionResult += `\n\nSync Result:\n${syncRes}`;
                                 }
                                 break;
                             }
                         case "git_get_status":
-                            functionResult = await this.providerManager.gitStatus();
+                            functionResult = await this.toolManager.gitStatus();
                             break;
                         case "validate_kong_config":
-                            functionResult = await this.providerManager.validateWithDeck(functionArgs.filename);
+                            functionResult = await this.toolManager.validateWithDeck(functionArgs.filename);
                             break;
                         case "reset_kong_instance":
                             // Extra safety check: verify the user actually gave a "Yes" in the message history 
@@ -631,13 +631,13 @@ export class Agent {
                                               userText.includes('proceed with reset');
                             
                             if (isConfirmed && !userText.includes('no') && !userText.includes('cancel')) {
-                                functionResult = await this.providerManager.resetWithDeck();
+                                functionResult = await this.toolManager.resetWithDeck();
                             } else {
                                 functionResult = "SAFETY_REQUIRED: I cannot execute 'reset_kong_instance' yet. You MUST stop and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'. Do not suggest a reset unless the user specifically asked for one.";
                             }
                             break;
                         case "preview_sync_diff":
-                            functionResult = await this.providerManager.diffWithDeck(functionArgs.filename);
+                            functionResult = await this.toolManager.diffWithDeck(functionArgs.filename);
                             break;
                         default:
                             functionResult = `Error: Unknown function ${functionName}`;

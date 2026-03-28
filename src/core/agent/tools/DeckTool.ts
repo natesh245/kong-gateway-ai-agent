@@ -1,13 +1,13 @@
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { StorageProvider } from './StorageProvider';
-import { IConfig } from '../interfaces/ICoreInterfaces';
+import { StorageTool } from './StorageTool';
+import { IConfig } from '../../interfaces/ICoreInterfaces';
 
 const execAsync = promisify(exec);
 
-export class DeckProvider {
-  constructor(private storage: StorageProvider, private config: IConfig) { }
+export class DeckTool {
+  constructor(private storage: StorageTool, private config: IConfig) { }
 
   public async isDeckInstalled(): Promise<boolean> {
     try {

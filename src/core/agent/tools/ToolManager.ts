@@ -1,24 +1,24 @@
-import { StorageProvider } from './StorageProvider';
-import { DockerProvider } from './DockerProvider';
-import { DeckProvider } from './DeckProvider';
-import { GitProvider } from './GitProvider';
-import { IConfig, IAppPlatform } from '../interfaces/ICoreInterfaces';
+import { StorageTool } from './StorageTool';
+import { DockerTool } from './DockerTool';
+import { DeckTool } from './DeckTool';
+import { GitTool } from './GitTool';
+import { IConfig, IAppPlatform } from '../../interfaces/ICoreInterfaces';
 
 /**
- * ProviderManager (formerly KongDockerManager)
- * Acts as a coordinator for specialized sub-providers.
+ * ToolManager
+ * Acts as a coordinator for specialized tools.
  */
-export class ProviderManager {
-  public storage: StorageProvider;
-  public docker: DockerProvider;
-  public deck: DeckProvider;
-  public git: GitProvider;
+export class ToolManager {
+  public storage: StorageTool;
+  public docker: DockerTool;
+  public deck: DeckTool;
+  public git: GitTool;
 
   constructor(private config: IConfig, private platform: IAppPlatform) {
-    this.storage = new StorageProvider(config, platform);
-    this.docker = new DockerProvider(this.storage, config, platform);
-    this.deck = new DeckProvider(this.storage, config);
-    this.git = new GitProvider(this.storage);
+    this.storage = new StorageTool(config, platform);
+    this.docker = new DockerTool(this.storage, config, platform);
+    this.deck = new DeckTool(this.storage, config);
+    this.git = new GitTool(this.storage);
   }
 
   // Delegate Methods for backward compatibility or convenience
