@@ -46,8 +46,27 @@ export class Agent {
                 "**EXPORT VS SYNC**: 'export_live_to_storage_file' is for manual backups ONLY. You are PROHIBITED from calling it during or after 'preview_sync_diff' or 'sync_to_kong_using_deck'. It is NOT part of the sync or review flow and does not need to be called to 'refresh' state.\n" +
                 "**GITOPS SYNC**: If a Git repository is set up, favor 'Commit -> Push -> Sync'. If Auto-Commit is enabled, update Git after a successful sync.\n" +
                 "**EFFICIENCY**: BUNDLE tool calls whenever possible. For the declarative workflow, you SHOULD call 'write_storage_file', 'validate_kong_config', and 'preview_sync_diff' in a SINGLE response turn. Avoid redundant status checks if you just performed one.\n" +
-                "**LEGACY TOOLS**: Favor 'sync_to_kong_using_deck' over direct API creation tools like 'create_service' or 'create_route' unless specifically for 'Direct API' tasks."
+                "**STRICTLY DECLARATIVE**: You are PROHIBITED from using direct API calls to create Services, Routes, or Consumers. All configuration MUST be managed via 'kong.yml' and synced using the 'sync_to_kong_using_deck' tool. There are no 'Direct API' creation tools available to you.\n" +
+                "**NEXT STEPS & SUGGESTIONS**: When you finish a task, ALWAYS provide 2-3 specific 'Next Steps' as a bulleted list. Each item should be a clear, actionable command (e.g., '- Check Kong status'). These will be rendered as clickable items in the UI."
         });
+    }
+
+    private getFriendlyToolName(name: string): string {
+        const mapping: Record<string, string> = {
+            'start_kong': 'Starting Kong Gateway (Docker)...',
+            'stop_kong': 'Stopping Kong Gateway...',
+            'sync_to_kong_using_deck': 'Syncing configuration with decK...',
+            'preview_sync_diff': 'Generating configuration diff...',
+            'validate_kong_config': 'Validating configuration...',
+            'verify_connectivity': 'Verifying Kong connectivity...',
+            'get_kong_status': 'Checking Kong status...',
+            'read_storage_file': 'Reading configuration file...',
+            'write_storage_file': 'Saving configuration...',
+            'git_sync_push': 'Pushing changes to Git...',
+            'git_sync_pull': 'Pulling updates from Git...',
+            'check_existing_containers': 'Scanning for active Kong instances...'
+        };
+        return mapping[name] || `Executing ${name}...`;
     }
 
     private initClient(): boolean {
@@ -211,54 +230,6 @@ export class Agent {
                 function: {
                     name: "get_kong_status",
                     description: "Fetches status info from Kong Admin API to test if it's reachable and running.",
-                }
-            },
-            {
-                type: "function",
-                function: {
-                    name: "create_service",
-                    description: "Create a Service in Kong. ONLY use this for 'Direct API creation'. Otherwise, favor editing kong.yml and syncing via decK.",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            name: { type: "string", description: "The name of the service" },
-                            url: { type: "string", description: "The upstream URL (e.g. http://mockbin.org)" },
-                        },
-                        required: ["name", "url"]
-                    }
-                }
-            },
-            {
-                type: "function",
-                function: {
-                    name: "create_route",
-                    description: "Create a Route for a specific service in Kong. ONLY use this for 'Direct API creation'. Otherwise, favor editing kong.yml and syncing via decK.",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            service_name: { type: "string", description: "The name of the service to attach this route to" },
-                            paths: {
-                                type: "array",
-                                items: { type: "string" },
-                                description: "The paths (e.g., ['/mock']) that this route should listen on"
-                            },
-                        },
-                        required: ["service_name", "paths"]
-                    }
-                }
-            },
-            {
-                type: "function",
-                function: {
-                    name: "create_consumer",
-                    description: "Create a Consumer in Kong. ONLY use this for 'Direct API creation'. Otherwise, favor editing kong.yml and syncing via decK.",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            username: { type: "string" }
-                        },
-                        required: ["username"]
-                    }
                 }
             },
             {
@@ -507,6 +478,7 @@ export class Agent {
                 }
 
                 // Transparency: Notify UI that we are running a tool
+                onUpdate(this.getFriendlyToolName(functionName), 'toolStatus');
                 onUpdate(`Executing Tool: **${functionName}**${Object.keys(functionArgs).length > 0 ? ' (' + JSON.stringify(functionArgs).substring(0, 100) + ')' : ''}...`, 'toolCall');
 
                 let functionResult = "";
@@ -530,15 +502,6 @@ export class Agent {
                         case "get_kong_status":
                             const apiStatus = await this.kongApi.getStatus();
                             functionResult = `API Status:\n${apiStatus}`;
-                            break;
-                        case "create_service":
-                            functionResult = await this.kongApi.createService(functionArgs.name, functionArgs.url);
-                            break;
-                        case "create_route":
-                            functionResult = await this.kongApi.createRoute(functionArgs.service_name, functionArgs.paths);
-                            break;
-                        case "create_consumer":
-                            functionResult = await this.kongApi.createConsumer(functionArgs.username);
                             break;
                         case "update_kong_ports":
                             const config = this.config;
@@ -702,6 +665,7 @@ export class Agent {
                 await this.runLoop(model, onUpdate, depth + 1);
             }
         } else if (responseMessage.content) {
+            onUpdate("", 'toolStatus'); // Clear status
             onUpdate(responseMessage.content as string);
         }
     }

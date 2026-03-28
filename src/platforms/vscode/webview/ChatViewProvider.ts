@@ -81,7 +81,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     {
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: data.value });
                         await this._agent.processMessage(data.value, (content: string, type: string = 'agent') => {
-                            webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                            if (type === 'toolStatus') {
+                                webviewView.webview.postMessage({ type: 'toolStatus', status: content });
+                            } else {
+                                webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                            }
                         });
                         break;
                     }
@@ -151,7 +155,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             this.providerManager.updateFileCache(filename, newContent);
 
                             await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
-                                webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                                if (type === 'toolStatus') {
+                                    webviewView.webview.postMessage({ type: 'toolStatus', status: content });
+                                } else {
+                                    webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                                }
                             });
                         }
                         break;
@@ -194,7 +202,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         const prompt = "I have requested a full reset of the Kong instance configuration from the UI dashboard. Please explain the consequences and, if I confirm, perform the reset using decK.";
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
                         await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
-                            webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                            if (type === 'toolStatus') {
+                                webviewView.webview.postMessage({ type: 'toolStatus', status: content });
+                            } else {
+                                webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                            }
                         });
                         break;
                     }
@@ -339,11 +351,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         .message.agent li { 
             background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); 
             padding: 10px 14px; border-radius: 10px; font-size: 12px; line-height: 1.4;
-            transition: all 0.2s ease;
+            transition: all 0.2s ease; cursor: pointer;
         }
-        .welcome-message li { cursor: pointer; }
-        .welcome-message li:hover { border-color: var(--accent); transform: translateX(4px); background: rgba(255, 255, 255, 0.05); }
-        .welcome-message li strong { color: var(--accent); }
+        .message.agent li:hover { border-color: var(--accent); transform: translateX(4px); background: rgba(255, 255, 255, 0.05); }
+        .message.agent li strong { color: var(--accent); }
 
         .message code { background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 4px; font-family: 'Courier New', Courier, monospace; color: #F51A56; }
         .message pre { background: #1e1e1e !important; padding: 12px; border-radius: 10px; overflow-x: auto; border: 1px solid var(--border); margin: 12px 0; }
@@ -458,7 +469,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         #send:active { transform: scale(0.95); }
 
-        .typing { display: none; margin-left:24px; color:#888; font-size:11px; margin-bottom: 12px; font-style: italic; }
+        .typing { 
+            display: none; margin-left:24px; color:#888; font-size:11px; margin-bottom: 12px; 
+            padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px;
+            border-left: 3px solid var(--accent);
+            animation: pulse 2s infinite ease-in-out;
+        }
+        .typing .status-label { font-weight: 600; color: var(--accent); margin-right: 6px; text-transform: uppercase; font-size: 9px; }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
         
         .custom-dropdown {
             position: absolute;
@@ -581,7 +604,10 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
 
     <div class="chat-container" id="chat">
     </div>
-    <div class="typing" id="typing">Agent is processing...</div>
+    <div class="typing" id="typing">
+        <span class="status-label">🧬 Activity:</span>
+        <span id="status-text">Agent is processing...</span>
+    </div>
     <div class="input-container">
         <details class="settings-container">
             <summary>
@@ -673,6 +699,7 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
             const input = document.getElementById('prompt');
             const sendBtn = document.getElementById('send');
             const typing = document.getElementById('typing');
+            const statusText = document.getElementById('status-text');
             
             function showToast(message, duration = 3000) {
                 const toast = document.getElementById('toast');
@@ -765,7 +792,7 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
 
                 chat.appendChild(div);
 
-                if (className === 'welcome-message') {
+                if (role === 'agent' || className === 'welcome-message') {
                     div.querySelectorAll('li').forEach(li => {
                         li.onclick = () => {
                             const boldPart = li.querySelector('strong');
@@ -778,6 +805,17 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
 
                 if (typeof hljs !== 'undefined') {
                     div.querySelectorAll('pre code').forEach((b) => { hljs.highlightElement(b); });
+                }
+                chat.scrollTop = chat.scrollHeight;
+            }
+
+            function setToolStatus(status) {
+                if (status) {
+                    statusText.innerText = status;
+                    typing.style.display = 'block';
+                } else {
+                    typing.style.display = 'none';
+                    statusText.innerText = 'Agent is processing...';
                 }
                 chat.scrollTop = chat.scrollHeight;
             }
@@ -1060,6 +1098,8 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
                             toast.style.display = 'none';
                         };
                     }
+                } else if (m.type === 'toolStatus') {
+                    setToolStatus(m.status);
                 } else if (m.type === 'portCheckResults') {
                     for (const [key, res] of Object.entries(m.results)) {
                         const el = document.getElementById(key + '-card');
