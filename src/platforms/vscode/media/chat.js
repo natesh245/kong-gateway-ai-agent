@@ -152,9 +152,10 @@
             const session = startThinkingSession();
             const stepsContainer = session.stepsRef || session.querySelector('.thinking-steps');
             
-            // Remove placeholder on first tool arrival
-            if (session.toolCount === 0 && stepsContainer) {
-                stepsContainer.innerHTML = ''; 
+            // Remove placeholder if it exists to avoid clearing thoughts
+            if (stepsContainer) {
+                const placeholder = stepsContainer.querySelector('.step-placeholder');
+                if (placeholder) placeholder.remove();
             }
 
             // Update tool counter
@@ -215,7 +216,8 @@
                 
                 for (const match of thoughtMatches) {
                     if (stepsContainer) {
-                        if (session.toolCount === 0) stepsContainer.innerHTML = '';
+                        const placeholder = stepsContainer.querySelector('.step-placeholder');
+                        if (placeholder) placeholder.remove();
                         const thoughtDiv = document.createElement('div');
                         thoughtDiv.className = 'thought-block';
                         thoughtDiv.style.borderLeft = '2px solid #f51a56';
