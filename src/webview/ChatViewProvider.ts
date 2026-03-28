@@ -444,6 +444,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
         .typing { display: none; margin-left:24px; color:#888; font-size:11px; margin-bottom: 12px; font-style: italic; }
         
+        .custom-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 6px;
+            margin-top: 4px;
+            max-height: 150px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: none;
+        }
+        .dropdown-item {
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 11px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dropdown-item:hover {
+            background: var(--accent);
+            color: white;
+        }
+
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -516,8 +544,14 @@ What can I do for you today?</div>
             </summary>
             <div class="settings-panel">
                 <div class="settings-row"><label>LLM AI</label><select id="provider-select"><option value="openrouter">OpenRouter</option><option value="gemini">Gemini</option></select></div>
-                <div class="settings-row" style="margin-bottom:2px;"><label>Model</label><div style="display:flex;gap:4px;flex:1;"><input type="text" id="model-filter" placeholder="Search models..." style="flex:1;font-size:10px;height:24px;border-radius:4px;padding:4px;"/><button id="refresh-models-btn" title="Refresh Models" style="background:var(--vscode-button-secondaryBackground);padding:4px 8px;font-size:10px;border:none;border-radius:4px;cursor:pointer;">🔄</button></div></div>
-                <div class="settings-row" style="margin-top:0px;"><label>&nbsp;</label><select id="model-input" style="flex:1;"><option value="">Loading models...</option></select></div>
+                <div class="settings-row" style="margin-bottom:8px;">
+                    <label>Model</label>
+                    <div style="display:flex;gap:4px;flex:1;position:relative;">
+                        <input type="text" id="model-input" placeholder="Search or type model ID..." style="flex:1;"/>
+                        <div id="model-dropdown" class="custom-dropdown"></div>
+                        <button id="refresh-models-btn" title="Refresh Models" style="background:var(--vscode-button-secondaryBackground);padding:4px 8px;font-size:10px;border:none;border-radius:4px;cursor:pointer;">🔄</button>
+                    </div>
+                </div>
                 <div class="settings-row" id="api-key-row"><label>OpenRouter Key</label><input type="password" id="api-key-input"/></div>
                 <div class="settings-row" id="gemini-api-key-row" class="hidden"><label>Gemini Key</label><input type="password" id="gemini-api-key-input"/></div>
                 <div class="settings-row" style="margin-top:8px; background:rgba(255,255,255,0.03); padding:8px; border-radius:8px;">
@@ -724,11 +758,25 @@ What can I do for you today?</div>
                     if (apiKeyRow) apiKeyRow.style.display = provider === 'openrouter' ? 'flex' : 'none';
                     if (geminiKeyRow) geminiKeyRow.style.display = provider === 'gemini' ? 'flex' : 'none';
 
-                    // Clear and re-fetch models for the new provider
-                    if (modelSelect) {
-                        modelSelect.innerHTML = '<option value="">Loading models...</option>';
+                    // Clear model input for the new provider
+                    if (modelInput) {
+                        modelInput.value = '';
+                        modelInput.placeholder = 'Loading models...';
                     }
 
+                    const apiKey = (provider === 'openrouter') ? 
+                        document.getElementById('api-key-input').value : 
+                        document.getElementById('gemini-api-key-input').value;
+
+                    vscode.postMessage({ type: 'fetchModels', provider, apiKey });
+                };
+            }
+
+            const refreshModelsBtn = document.getElementById('refresh-models-btn');
+            if (refreshModelsBtn) {
+                refreshModelsBtn.onclick = () => {
+                    refreshModelsBtn.innerText = '⌛';
+                    const provider = document.getElementById('provider-select').value;
                     const apiKey = (provider === 'openrouter') ? 
                         document.getElementById('api-key-input').value : 
                         document.getElementById('gemini-api-key-input').value;
@@ -747,29 +795,44 @@ What can I do for you today?</div>
                 };
             }
 
-            const refreshModelsBtn = document.getElementById('refresh-models-btn');
-            if (refreshModelsBtn) {
-                refreshModelsBtn.onclick = () => {
-                    refreshModelsBtn.innerText = '⌛';
-                    const provider = document.getElementById('provider-select').value;
-                    const apiKey = (provider === 'openrouter') ? 
-                        document.getElementById('api-key-input').value : 
-                        document.getElementById('gemini-api-key-input').value;
+            // Custom Model Dropdown Logic
+            const modelInput = document.getElementById('model-input');
+            const modelDropdown = document.getElementById('model-dropdown');
 
-                    vscode.postMessage({ type: 'fetchModels', provider, apiKey });
-                };
+            function showDropdown() {
+                const state = vscode.getState() || {};
+                const models = state.availableModels || [];
+                const term = modelInput.value.toLowerCase();
+                const filtered = models.filter(m => m.toLowerCase().includes(term));
+                
+                if (filtered.length > 0) {
+                    modelDropdown.innerHTML = '';
+                    filtered.forEach(mId => {
+                        const item = document.createElement('div');
+                        item.className = 'dropdown-item';
+                        item.innerText = mId;
+                        item.onclick = () => {
+                            modelInput.value = mId;
+                            modelDropdown.style.display = 'none';
+                        };
+                        modelDropdown.appendChild(item);
+                    });
+                    modelDropdown.style.display = 'block';
+                } else {
+                    modelDropdown.style.display = 'none';
+                }
             }
 
-            const modelFilter = document.getElementById('model-filter');
-            if (modelFilter) {
-                modelFilter.oninput = (e) => {
-                    const term = e.target.value.toLowerCase();
-                    const state = vscode.getState() || {};
-                    const allModels = state.availableModels || [];
-                    const filtered = allModels.filter(m => m.toLowerCase().includes(term));
-                    const currentVal = document.getElementById('model-input').value;
-                    populateModelSelect(filtered, currentVal);
-                };
+            if (modelInput) {
+                modelInput.oninput = () => showDropdown();
+                modelInput.onfocus = () => showDropdown();
+                
+                // Close dropdown when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (e.target !== modelInput && !modelDropdown.contains(e.target)) {
+                        modelDropdown.style.display = 'none';
+                    }
+                });
             }
 
             const browseBtn = document.getElementById('browse-btn');
@@ -836,7 +899,7 @@ What can I do for you today?</div>
                     const provider = m.provider || 'openrouter';
                     document.getElementById('provider-select').value = provider;
                     
-                    const modelSelect = document.getElementById('model-input');
+                    const modelInput = document.getElementById('model-input');
                     const currentModel = m.model || '';
                     
                     if (m.models) {
@@ -924,48 +987,25 @@ What can I do for you today?</div>
                     const refreshBtn = document.getElementById('refresh-models-btn');
                     if (refreshBtn) refreshBtn.innerText = '🔄';
                     
-                    // Store available models in webview state for local filtering
+                    // Store available models in webview state
                     const state = vscode.getState() || {};
                     state.availableModels = m.models;
                     vscode.setState(state);
                     
                     const currentModelValue = document.getElementById('model-input').value;
-                    const filterTerm = document.getElementById('model-filter').value.toLowerCase();
-                    const filtered = m.models.filter(mod => mod.toLowerCase().includes(filterTerm));
-                    populateModelSelect(filtered, currentModelValue);
+                    populateModelSelect(m.models, currentModelValue);
                 }
             });
 
             function populateModelSelect(models, selectedValue) {
-                const select = document.getElementById('model-input');
-                if (!select) return;
+                const input = document.getElementById('model-input');
+                if (!input) return;
                 
-                select.innerHTML = '';
-                if (models.length === 0) {
-                    const opt = document.createElement('option');
-                    opt.value = "";
-                    opt.innerText = "No models found (Check API Key)";
-                    select.appendChild(opt);
-                    return;
-                }
-
-                // Only keep selectedValue if it exists in the fetched list
-                // This prevents models from one provider leaking into another's dropdown
-                models.forEach(mId => {
-                    const opt = document.createElement('option');
-                    opt.value = mId;
-                    opt.innerText = mId;
-                    if (mId === selectedValue) opt.selected = true;
-                    select.appendChild(opt);
-                });
+                input.placeholder = 'Search or type model ID...';
                 
-                // If selectedValue was not found, add a placeholder or select the first one
-                if (selectedValue && !models.includes(selectedValue)) {
-                    const opt = document.createElement('option');
-                    opt.value = selectedValue;
-                    opt.innerText = selectedValue + ' (unsupported by provider)';
-                    opt.disabled = true;
-                    select.prepend(opt);
+                // If a value was passed (e.g. from config load), set it to the input
+                if (selectedValue) {
+                    input.value = selectedValue;
                 }
             }
         })();
