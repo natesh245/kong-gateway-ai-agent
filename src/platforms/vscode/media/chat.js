@@ -131,6 +131,7 @@
     }
 
     function appendMessage(role, content, className) {
+        console.log(`[UI Trace]: Message Role=${role}, Content Length=${content?.length || 0}`);
         const isThinking = (role === 'toolCall' || role === 'toolResult' || role === 'thought');
 
         if (role === 'user') {
@@ -207,11 +208,12 @@
                 displayContent = content.replace('[APPROVAL_REQUIRED]', '').trim();
             }
 
-            // Extract <thought> blocks
-            if (role === 'agent' && session && displayContent.includes('<thought>')) {
-                const thoughtMatch = displayContent.match(/<thought>([\s\S]*?)<\/thought>/);
-                if (thoughtMatch) {
-                    const stepsContainer = session.stepsRef || session.querySelector('.thinking-steps');
+            // Extract <thought> blocks (Global search for any thinking tokens)
+            if (role === 'agent' && session && /<thought>([\s\S]*?)<\/thought>/gi.test(displayContent)) {
+                const thoughtMatches = displayContent.matchAll(/<thought>([\s\S]*?)<\/thought>/gi);
+                const stepsContainer = session.stepsRef || session.querySelector('.thinking-steps');
+                
+                for (const match of thoughtMatches) {
                     if (stepsContainer) {
                         if (session.toolCount === 0) stepsContainer.innerHTML = '';
                         const thoughtDiv = document.createElement('div');
@@ -222,11 +224,16 @@
                         thoughtDiv.style.fontSize = '11px';
                         thoughtDiv.style.fontStyle = 'italic';
                         thoughtDiv.style.color = '#ccc';
-                        thoughtDiv.innerText = thoughtMatch[1].trim();
+                        thoughtDiv.innerText = match[1].trim();
                         stepsContainer.appendChild(thoughtDiv);
                     }
-                    displayContent = displayContent.replace(/<thought>([\s\S]*?)<\/thought>/, '').trim();
                 }
+                displayContent = displayContent.replace(/<thought>([\s\S]*?)<\/thought>/gi, '').trim();
+            }
+            // If no content is left after extracting thoughts and no approval is required, skip bubble creation
+            if (!displayContent.trim() && !hasApproval) {
+                stopThinkingSession();
+                return;
             }
 
             stopThinkingSession(); 

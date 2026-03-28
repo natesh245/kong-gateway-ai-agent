@@ -47,7 +47,7 @@ export class Agent {
                 "**GITOPS SYNC**: If a Git repository is set up, favor 'Commit -> Push -> Sync'. If Auto-Commit is enabled, update Git after a successful sync.\n" +
                 "**EFFICIENCY**: BUNDLE tool calls whenever possible. For the declarative workflow, you SHOULD call 'write_storage_file', 'validate_kong_config', and 'preview_sync_diff' in a SINGLE response turn. Avoid redundant status checks if you just performed one.\n" +
                 "**STRICTLY DECLARATIVE**: You are PROHIBITED from using direct API calls to create Services, Routes, or Consumers. All configuration MUST be managed via 'kong.yml' and synced using the 'sync_to_kong_using_deck' tool. There are no 'Direct API' creation tools available to you.\n" +
-                "**REASONING & THOUGHTS**: You MUST start EVERY response with your internal reasoning wrapped in `<thought>` tags. Explain what you understood, what you plan to do, and why you are choosing certain tools. This block will be moved into a specialized UI and NOT shown directly to the user.\n" +
+                "**REASONING & THOUGHTS**: You MUST think before you act. Start EVERY response turn with your internal reasoning wrapped in `<thought>` tags. Explain what you understood from the user's prompt, what your strategy is, and why you are choosing specific tools. If you are about to call tools, explain each tool's purpose in your thinking. This reasoning BLOCK is mandatory even if you are only calling tools. It will be moved into a specialized UI and NOT shown directly to the user.\n" +
                 "**NEXT STEPS & SUGGESTIONS**: When you finish a task, ALWAYS provide 2-3 specific 'Next Steps' as a bulleted list. Each item should be a clear, actionable command (e.g., '- Check Kong status'). These will be rendered as clickable items in the UI."
         });
     }
@@ -464,12 +464,17 @@ export class Agent {
         });
 
         const responseMessage = response.choices[0].message;
+        console.log(`[Agent Model Response]: role=${responseMessage.role}, content=${responseMessage.content ? 'POPULATED (' + responseMessage.content.length + ' chars)' : 'NULL'}, tool_calls=${responseMessage.tool_calls?.length || 0}`);
         this.messages.push(responseMessage);
 
         if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
             // Emitting internal thoughts if they exist alongside tool calls
             if (responseMessage.content) {
                 onUpdate(responseMessage.content as string, 'thought');
+            } else {
+                // Fallback for models that don't provide content with tool calls (like GPT-4o)
+                const toolNames = responseMessage.tool_calls.map(tc => tc.function.name).join(', ');
+                onUpdate(`<thought>I analyzed your request and determined that the following actions are needed: ${toolNames}.</thought>`, 'thought');
             }
 
             let shouldStopTurn = false;
@@ -672,7 +677,20 @@ export class Agent {
             }
         } else if (responseMessage.content) {
             onUpdate("", 'toolStatus'); // Clear status
-            onUpdate(responseMessage.content as string);
+            
+            let content = responseMessage.content as string;
+            const thoughtMatch = content.match(/<thought>([\s\S]*?)<\/thought>/);
+            
+            if (thoughtMatch) {
+                // Send the thought part first
+                onUpdate(thoughtMatch[0], 'thought');
+                // Remove the thought part from the final bubble content
+                content = content.replace(/<thought>([\s\S]*?)<\/thought>/, "").trim();
+            }
+            
+            if (content) {
+                onUpdate(content);
+            }
         }
     }
 }
