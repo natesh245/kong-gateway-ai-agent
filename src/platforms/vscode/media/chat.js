@@ -147,7 +147,7 @@
         };
     }
 
-    function appendMessage(role, content, className) {
+    function appendMessage(role, content, className, usage) {
         console.log(`[UI Trace]: Message Role=${role}, Content Length=${content?.length || 0}`);
         const isThinking = (role === 'toolCall' || role === 'toolResult' || role === 'thought');
 
@@ -311,6 +311,13 @@
                 approvalDiv.appendChild(yesBtn);
                 approvalDiv.appendChild(noBtn);
                 div.appendChild(approvalDiv);
+            }
+            
+            if (usage && role === 'agent') {
+                const usageDiv = document.createElement('div');
+                usageDiv.className = 'message-usage';
+                usageDiv.innerHTML = `⚡ ${usage.inputTokens}in + ${usage.outputTokens}out`;
+                div.appendChild(usageDiv);
             }
 
             chat.appendChild(div);
@@ -583,7 +590,7 @@
         const m = event.data;
         if (m.type === 'addMessage') {
             if (m.role === 'agent') typing.style.display = 'none';
-            appendMessage(m.role, m.content);
+            appendMessage(m.role, m.content, undefined, m.lastUsage);
         } else if (m.type === 'setConfig') {
             const provider = m.provider || 'openrouter';
             document.getElementById('provider-select').value = provider;
@@ -642,6 +649,10 @@
             }
             if (modelInfo) modelInfo.innerText = currentModel;
             
+            if (m.usageStats) {
+                updateUsageUI(m.usageStats);
+            }
+            
             const showThinking = m.showThinking !== false;
             document.getElementById('show-thinking-toggle').checked = showThinking;
             document.querySelectorAll('.thinking-session').forEach(el => {
@@ -679,6 +690,8 @@
             }
         } else if (m.type === 'toolStatus') {
             setToolStatus(m.status);
+        } else if (m.type === 'updateUsage') {
+            updateUsageUI(m.stats);
         } else if (m.type === 'portCheckResults') {
             for (const [key, res] of Object.entries(m.results)) {
                 const el = document.getElementById(key + '-card');
@@ -732,5 +745,34 @@
         if (modelInfo && selectedValue) {
             modelInfo.innerText = selectedValue;
         }
+    }
+
+    function updateUsageUI(stats) {
+        if (!stats) return;
+
+        const statIn = document.getElementById('stat-in');
+        const statOut = document.getElementById('stat-out');
+        const statContext = document.getElementById('stat-context');
+
+        if (statIn) statIn.innerText = formatTokens(stats.inputTokens);
+        if (statOut) statOut.innerText = formatTokens(stats.outputTokens);
+        
+        if (statContext && stats.contextLimit) {
+            const usagePercent = Math.min(100, Math.max(0, (stats.totalTokens / stats.contextLimit) * 100));
+            statContext.innerText = usagePercent.toFixed(usagePercent < 1 ? 1 : 0);
+            
+            // Visual warning for high context usage
+            const pill = statContext.parentElement;
+            if (pill) {
+                if (usagePercent > 90) pill.style.borderColor = '#f44747';
+                else if (usagePercent > 70) pill.style.borderColor = '#d7ba7d';
+                else pill.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+            }
+        }
+    }
+
+    function formatTokens(num) {
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+        return num;
     }
 })();

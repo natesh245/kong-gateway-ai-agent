@@ -140,6 +140,11 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
         <div class="model-selector-bar" id="quick-model-bar">
             <div class="provider-badge" id="current-provider-badge">OpenRouter</div>
             <span class="model-info" id="current-model-info">gpt-4o</span>
+            <div class="stats-container" id="usage-stats">
+                <span title="Prompt Tokens">In: <span id="stat-in">0</span></span>
+                <span title="Completion Tokens">Out: <span id="stat-out">0</span></span>
+                <span title="Context Usage" class="context-pill">Context: <span id="stat-context">0</span>%</span>
+            </div>
             <div class="status-indicator" title="Agent Ready">●</div>
         </div>
         <div class="chat-input-row"><textarea id="prompt" placeholder="Message Kong Agent..." rows="1"></textarea><button id="send">Send</button></div>

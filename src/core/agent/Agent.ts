@@ -13,6 +13,12 @@ export class Agent {
     private kongApi: KongApiClient;
     private isCancelled: boolean = false;
     private abortController: AbortController | null = null;
+    private usageStats = {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        lastTurnUsage: { inputTokens: 0, outputTokens: 0 }
+    };
 
     constructor(private config: IConfig, private toolManager: ToolManager, private platform: IAppPlatform) {
         this.kongApi = new KongApiClient(config);
@@ -78,6 +84,12 @@ export class Agent {
     public resetContext(): void {
         this.messages = [this.messages[0]]; // Keep only the system prompt
         this.isCancelled = false;
+        this.usageStats = {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            lastTurnUsage: { inputTokens: 0, outputTokens: 0 }
+        };
     }
 
     public cancel(): void {
@@ -198,6 +210,24 @@ export class Agent {
             console.error(`Unexpected failure in model fetch: ${e.message}`);
             return provider === 'gemini' ? geminiFallback : [];
         }
+    }
+
+    public getUsageStats() {
+        const config = this.config;
+        const model = config.get<string>('model') || 'openai/gpt-4o';
+        return { 
+            ...this.usageStats,
+            contextLimit: this.getContextLimit(model)
+        };
+    }
+
+    private getContextLimit(model: string): number {
+        const m = model.toLowerCase();
+        if (m.includes('gpt-4o')) return 128000;
+        if (m.includes('claude-3-5-sonnet')) return 200000;
+        if (m.includes('gemini-1.5')) return 1000000;
+        if (m.includes('gemini-2.0')) return 1000000;
+        return 128000; // Default
     }
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
@@ -491,6 +521,17 @@ export class Agent {
             throw e;
         } finally {
             this.abortController = null;
+        }
+
+        if (response.usage) {
+            const usage = response.usage;
+            this.usageStats.inputTokens += usage.prompt_tokens;
+            this.usageStats.outputTokens += usage.completion_tokens;
+            this.usageStats.totalTokens += usage.total_tokens;
+            this.usageStats.lastTurnUsage = {
+                inputTokens: usage.prompt_tokens,
+                outputTokens: usage.completion_tokens
+            };
         }
 
         const responseMessage = response.choices[0].message;

@@ -84,8 +84,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             if (type === 'toolStatus') {
                                 webviewView.webview.postMessage({ type: 'toolStatus', status: content });
                             } else {
-                                webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                                // For the final message (agent type), include usage
+                                const usage = type === 'agent' ? this._agent.getUsageStats().lastTurnUsage : undefined;
+                                webviewView.webview.postMessage({ type: 'addMessage', role: type, content, lastUsage: usage });
                             }
+                            // Update session total in real-time
+                            webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
                         });
                         break;
                     }
@@ -158,8 +162,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                                 if (type === 'toolStatus') {
                                     webviewView.webview.postMessage({ type: 'toolStatus', status: content });
                                 } else {
-                                    webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                                    const usage = type === 'agent' ? this._agent.getUsageStats().lastTurnUsage : undefined;
+                                    webviewView.webview.postMessage({ type: 'addMessage', role: type, content, lastUsage: usage });
                                 }
+                                // Update usage stats in real-time
+                                webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
                             });
                         }
                         break;
@@ -207,6 +214,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             } else {
                                 webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
                             }
+                            // Update usage stats in real-time
+                            webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
                         });
                         break;
                     }
@@ -288,7 +297,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 maxDepth: this.config.get('maxToolDepth') || 10,
                 showThinking: this.config.get('showThinking') !== false,
                 models: await this._agent.fetchAvailableModels(),
-                files: await this.toolManager.listStorageFiles()
+                files: await this.toolManager.listStorageFiles(),
+                usageStats: this._agent.getUsageStats()
             });
         }
     }
