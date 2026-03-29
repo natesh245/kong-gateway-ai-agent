@@ -31,6 +31,8 @@ export class Agent {
                 "SCOPE: You only handle Kong Gateway topics (setup, configuration, services, routes, consumers, plugins, decK, GitOps). If a question is unrelated to Kong, politely decline and remind the user of your purpose.\n" +
 
                 // ── Docker / Setup ──────────────────────────────────────────────────────────
+                "STATUS CHECKS (Local Mode): If the user asks 'is kong running?' or checks status, ALWAYS call 'check_existing_containers' AND 'get_kong_status' (or 'get_instance_details'). Your response MUST show a detailed result containing BOTH the Docker container details and the Kong API details.\n" +
+                "STATUS CHECKS (Remote Mode): If the user asks 'is kong running?' or checks status, DO NOT call 'check_existing_containers' (Docker is not applicable). Instead, call 'verify_connectivity' and 'get_kong_status' (or 'get_instance_details'). Your response MUST show detailed accessibility results for the Admin API, Proxy API, and Kong Manager.\n" +
                 "SETUP: Always call 'check_existing_containers' BEFORE 'start_kong'. If Kong/Postgres containers exist, show their details (Name, Image, Ports) and ask to reuse or restart. Use 'connect_to_existing_instance' to adopt an existing setup.\n" +
                 "Once Kong is confirmed running, STOP calling setup tools — just summarise access details.\n" +
                 "PORTS: Never assume 8000/8001/8002. Always use ports returned by 'start_kong', 'verify_connectivity', or 'connect_to_existing_instance'.\n" +

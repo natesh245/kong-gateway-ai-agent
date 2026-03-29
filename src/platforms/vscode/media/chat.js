@@ -437,6 +437,7 @@
             document.getElementById('local-settings').classList.toggle('hidden', !isLocal);
             document.getElementById('remote-settings').classList.toggle('hidden', isLocal);
             document.getElementById('check-ports-btn').classList.toggle('hidden', !isLocal);
+            checkConfigChanges();
         };
     }
 
@@ -544,7 +545,7 @@
             managerPort: document.getElementById('manager-port-input')?.value || '8002',
             databasePort: document.getElementById('db-port-input')?.value || '5432',
             maxDepth: document.getElementById('max-depth-input')?.value || '10',
-            workspace: document.getElementById('workspace-input')?.value || 'default',
+            kongWorkspace: document.getElementById('workspace-input')?.value || 'default',
             apiKey: document.getElementById('api-key-input')?.value || '',
             geminiApiKey: document.getElementById('gemini-api-key-input')?.value || '',
             remoteAdminUrl: document.getElementById('remote-admin-input')?.value || '',
@@ -594,7 +595,7 @@
             proxyPort: document.getElementById('proxy-port-input').value,
             adminPort: document.getElementById('admin-port-input').value,
             maxDepth: document.getElementById('max-depth-input').value,
-            workspace: document.getElementById('workspace-input').value
+            kongWorkspace: document.getElementById('workspace-input').value
         };
 
         const changes = [];
@@ -613,7 +614,7 @@
         detect('proxyPort', 'Proxy Port');
         detect('adminPort', 'Admin Port');
         detect('maxDepth', 'Tool Depth');
-        detect('workspace', 'Workspace');
+        detect('kongWorkspace', 'Workspace');
 
         const messageData = {
             type: 'updateConfig',
@@ -643,7 +644,7 @@
             managerPort: messageData.managerPort || '8002',
             databasePort: messageData.databasePort || '5432',
             maxDepth: newConfig.maxDepth || '10',
-            workspace: newConfig.workspace || 'default',
+            kongWorkspace: newConfig.kongWorkspace || 'default',
             apiKey: messageData.apiKey || '',
             geminiApiKey: messageData.geminiApiKey || '',
             remoteAdminUrl: messageData.remoteAdminUrl || '',
@@ -744,7 +745,7 @@
                 managerPort: m.managerPort ? m.managerPort.toString() : '8002',
                 databasePort: m.databasePort ? m.databasePort.toString() : '5432',
                 maxDepth: m.maxDepth ? m.maxDepth.toString() : '10',
-                workspace: m.kongWorkspace || 'default',
+                kongWorkspace: m.kongWorkspace || 'default',
                 apiKey: m.apiKey || '',
                 geminiApiKey: m.geminiApiKey || '',
                 remoteAdminUrl: m.remoteAdminUrl || '',
