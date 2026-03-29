@@ -100,7 +100,7 @@ export class DockerTool {
 
   public async findExistingContainers(): Promise<string> {
     try {
-      const { stdout: nameOut } = await execAsync('docker ps --format "{{.Id}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"');
+      const { stdout: nameOut } = await execAsync('docker ps --format "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"');
       const lines = nameOut.split('\n').filter(l => l.trim() !== '');
 
       const existing = lines.filter(line => {
