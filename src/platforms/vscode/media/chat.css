@@ -397,15 +397,23 @@ details[open] summary { margin-bottom: 12px; background: none; }
     color: var(--accent);
 }
 
-.message-usage {
-    font-size: 8px;
-    color: #888;
-    margin-top: 6px;
-    font-family: var(--vscode-editor-font-family, monospace);
-    opacity: 0.6;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    padding-top: 4px;
+.message-usage-container {
     text-align: right;
+    margin-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 6px;
+}
+
+.message-usage-badge {
+    font-size: 9px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-weight: 600;
+    color: var(--vscode-badge-foreground, #ffffff);
+    background: var(--vscode-badge-background, rgba(255, 255, 255, 0.2));
+    padding: 3px 6px;
+    border-radius: 4px;
+    opacity: 0.85;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
 
 .status-indicator {

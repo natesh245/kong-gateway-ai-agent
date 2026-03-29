@@ -314,8 +314,11 @@
             
             if (usage && role === 'agent') {
                 const usageDiv = document.createElement('div');
-                usageDiv.className = 'message-usage';
-                usageDiv.innerHTML = `⚡ ${usage.inputTokens}in + ${usage.outputTokens}out`;
+                usageDiv.className = 'message-usage-container';
+                const usageBadge = document.createElement('span');
+                usageBadge.className = 'message-usage-badge';
+                usageBadge.innerHTML = `⚡ ${usage.inputTokens} IN / ${usage.outputTokens} OUT`;
+                usageDiv.appendChild(usageBadge);
                 div.appendChild(usageDiv);
             }
 
