@@ -107,6 +107,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (data.managerPort) await this.config.update?.('managerGuiPort', parseInt(data.managerPort));
                         if (data.databasePort) await this.config.update?.('databasePort', parseInt(data.databasePort));
                         if (data.maxDepth) await this.config.update?.('maxToolDepth', parseInt(data.maxDepth));
+                        if (data.maxContext) await this.config.update?.('maxContext', parseInt(data.maxContext));
+                        if (data.maxAgentTimeout) await this.config.update?.('maxAgentTimeout', parseInt(data.maxAgentTimeout));
                         
                         await this.config.update?.('remoteAdminApiUrl', data.remoteAdminUrl);
                         await this.config.update?.('remoteProxyBaseUrl', data.remoteProxyUrl);
@@ -295,6 +297,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 gitRemoteUrl: this.config.get('gitRemoteUrl') || '',
                 autoCommit: this.config.get('autoCommit') === true,
                 maxDepth: this.config.get('maxToolDepth') || 10,
+                maxContext: this.config.get('maxContext') || 130000,
+                maxAgentTimeout: this.config.get('maxAgentTimeout') || 100,
                 showThinking: this.config.get('showThinking') !== false,
                 models: await this._agent.fetchAvailableModels(),
                 files: await this.toolManager.listStorageFiles(),

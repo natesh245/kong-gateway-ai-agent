@@ -545,6 +545,8 @@
             managerPort: document.getElementById('manager-port-input')?.value || '8002',
             databasePort: document.getElementById('db-port-input')?.value || '5432',
             maxDepth: document.getElementById('max-depth-input')?.value || '10',
+            maxContext: document.getElementById('max-context-input')?.value || '130000',
+            maxAgentTimeout: document.getElementById('max-timeout-input')?.value || '100',
             kongWorkspace: document.getElementById('workspace-input')?.value || 'default',
             apiKey: document.getElementById('api-key-input')?.value || '',
             geminiApiKey: document.getElementById('gemini-api-key-input')?.value || '',
@@ -595,6 +597,8 @@
             proxyPort: document.getElementById('proxy-port-input').value,
             adminPort: document.getElementById('admin-port-input').value,
             maxDepth: document.getElementById('max-depth-input').value,
+            maxContext: document.getElementById('max-context-input').value,
+            maxAgentTimeout: document.getElementById('max-timeout-input').value,
             kongWorkspace: document.getElementById('workspace-input').value
         };
 
@@ -614,6 +618,8 @@
         detect('proxyPort', 'Proxy Port');
         detect('adminPort', 'Admin Port');
         detect('maxDepth', 'Tool Depth');
+        detect('maxContext', 'Max Context');
+        detect('maxAgentTimeout', 'Agent Timeout');
         detect('kongWorkspace', 'Workspace');
 
         const messageData = {
@@ -644,6 +650,8 @@
             managerPort: messageData.managerPort || '8002',
             databasePort: messageData.databasePort || '5432',
             maxDepth: newConfig.maxDepth || '10',
+            maxContext: newConfig.maxContext || '130000',
+            maxAgentTimeout: newConfig.maxAgentTimeout || '100',
             kongWorkspace: newConfig.kongWorkspace || 'default',
             apiKey: messageData.apiKey || '',
             geminiApiKey: messageData.geminiApiKey || '',
@@ -728,6 +736,8 @@
             document.getElementById('api-key-input').value = m.apiKey || '';
             document.getElementById('gemini-api-key-input').value = m.geminiApiKey || '';
             document.getElementById('max-depth-input').value = m.maxDepth || 10;
+            document.getElementById('max-context-input').value = m.maxContext || 130000;
+            document.getElementById('max-timeout-input').value = m.maxAgentTimeout || 100;
 
             // Trigger visibility toggle
             document.getElementById('api-key-row').style.display = provider === 'openrouter' ? 'flex' : 'none';
@@ -745,6 +755,8 @@
                 managerPort: m.managerPort ? m.managerPort.toString() : '8002',
                 databasePort: m.databasePort ? m.databasePort.toString() : '5432',
                 maxDepth: m.maxDepth ? m.maxDepth.toString() : '10',
+                maxContext: m.maxContext ? m.maxContext.toString() : '130000',
+                maxAgentTimeout: m.maxAgentTimeout ? m.maxAgentTimeout.toString() : '100',
                 kongWorkspace: m.kongWorkspace || 'default',
                 apiKey: m.apiKey || '',
                 geminiApiKey: m.geminiApiKey || '',
@@ -909,6 +921,24 @@
                 if (usagePercent > 90) pill.style.borderColor = '#f44747';
                 else if (usagePercent > 70) pill.style.borderColor = '#d7ba7d';
                 else pill.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+            }
+
+            if (usagePercent >= 100 && !window._contextWarningTriggered) {
+                window._contextWarningTriggered = true;
+                setTimeout(() => {
+                    const messagesContainer = document.getElementById('chat');
+                    const warningHtml = `
+                        <div class="message system error">
+                            <div class="message-content">
+                                <h3>⚠️ Context Limit Exceeded</h3>
+                                <p>You have reached <b>100%</b> of your configured maximum context limit (${formatTokens(stats.contextLimit)} tokens).</p>
+                                <p>Continuing might result in truncated details or memory overflow. Please click the <b>Clear Chat</b> button to reset the context and start fresh.</p>
+                            </div>
+                        </div>
+                    `;
+                    messagesContainer.insertAdjacentHTML('beforeend', warningHtml);
+                    messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
+                }, 100);
             }
         }
     }

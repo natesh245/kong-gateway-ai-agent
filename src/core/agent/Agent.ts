@@ -216,48 +216,72 @@ export class Agent {
 
     public getUsageStats() {
         const config = this.config;
-        const model = config.get<string>('model') || 'openai/gpt-4o';
         return { 
             ...this.usageStats,
-            contextLimit: this.getContextLimit(model)
+            contextLimit: config.get<number>('maxContext') || 130000
         };
-    }
-
-    private getContextLimit(model: string): number {
-        const m = model.toLowerCase();
-        if (m.includes('gpt-4o')) return 128000;
-        if (m.includes('claude-3-5-sonnet')) return 200000;
-        if (m.includes('gemini-1.5')) return 1000000;
-        if (m.includes('gemini-2.0')) return 1000000;
-        return 128000; // Default
     }
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
         this.isCancelled = false;
+
+        const config = this.config;
+        const maxContext = config.get<number>('maxContext') || 130000;
+        if (this.usageStats.totalTokens >= maxContext) {
+            this.resetContext();
+            onUpdate("⚠️ **Context Limit Exceeded**: The agent token usage surpassed the absolute limit. To prevent instability, your conversation history has been forcefully cleared. Starting a fresh context...\n\n");
+        }
+
         if (!this.initClient()) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
             return;
         }
 
-        const config = this.config;
-        const kongMode = config.get<string>('kongMode') || 'local';
-        const contextHeader = `[SYSTEM CONTEXT: You are currently operating in **${kongMode.toUpperCase()} MODE**.]\n\n`;
-        this.messages.push({ role: "user", content: contextHeader + content });
+        const runAgentTask = async () => {
+            const kongMode = config.get<string>('kongMode') || 'local';
+            const contextHeader = `[SYSTEM CONTEXT: You are currently operating in **${kongMode.toUpperCase()} MODE**.]\n\n`;
+            this.messages.push({ role: "user", content: contextHeader + content });
 
-        const model = config.get<string>('model') || (config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o');
+            const model = config.get<string>('model') || (config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o');
+
+            try {
+                await this.runLoop(model, onUpdate, 0, Date.now());
+            } catch (e: any) {
+                onUpdate(`Agent Error: ${e.message}`);
+            }
+        };
+
+        const maxAgentTimeout = config.get<number>('maxAgentTimeout') || 100;
+        
+        let timerId: NodeJS.Timeout;
+        const timeoutPromise = new Promise<void>((_, reject) => {
+            timerId = setTimeout(() => {
+                this.cancel();
+                reject(new Error(`Processing forcefully aborted because it exceeded the configured maxAgentTimeout of ${maxAgentTimeout} seconds.`));
+            }, maxAgentTimeout * 1000);
+        });
 
         try {
-            await this.runLoop(model, onUpdate, 0);
+            await Promise.race([runAgentTask(), timeoutPromise]);
         } catch (e: any) {
-            onUpdate(`Agent Error: ${e.message}`);
+             onUpdate(`Agent Timeout: ${e.message}`);
+        } finally {
+            if (timerId!) clearTimeout(timerId);
         }
     }
 
-    private async runLoop(model: string, onUpdate: (content: string, type?: string) => void, depth: number) {
+    private async runLoop(model: string, onUpdate: (content: string, type?: string) => void, depth: number, startTime: number) {
         if (!this.openai || this.isCancelled) return;
 
         const config = this.config;
         const maxDepth = config.get<number>('maxToolDepth') || 10;
+        const maxAgentTimeout = config.get<number>('maxAgentTimeout') || 100;
+
+        // Check for timeout
+        if ((Date.now() - startTime) / 1000 > maxAgentTimeout) {
+            onUpdate(`Agent Error: Processing exceeded maximum timeout of ${maxAgentTimeout} seconds. The agent loop has been cleanly aborted.`);
+            return;
+        }
 
         // Prevent infinite loops
         if (depth > maxDepth) {
@@ -757,7 +781,7 @@ export class Agent {
             }
 
             // Always recurse so the LLM can see the Tool results (even errors/safety blocks) and format a user-facing reply.
-            await this.runLoop(model, onUpdate, depth + 1);
+            await this.runLoop(model, onUpdate, depth + 1, startTime);
         } else if (responseMessage.content) {
             onUpdate("", 'toolStatus'); // Clear status
 

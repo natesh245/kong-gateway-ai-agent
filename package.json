@@ -84,6 +84,16 @@
           "default": 10,
           "description": "Maximum tool call depth per message to prevent loops."
         },
+        "kongAgent.maxContext": {
+          "type": "number",
+          "default": 130000,
+          "description": "Maximum context limit for the AI model (used for context consumption tracking)."
+        },
+        "kongAgent.maxAgentTimeout": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum execution time (in seconds) for the agent's internal loop before it forces a timeout."
+        },
         "kongAgent.kongMode": {
           "type": "string",
           "enum": [
