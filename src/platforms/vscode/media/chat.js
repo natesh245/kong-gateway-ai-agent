@@ -220,13 +220,7 @@
             let displayContent = content;
             let hasApproval = false;
 
-            // Extract Approval Requirement
-            if (content.includes('[APPROVAL_REQUIRED]')) {
-                hasApproval = true;
-                displayContent = content.replace('[APPROVAL_REQUIRED]', '').trim();
-            }
-
-            // Extract <thought> blocks — always strip them regardless of session state
+            // 1. Extract and strip <thought> blocks first (they should never trigger UI buttons)
             if (role === 'agent' && /<thought>([\s\S]*?)<\/thought>/gi.test(displayContent)) {
                 const thoughtMatches = displayContent.matchAll(/<thought>([\s\S]*?)<\/thought>/gi);
                 const stepsContainer = currentSession ? (currentSession.stepsRef || currentSession.querySelector('.thinking-steps')) : null;
@@ -247,8 +241,13 @@
                         stepsContainer.appendChild(thoughtDiv);
                     }
                 }
-                // Always remove the thought tags from the visible bubble content
                 displayContent = displayContent.replace(/<thought>([\s\S]*?)<\/thought>/gi, '').trim();
+            }
+
+            // 2. Extract Approval Requirement from the remaining CLEAN content
+            if (displayContent.includes('[APPROVAL_REQUIRED]')) {
+                hasApproval = true;
+                displayContent = displayContent.replace('[APPROVAL_REQUIRED]', '').trim();
             }
             // If no content is left after extracting thoughts and no approval is required, skip bubble creation
             if (!displayContent.trim() && !hasApproval) {
