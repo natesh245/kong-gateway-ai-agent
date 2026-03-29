@@ -279,7 +279,15 @@ export class Agent {
 
         // Check for timeout
         if ((Date.now() - startTime) / 1000 > maxAgentTimeout) {
-            onUpdate(`Agent Error: Processing exceeded maximum timeout of ${maxAgentTimeout} seconds. The agent loop has been cleanly aborted.`);
+            this.cancel();
+            onUpdate(`Agent Timeout: Processing exceeded maximum timeout of ${maxAgentTimeout} seconds. The agent loop has been forcefully aborted.`);
+            return;
+        }
+
+        const maxContext = config.get<number>('maxContext') || 130000;
+        if (this.usageStats.totalTokens >= maxContext) {
+            this.cancel();
+            onUpdate(`Agent Context Limit: Context limit (${maxContext} tokens) reached mid-turn. The agent loop has been forcefully aborted to prevent truncation. Please clear the chat.`);
             return;
         }
 
