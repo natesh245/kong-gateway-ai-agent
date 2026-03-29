@@ -549,8 +549,7 @@ export class Agent {
                 onUpdate(responseMessage.content as string, 'thought');
             }
 
-
-            let shouldStopTurn = false;
+            let anyToolTriggeredSafety = false;
             for (const toolCall of responseMessage.tool_calls) {
                 if (this.isCancelled) {
                     onUpdate("Agent task cancelled by user.", 'agent');
@@ -646,7 +645,7 @@ export class Agent {
                         case "export_live_to_storage_file":
                             {
                                 const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                                const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase();
+                                const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
 
                                 if (lastUserContent === 'yes' || lastUserContent.includes('proceed') || lastUserContent.includes('export')) {
                                     functionResult = await this.toolManager.dumpWithDeck('kong.yml');
@@ -664,11 +663,11 @@ export class Agent {
                             break;
                         case "sync_to_kong_using_deck":
                             {
-                                // Safety check: verify the user gave a "Yes" recently
-                                const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                                const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase();
+                            // Safety check: verify the user gave a "Yes" recently
+                            const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                            const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
 
-                                if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
+                            if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
                                     functionResult = await this.toolManager.syncWithDeck(functionArgs.filename);
                                     if (!functionResult.includes('failed')) {
                                         const config = this.config;
@@ -718,7 +717,7 @@ export class Agent {
                             // as their last message before this tool call sequence was initiated.
                             // We look for a clear, standalone 'yes' or a specific confirmation.
                             const latestUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                            const userText = (latestUserMsg?.content as string || "").trim().toLowerCase();
+                            const userText = (latestUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
 
                             // Stricter check: only allow 'yes' or explicit confirmation phrases
                             const isConfirmed = userText === 'yes' ||
@@ -744,7 +743,7 @@ export class Agent {
 
                 // If any tool triggers safety, we MUST stop the automated turn immediately
                 if (functionResult.includes("SAFETY_REQUIRED")) {
-                    shouldStopTurn = true;
+                    anyToolTriggeredSafety = true;
                 }
 
                 // Transparency: Notify UI result
@@ -757,9 +756,8 @@ export class Agent {
                 } as any);
             }
 
-            if (!shouldStopTurn) {
-                await this.runLoop(model, onUpdate, depth + 1);
-            }
+            // Always recurse so the LLM can see the Tool results (even errors/safety blocks) and format a user-facing reply.
+            await this.runLoop(model, onUpdate, depth + 1);
         } else if (responseMessage.content) {
             onUpdate("", 'toolStatus'); // Clear status
 
