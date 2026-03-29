@@ -9,9 +9,7 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onView:kongAgentChat"
-  ],
+
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -28,7 +26,8 @@
         {
           "type": "webview",
           "id": "kongAgentChat",
-          "name": "Chat"
+          "name": "Chat",
+          "icon": "$(comment-discussion)"
         }
       ]
     },
@@ -132,6 +131,16 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically commit and push changes to Git after a successful decK sync."
+        },
+        "kongAgent.kongWorkspace": {
+          "type": "string",
+          "default": "default",
+          "description": "The target Kong workspace (Enterprise only)."
+        },
+        "kongAgent.kongAdminToken": {
+          "type": "string",
+          "default": "",
+          "description": "The RBAC Admin token for authentication."
         }
       }
     }
