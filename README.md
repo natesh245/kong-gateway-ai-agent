@@ -8,9 +8,20 @@ An AI-powered VS Code extension that provides a declarative, GitOps-first interf
 - **GitOps-First Workflow**: Uses the official **decK CLI** for declarative configuration (`kong.yml`).
 - **Flexible Connectivity**: Support for **Local** (Docker-based) and **Remote** (URL-based) Kong instances.
 - **Docker Integration**: Automated lifecycle management (Start/Stop/Logs) for local Kong and Postgres.
+- **Token & Context Tracking**: Real-time monitoring of token consumption and model context usage.
 - **Enterprise Support**: Handles **Workspaces**, **RBAC Tokens**, and **TLS Verification** settings.
 - **Safety First**: Mandatory validation and diff previews before syncing changes to live instances.
 - **Visual Excellence**: Modern, premium chat UI with "Thinking Process" toggles and error highlighting.
+
+---
+
+## 📂 Repository Structure
+
+The project follows a modular architecture:
+- **`src/core/`**: Platform-agnostic logic (Agent, Tool Management, Kong API Client).
+- **`src/platforms/`**: Platform-specific implementations (e.g., VS Code extension, Webview).
+
+For more details, see the sub-READMEs in each directory.
 
 ---
 
@@ -18,7 +29,7 @@ An AI-powered VS Code extension that provides a declarative, GitOps-first interf
 
 1.  **Docker Desktop**: Required for Local mode and the Dockerized decK fallback.
 2.  **decK CLI** (Optional): If installed on your host, the agent will use it directly for faster performance.
-3.  **OpenRouter API Key**: Required for the LLM-based reasoning agent.
+3.  **OpenRouter/Gemini API Key**: Required for the LLM-based reasoning agent.
 
 ---
 
@@ -37,10 +48,6 @@ npm install
 - Press `F5` (or go to **Run > Start Debug** ) to launch a new VS Code window with the extension loaded.
 - Click the **Kong Agent** icon (⚡) in the Activity Bar to open the chat sidebar.
 
-### 3. Test & Build
-- **Watch mode**: `npm run watch` (rebuilds as you save).
-- **Production Build**: `npm run build`.
-
 ---
 
 ## ⚙️ Configuration
@@ -49,9 +56,10 @@ Open the **Settings Panel** within the Kong Agent Chat view to configure:
 
 | Setting | Description |
 | :--- | :--- |
-| **LLM Provider** | Choose between **OpenRouter** or local models via **Ollama**. |
-| **API Key** | Your OpenRouter API key. |
+| **LLM Provider** | Choose between **OpenRouter** or **Google Gemini**. |
+| **API Key** | Your OpenRouter or Gemini API key. |
 | **Kong Mode** | Toggle between **Local (Docker)** and **Remote (URL)**. |
+| **Max Tool Depth** | Limit how many tool-calls the agent can make per turn. |
 | **Storage Path** | Where your `kong.yml` and `docker-compose.yml` files are stored. |
 | **Admin Token** | Your RBAC token for authenticated Kong instances. |
 | **Workspace** | Target a specific Kong workspace (e.g., `default`). |
