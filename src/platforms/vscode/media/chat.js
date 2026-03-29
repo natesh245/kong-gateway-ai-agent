@@ -431,45 +431,80 @@
         };
     }
 
-    // Custom Model Dropdown Logic
-    const modelInput = document.getElementById('model-input');
-    const modelDropdown = document.getElementById('model-dropdown');
+    // Bulletproof Model Dropdown Logic
+    function getModelInput() { return document.getElementById('model-input'); }
+    function getModelDropdown() { return document.getElementById('model-dropdown'); }
 
     function showDropdown() {
+        const input = getModelInput();
+        const dropdown = getModelDropdown();
+        if (!input || !dropdown) return;
+
         const state = vscode.getState() || {};
         const models = state.availableModels || [];
-        const term = modelInput.value.toLowerCase();
+        const term = (input.value || '').toLowerCase();
         const filtered = models.filter(m => m.toLowerCase().includes(term));
         
         if (filtered.length > 0) {
-            modelDropdown.innerHTML = '';
+            dropdown.innerHTML = '';
+            
+            // Calculate Position for Fixed Dropdown
+            const rect = input.getBoundingClientRect();
+            dropdown.style.top = (rect.bottom + 4) + 'px';
+            dropdown.style.left = rect.left + 'px';
+            dropdown.style.width = rect.width + 'px';
+            
             filtered.forEach(mId => {
                 const item = document.createElement('div');
                 item.className = 'dropdown-item';
                 item.innerText = mId;
-                item.onclick = () => {
-                    modelInput.value = mId;
-                    modelDropdown.style.display = 'none';
+                item.onmousedown = (e) => { // Use mousedown to beat the blur
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                    const inp = getModelInput();
+                    const dd = getModelDropdown();
+                    if (inp) {
+                        inp.value = mId;
+                        inp.dispatchEvent(new Event('change')); // Trigger any other listeners
+                    }
+                    if (dd) dd.style.display = 'none';
+                    
+                    // Update the quick info bar too
+                    const info = document.getElementById('current-model-info');
+                    if (info) info.innerText = mId;
                 };
-                modelDropdown.appendChild(item);
+                dropdown.appendChild(item);
             });
-            modelDropdown.style.display = 'block';
+            dropdown.style.display = 'block';
         } else {
-            modelDropdown.style.display = 'none';
+            dropdown.style.display = 'none';
         }
     }
 
-    if (modelInput) {
-        modelInput.oninput = () => showDropdown();
-        modelInput.onfocus = () => showDropdown();
-        
-        // Close dropdown when clicking outside
-        document.addEventListener('click', (e) => {
-            if (e.target !== modelInput && !modelDropdown.contains(e.target)) {
-                modelDropdown.style.display = 'none';
-            }
-        });
+    // Close dropdown on scroll
+    const settingsPanel = document.querySelector('.settings-panel');
+    if (settingsPanel) {
+        settingsPanel.onscroll = () => {
+            const dd = getModelDropdown();
+            if (dd) dd.style.display = 'none';
+        };
     }
+
+    // Initialize listeners
+    const mInput = getModelInput();
+    if (mInput) {
+        mInput.oninput = () => showDropdown();
+        mInput.onfocus = () => showDropdown();
+    }
+
+    // Global click listener to close dropdown
+    document.addEventListener('click', (e) => {
+        const input = getModelInput();
+        const dropdown = getModelDropdown();
+        if (input && dropdown && e.target !== input && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
 
     const browseBtn = document.getElementById('browse-btn');
     if (browseBtn) browseBtn.onclick = () => vscode.postMessage({ type: 'selectFolder' });
@@ -553,9 +588,15 @@
             const provider = m.provider || 'openrouter';
             document.getElementById('provider-select').value = provider;
             
-            const modelInput = document.getElementById('model-input');
+            const modelInput = getModelInput();
             const currentModel = m.model || '';
             
+            // Re-bind listeners just in case DOM refreshed
+            if (modelInput) {
+                modelInput.oninput = () => showDropdown();
+                modelInput.onfocus = () => showDropdown();
+            }
+
             if (m.models) {
                 populateModelSelect(m.models, currentModel);
             } else {
@@ -591,6 +632,15 @@
             document.getElementById('skip-tls-input').checked = m.skipTlsVerify === true;
             document.getElementById('git-remote-input').value = m.gitRemoteUrl || '';
             document.getElementById('auto-commit-input').checked = m.autoCommit === true;
+            
+            // Update Quick Bar
+            const badge = document.getElementById('current-provider-badge');
+            const modelInfo = document.getElementById('current-model-info');
+            if (badge) {
+                badge.innerText = provider === 'openrouter' ? 'OpenRouter' : 'Gemini';
+                badge.style.background = provider === 'openrouter' ? 'var(--accent)' : '#4ec9b0';
+            }
+            if (modelInfo) modelInfo.innerText = currentModel;
             
             const showThinking = m.showThinking !== false;
             document.getElementById('show-thinking-toggle').checked = showThinking;
@@ -672,13 +722,15 @@
 
     function populateModelSelect(models, selectedValue) {
         const input = document.getElementById('model-input');
-        if (!input) return;
+        const modelInfo = document.getElementById('current-model-info');
         
-        input.placeholder = 'Search or type model ID...';
+        if (input) {
+            input.placeholder = 'Search or type model ID...';
+            if (selectedValue) input.value = selectedValue;
+        }
         
-        // If a value was passed (e.g. from config load), set it to the input
-        if (selectedValue) {
-            input.value = selectedValue;
+        if (modelInfo && selectedValue) {
+            modelInfo.innerText = selectedValue;
         }
     }
 })();
