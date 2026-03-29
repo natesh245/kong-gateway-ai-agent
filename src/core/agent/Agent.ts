@@ -239,8 +239,11 @@ export class Agent {
             return;
         }
 
-        this.messages.push({ role: "user", content });
         const config = this.config;
+        const kongMode = config.get<string>('kongMode') || 'local';
+        const contextHeader = `[SYSTEM CONTEXT: You are currently operating in **${kongMode.toUpperCase()} MODE**.]\n\n`;
+        this.messages.push({ role: "user", content: contextHeader + content });
+
         const model = config.get<string>('model') || (config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o');
 
         try {
