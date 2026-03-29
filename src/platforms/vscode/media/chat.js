@@ -450,7 +450,10 @@
         const state = vscode.getState() || {};
         const models = state.availableModels || [];
         const term = (input.value || '').toLowerCase();
-        const filtered = models.filter(m => m.toLowerCase().includes(term));
+        
+        // If no models in state, maybe they were just fetched
+        const filtered = models.length > 0 ? 
+            models.filter(m => m.toLowerCase().includes(term)) : [];
         
         if (filtered.length > 0) {
             dropdown.innerHTML = '';
@@ -497,12 +500,17 @@
         };
     }
 
-    // Initialize listeners
-    const mInput = getModelInput();
-    if (mInput) {
-        mInput.oninput = () => showDropdown();
-        mInput.onfocus = () => showDropdown();
+    // Console-logged initialization to track logic
+    const modelSearchInited = false;
+    function initializeModelSearch() {
+        const mInput = getModelInput();
+        if (mInput && !mInput.hasAttribute('data-hooked')) {
+            mInput.oninput = () => showDropdown();
+            mInput.onfocus = () => showDropdown();
+            mInput.setAttribute('data-hooked', 'true');
+        }
     }
+    initializeModelSearch();
 
     // Global click listener to close dropdown
     document.addEventListener('click', (e) => {
@@ -598,17 +606,18 @@
             const modelInput = getModelInput();
             const currentModel = m.model || '';
             
-            // Re-bind listeners just in case DOM refreshed
-            if (modelInput) {
-                modelInput.oninput = () => showDropdown();
-                modelInput.onfocus = () => showDropdown();
-            }
-
+            // Sync available models to state immediately
             if (m.models) {
+                const state = vscode.getState() || {};
+                state.availableModels = m.models;
+                vscode.setState(state);
                 populateModelSelect(m.models, currentModel);
             } else {
                 vscode.postMessage({ type: 'fetchModels' });
             }
+
+            // Ensure listeners are attached
+            initializeModelSearch();
 
             document.getElementById('api-key-input').value = m.apiKey || '';
             document.getElementById('gemini-api-key-input').value = m.geminiApiKey || '';
