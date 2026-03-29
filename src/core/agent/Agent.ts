@@ -43,21 +43,21 @@ export class Agent {
                 // ── Declarative Workflow ────────────────────────────────────────────────────
                 "DECLARATIVE WORKFLOW (Services, Routes, Consumers):\n" +
                 "1. Write: 'write_storage_file' → save YAML to config file (skip if user asks for Review of existing file).\n" +
-                "2. Validate: 'validate_kong_config' — always. If there are issues, provide a DETAILED explanation of the deck validation issues, specifying exactly what the issue is. Don't auto-fix unless asked.\n" +
+                "2. Validate: 'validate_kong_config' — always. If there are issues, provide a DETAILED explanation of the deck validation issues and explicitly SUGGEST ways to fix them. Do not auto-fix unless asked, but ALWAYS provide actionable recommendations.\n" +
                 "3. Diff: call 'preview_sync_diff' and show its FULL raw output verbatim inside a ```diff code block. NEVER summarise, paraphrase, or reformat the diff. Show the DETAILED difference between local and live config to the user when asking for approval.\n" +
-                "4. Ask: Before calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file', ALWAYS include the FULL detailed diff output in the approval message before adding '[APPROVAL_REQUIRED]'. The user must see the exact differences between local and live configurations before approving.\n" +
-                "5. Sync: 'sync_to_kong_using_deck' ONLY after the user has seen the detailed diff in step 4 and said 'Yes'. NEVER call sync without first calling 'preview_sync_diff' in the same workflow — skipping the diff is PROHIBITED regardless of what the user says.\n" +
+                "4. Ask & Approve: Before calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file', ALWAYS explain validation issues, include the FULL detailed diff output, append '[APPROVAL_REQUIRED]', and wait for user confirmation ('Yes').\n" +
+                "5. Sync: Execute sync ONLY after obtaining explicit approval in step 4. Skipping the diff or approval step is strictly PROHIBITED.\n" +
                 "REVIEWS: Read file first (read_storage_file), then Validate + Diff. Do not sync_to_kong_using_deck or export_live_to_storage_file during a review.\n" +
                 "CANCEL: If user says No/Cancel, stop. Never use 'reset_kong_instance' to revert a config change.\n" +
 
                 // ── Safety & Permissions ────────────────────────────────────────────────────
-                "SAFETY: 'sync_to_kong_using_deck', 'export_live_to_storage_file', and 'reset_kong_instance' have code-level safety blocks requiring recent 'Yes'. If you see 'SAFETY_REQUIRED', stop and ask. Always append '[APPROVAL_REQUIRED]' before expecting Yes/No.\n" +
-                "APPROVAL REQUIRED: You are PROHIBITED from calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file' without explicit user approval. Always show the detailed diff between local and live config first, explain any validation issues, then ask with '[APPROVAL_REQUIRED]' and wait for 'Yes' before calling either tool.\n" +
-                "EXPORT: 'export_live_to_storage_file' requires user approval (same as sync). It is for manual backups only but MUST follow the diff/approval flow so the user knows what local changes might be overwritten.\n" +
+                "SAFETY: 'sync_to_kong_using_deck', 'export_live_to_storage_file', and 'reset_kong_instance' have code-level safety blocks. If you see 'SAFETY_REQUIRED' in a tool response, you forgot to ask for approval. Stop, show the diff, and ask with '[APPROVAL_REQUIRED]'.\n" +
+                "EXPORT: 'export_live_to_storage_file' is for manual backups only. It also requires the diff/approval flow so the user knows what local changes will be overwritten.\n" +
                 "GITOPS: If Git is configured, prefer Commit → Push → Sync. Auto-commit after a successful sync if enabled.\n" +
 
-                // ── Efficiency ──────────────────────────────────────────────────────────────
+                // ── Efficiency & Troubleshooting ───────────────────────────────────────────
                 "EFFICIENCY: Bundle tool calls where possible. In the declarative workflow, call write+validate+diff in one turn. Skip redundant status checks.\n" +
+                "TROUBLESHOOTING: If any tool returns an error or failure (e.g., connectivity issues, sync failures, or deck errors), you MUST explicitly suggest step-by-step ways for the user to fix the problem.\n" +
 
                 // ── Output Format ───────────────────────────────────────────────────────────
                 "OUTPUT FORMAT: Every response must be: <thought>[reasoning, tool plan, analysis]</thought>[user-facing markdown answer]. Reasoning inside <thought> is hidden; everything outside is shown to the user.\n" +
