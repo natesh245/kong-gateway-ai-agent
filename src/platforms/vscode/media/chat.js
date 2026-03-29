@@ -524,40 +524,149 @@
     if (browseBtn) browseBtn.onclick = () => vscode.postMessage({ type: 'selectFolder' });
 
     const saveBtn = document.getElementById('save-config-btn');
+
+    function checkConfigChanges() {
+        if (!saveBtn) return;
+        const state = vscode.getState() || {};
+        const oldConfig = state.config || {};
+        if (Object.keys(oldConfig).length === 0) return;
+
+        const currentConfig = {
+            provider: document.getElementById('provider-select')?.value || 'openrouter',
+            model: document.getElementById('model-input')?.value || '',
+            kongMode: document.getElementById('kong-mode-select')?.value || 'local',
+            storagePath: document.getElementById('storage-input')?.value || 'Default',
+            proxyPort: document.getElementById('proxy-port-input')?.value || '8000',
+            adminPort: document.getElementById('admin-port-input')?.value || '8001',
+            managerPort: document.getElementById('manager-port-input')?.value || '8002',
+            databasePort: document.getElementById('db-port-input')?.value || '5432',
+            maxDepth: document.getElementById('max-depth-input')?.value || '10',
+            workspace: document.getElementById('workspace-input')?.value || 'default',
+            apiKey: document.getElementById('api-key-input')?.value || '',
+            geminiApiKey: document.getElementById('gemini-api-key-input')?.value || '',
+            remoteAdminUrl: document.getElementById('remote-admin-input')?.value || '',
+            remoteProxyUrl: document.getElementById('remote-proxy-input')?.value || '',
+            remoteManagerUrl: document.getElementById('remote-manager-input')?.value || '',
+            kongAdminToken: document.getElementById('admin-token-input')?.value || '',
+            skipTlsVerify: document.getElementById('skip-tls-input')?.checked ? 'true' : 'false',
+            gitRemoteUrl: document.getElementById('git-remote-input')?.value || '',
+            autoCommit: document.getElementById('auto-commit-input')?.checked ? 'true' : 'false'
+        };
+
+        let hasChanges = false;
+        for (const [key, val] of Object.entries(currentConfig)) {
+            if (oldConfig[key] !== val) {
+                hasChanges = true;
+                break;
+            }
+        }
+
+        saveBtn.disabled = !hasChanges;
+        if (!hasChanges) {
+            saveBtn.style.opacity = '0.5';
+            saveBtn.style.cursor = 'not-allowed';
+            saveBtn.innerText = 'No Changes to Save';
+        } else {
+            saveBtn.style.opacity = '1';
+            saveBtn.style.cursor = 'pointer';
+            saveBtn.innerText = 'Save Configuration';
+        }
+    }
+
+    // Bind this checking function to all relevant inputs
+    document.querySelectorAll('.settings-panel input, .settings-panel select').forEach(el => {
+        el.addEventListener('input', checkConfigChanges);
+        el.addEventListener('change', checkConfigChanges);
+    });
+
     if (saveBtn) saveBtn.onclick = () => {
-        vscode.postMessage({
-            type: 'updateConfig',
+        const oldState = vscode.getState() || {};
+        const oldConfig = oldState.config || {};
+        
+        const newConfig = {
             provider: document.getElementById('provider-select').value,
             model: document.getElementById('model-input').value,
-            apiKey: document.getElementById('api-key-input').value,
-            geminiApiKey: document.getElementById('gemini-api-key-input').value,
-            maxDepth: document.getElementById('max-depth-input').value,
-            storagePath: document.getElementById('storage-input').value,
             kongMode: document.getElementById('kong-mode-select').value,
+            storagePath: document.getElementById('storage-input').value,
             proxyPort: document.getElementById('proxy-port-input').value,
             adminPort: document.getElementById('admin-port-input').value,
+            maxDepth: document.getElementById('max-depth-input').value,
+            workspace: document.getElementById('workspace-input').value
+        };
+
+        const changes = [];
+        const detect = (key, label) => {
+            const oldVal = oldConfig[key] || '';
+            const newVal = newConfig[key] || '';
+            if (oldVal && newVal !== oldVal) {
+                changes.push(`| **${label}** | \`${oldVal}\` → \`${newVal}\` |`);
+            }
+        };
+
+        detect('provider', 'AI Provider');
+        detect('model', 'Model ID');
+        detect('kongMode', 'Execution Mode');
+        detect('storagePath', 'Storage Path');
+        detect('proxyPort', 'Proxy Port');
+        detect('adminPort', 'Admin Port');
+        detect('maxDepth', 'Tool Depth');
+        detect('workspace', 'Workspace');
+
+        const messageData = {
+            type: 'updateConfig',
+            ...newConfig,
+            apiKey: document.getElementById('api-key-input').value,
+            geminiApiKey: document.getElementById('gemini-api-key-input').value,
             managerPort: document.getElementById('manager-port-input').value,
             databasePort: document.getElementById('db-port-input').value,
             remoteAdminUrl: document.getElementById('remote-admin-input').value,
             remoteProxyUrl: document.getElementById('remote-proxy-input').value,
             remoteManagerUrl: document.getElementById('remote-manager-input').value,
-            kongWorkspace: document.getElementById('workspace-input').value,
             kongAdminToken: document.getElementById('admin-token-input').value,
             skipTlsVerify: document.getElementById('skip-tls-input').checked,
             gitRemoteUrl: document.getElementById('git-remote-input').value,
             autoCommit: document.getElementById('auto-commit-input').checked
-        });
+        };
+        vscode.postMessage(messageData);
+
+        // Save current to state for next diff
+        oldState.config = {
+            provider: newConfig.provider || 'openrouter',
+            model: newConfig.model || '',
+            kongMode: newConfig.kongMode || 'local',
+            storagePath: newConfig.storagePath || 'Default',
+            proxyPort: newConfig.proxyPort || '8000',
+            adminPort: newConfig.adminPort || '8001',
+            managerPort: messageData.managerPort || '8002',
+            databasePort: messageData.databasePort || '5432',
+            maxDepth: newConfig.maxDepth || '10',
+            workspace: newConfig.workspace || 'default',
+            apiKey: messageData.apiKey || '',
+            geminiApiKey: messageData.geminiApiKey || '',
+            remoteAdminUrl: messageData.remoteAdminUrl || '',
+            remoteProxyUrl: messageData.remoteProxyUrl || '',
+            remoteManagerUrl: messageData.remoteManagerUrl || '',
+            kongAdminToken: messageData.kongAdminToken || '',
+            skipTlsVerify: messageData.skipTlsVerify ? 'true' : 'false',
+            gitRemoteUrl: messageData.gitRemoteUrl || '',
+            autoCommit: messageData.autoCommit ? 'true' : 'false'
+        };
+        vscode.setState(oldState);
+        checkConfigChanges();
+
         // Minimize settings panel
         const settingsContainer = document.querySelector('.settings-container');
         if (settingsContainer) {
             settingsContainer.open = false;
         }
         showToast('✅ Configuration saved successfully!');
-        const currentProvider = document.getElementById('provider-select').value;
-        const currentModel = document.getElementById('model-input').value;
-        const currentMode = document.getElementById('kong-mode-select').value;
 
-        appendMessage('agent', `### Configuration Saved! 🚀\n\nThe **Kong Gateway Agent** has been updated with your new settings:\n\n- 🤖 **Provider**: ${currentProvider}\n- 🧠 **Model**: ${currentModel}\n- 🌐 **Mode**: ${currentMode}\n\nI'm ready to continue. How can I help you today?`);
+        if (changes.length > 0) {
+            const summary = `### ⚙️ Configuration Updated\n\n| Setting | Change |\n| :--- | :--- |\n${changes.join('\n')}\n\nI'm ready to continue. How can I help you?`;
+            appendMessage('agent', summary);
+        } else {
+            appendMessage('agent', `### ⚙️ Configuration Saved\n\nNo values were changed.\n\nI'm ready to continue. How can I help you?`);
+        }
         
         // Auto-refresh models when saving if provider or key is new
         const provider = document.getElementById('provider-select').value;
@@ -574,12 +683,6 @@
         appendMessage('agent', welcomeTemplate.innerHTML.trim(), 'welcome-message');
     }
 
-    const resetInstBtn = document.getElementById('reset-instance-btn');
-    if (resetInstBtn) resetInstBtn.onclick = () => {
-        if (confirm('Are you SURE you want to delete ALL configuration from your Kong instance? This action cannot be undone.')) {
-            vscode.postMessage({ type: 'resetInstance' });
-        }
-    };
 
     const checkBtn = document.getElementById('check-ports-btn');
     if (checkBtn) checkBtn.onclick = (e) => {
@@ -625,6 +728,31 @@
             // Trigger visibility toggle
             document.getElementById('api-key-row').style.display = provider === 'openrouter' ? 'flex' : 'none';
             document.getElementById('gemini-api-key-row').style.display = provider === 'gemini' ? 'flex' : 'none';
+
+            // Seed the initial state block so we have a reliable diff baseline on next save
+            const state = vscode.getState() || {};
+            state.config = {
+                provider: m.provider || 'openrouter',
+                model: m.model || '',
+                kongMode: m.kongMode || 'local',
+                storagePath: m.storagePath || 'Default',
+                proxyPort: m.proxyPort ? m.proxyPort.toString() : '8000',
+                adminPort: m.adminPort ? m.adminPort.toString() : '8001',
+                managerPort: m.managerPort ? m.managerPort.toString() : '8002',
+                databasePort: m.databasePort ? m.databasePort.toString() : '5432',
+                maxDepth: m.maxDepth ? m.maxDepth.toString() : '10',
+                workspace: m.kongWorkspace || 'default',
+                apiKey: m.apiKey || '',
+                geminiApiKey: m.geminiApiKey || '',
+                remoteAdminUrl: m.remoteAdminUrl || '',
+                remoteProxyUrl: m.remoteProxyUrl || '',
+                remoteManagerUrl: m.remoteManagerUrl || '',
+                kongAdminToken: m.kongAdminToken || '',
+                skipTlsVerify: m.skipTlsVerify === true ? 'true' : 'false',
+                gitRemoteUrl: m.gitRemoteUrl || '',
+                autoCommit: m.autoCommit === true ? 'true' : 'false'
+            };
+            vscode.setState(state);
             document.getElementById('storage-input').value = m.storagePath || 'Default';
             
             const kongMode = m.kongMode || 'local';
@@ -647,6 +775,8 @@
             document.getElementById('skip-tls-input').checked = m.skipTlsVerify === true;
             document.getElementById('git-remote-input').value = m.gitRemoteUrl || '';
             document.getElementById('auto-commit-input').checked = m.autoCommit === true;
+            
+            checkConfigChanges();
             
             // Update Quick Bar
             const badge = document.getElementById('current-provider-badge');
