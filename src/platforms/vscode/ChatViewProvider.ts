@@ -238,6 +238,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         webviewView.webview.postMessage({ type: 'modelsFetched', models });
                         break;
                     }
+                case 'requestClear':
+                    {
+                        const result = await vscode.window.showWarningMessage(
+                            'Are you sure you want to clear the entire chat history and reset the Kong Agent context?',
+                            { modal: true },
+                            'Clear Chat'
+                        );
+
+                        if (result === 'Clear Chat') {
+                            this._agent.resetContext();
+                            await this._updateWebviewConfig();
+                            webviewView.webview.postMessage({ type: 'performClear' });
+                            this.platform.showInformationMessage('Kong Agent: Conversation context and UI have been reset.');
+                        }
+                        break;
+                    }
+                case 'cancelAgent':
+                    {
+                        this._agent.cancel();
+                        break;
+                    }
             }
         });
     }

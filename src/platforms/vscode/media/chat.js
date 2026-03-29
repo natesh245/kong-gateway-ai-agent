@@ -130,6 +130,23 @@
         sessionStartTime = null;
     }
 
+    const stopBtn = document.getElementById('stop-agent-btn');
+    const clearBtn = document.getElementById('clear-chat-btn');
+
+    if (stopBtn) {
+        stopBtn.onclick = () => {
+            vscode.postMessage({ type: 'cancelAgent' });
+            typing.style.display = 'none';
+            stopThinkingSession();
+        };
+    }
+
+    if (clearBtn) {
+        clearBtn.onclick = () => {
+            vscode.postMessage({ type: 'requestClear' });
+        };
+    }
+
     function appendMessage(role, content, className) {
         console.log(`[UI Trace]: Message Role=${role}, Content Length=${content?.length || 0}`);
         const isThinking = (role === 'toolCall' || role === 'toolResult' || role === 'thought');
@@ -323,7 +340,7 @@
     function setToolStatus(status) {
         if (status) {
             statusText.innerText = status;
-            typing.style.display = 'block';
+            typing.style.cssText = 'display: flex !important'; 
             startThinkingSession(); // Ensure session is visible when activity starts
         } else {
             typing.style.display = 'none';
@@ -633,6 +650,23 @@
             
             const currentModelValue = document.getElementById('model-input').value;
             populateModelSelect(m.models, currentModelValue);
+        } else if (m.type === 'performClear') {
+            // Aggressive UI Clear triggered from Extension
+            stopThinkingSession();
+            while (chat.firstChild) {
+                chat.removeChild(chat.firstChild);
+            }
+            typing.style.display = 'none';
+            
+            // Clear State
+            vscode.setState({});
+            
+            const welcomeTemplate = document.getElementById('welcome-template');
+            const welcome = welcomeTemplate ? welcomeTemplate.innerHTML : 'Welcome to Kong Gateway Agent!';
+            
+            appendMessage('agent', welcome, 'welcome-message');
+            showToast('🧹 Chat history and UI refreshed');
+            chat.scrollTop = 0;
         }
     });
 

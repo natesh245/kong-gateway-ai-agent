@@ -20,9 +20,28 @@ body {
     padding: 20px 16px; background: linear-gradient(135deg, #0A2540, #1E3A5F); color: white;
     font-weight: 600; text-align: left; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     border-bottom: 2px solid var(--accent); position: relative; z-index: 10;
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
 .header .logo { font-size: 24px; }
+#clear-chat-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+#clear-chat-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
 
 .chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth; }
 
@@ -337,8 +356,16 @@ details[open] summary { margin-bottom: 12px; background: none; }
     padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px;
     border-left: 3px solid var(--accent);
     animation: pulse 2s infinite ease-in-out;
+    display: none; align-items: center; justify-content: space-between;
 }
 .typing .status-label { font-weight: 600; color: var(--accent); margin-right: 6px; text-transform: uppercase; font-size: 9px; }
+
+.stop-btn {
+    background: rgba(245, 26, 86, 0.15); border: 1px solid var(--accent); color: white;
+    padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+.stop-btn:hover { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
 
 @keyframes pulse {
     0% { opacity: 0.6; }

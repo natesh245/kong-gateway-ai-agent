@@ -12,8 +12,11 @@
         <button onclick="this.parentElement.style.display='none'" style="background:none;border:none;color:inherit;cursor:pointer;font-size:18px;">&times;</button>
     </div>
     <div class="header">
-        <span class="logo">🦍</span>
-        <span>Kong Gateway Agent</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span class="logo">🦍</span>
+            <span>Kong Gateway Agent</span>
+        </div>
+        <button id="clear-chat-btn" title="Clear Chat History">🧹 Clear Chat</button>
     </div>
     <div id="notification" class="notification-toast">
         <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -49,8 +52,11 @@ Your AI pair-programmer for **Kong Gateway**. I can help you architect, deploy, 
     <div class="chat-container" id="chat">
     </div>
     <div class="typing" id="typing">
-        <span class="status-label">🧬 Activity:</span>
-        <span id="status-text">Agent is processing...</span>
+        <div style="display:flex; align-items:center; gap:8px; flex:1;">
+            <span class="status-label">🧬 Activity:</span>
+            <span id="status-text">Agent is processing...</span>
+        </div>
+        <button id="stop-agent-btn" class="stop-btn" title="Stop Agent">⏹️ Stop</button>
     </div>
     <div class="input-container">
         <details class="settings-container">

@@ -11,6 +11,8 @@ export class Agent {
     private openai: OpenAI | null = null;
     private messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
     private kongApi: KongApiClient;
+    private isCancelled: boolean = false;
+    private abortController: AbortController | null = null;
 
     constructor(private config: IConfig, private toolManager: ToolManager, private platform: IAppPlatform) {
         this.kongApi = new KongApiClient(config);
@@ -71,6 +73,19 @@ export class Agent {
             'check_existing_containers': 'Scanning for active Kong instances...'
         };
         return mapping[name] || `Executing ${name}...`;
+    }
+
+    public resetContext(): void {
+        this.messages = [this.messages[0]]; // Keep only the system prompt
+        this.isCancelled = false;
+    }
+
+    public cancel(): void {
+        this.isCancelled = true;
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
     }
 
     private initClient(): boolean {
@@ -186,6 +201,7 @@ export class Agent {
     }
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
+        this.isCancelled = false;
         if (!this.initClient()) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
             return;
@@ -203,7 +219,7 @@ export class Agent {
     }
 
     private async runLoop(model: string, onUpdate: (content: string, type?: string) => void, depth: number) {
-        if (!this.openai) return;
+        if (!this.openai || this.isCancelled) return;
 
         const config = this.config;
         const maxDepth = config.get<number>('maxToolDepth') || 10;
@@ -459,12 +475,23 @@ export class Agent {
             }
         ];
 
-        let response = await this.openai.chat.completions.create({
-            model: model,
-            messages: this.messages,
-            tools: tools,
-            tool_choice: "auto"
-        });
+        this.abortController = new AbortController();
+        let response;
+        try {
+            response = await this.openai.chat.completions.create({
+                model: model,
+                messages: this.messages,
+                tools: tools,
+                tool_choice: "auto"
+            }, { signal: this.abortController.signal });
+        } catch (e: any) {
+            if (e.name === 'AbortError' || this.isCancelled) {
+                return; // Silence abort errors
+            }
+            throw e;
+        } finally {
+            this.abortController = null;
+        }
 
         const responseMessage = response.choices[0].message;
         console.log(`[Agent Model Response]: role=${responseMessage.role}, content=${responseMessage.content ? 'POPULATED (' + responseMessage.content.length + ' chars)' : 'NULL'}, tool_calls=${responseMessage.tool_calls?.length || 0}`);
@@ -479,6 +506,10 @@ export class Agent {
 
             let shouldStopTurn = false;
             for (const toolCall of responseMessage.tool_calls) {
+                if (this.isCancelled) {
+                    onUpdate("Agent task cancelled by user.", 'agent');
+                    return;
+                }
                 const functionName = toolCall.function.name;
 
                 let functionArgs;
