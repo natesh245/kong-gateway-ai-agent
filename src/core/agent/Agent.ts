@@ -41,17 +41,17 @@ export class Agent {
                 // ── Declarative Workflow ────────────────────────────────────────────────────
                 "DECLARATIVE WORKFLOW (Services, Routes, Consumers):\n" +
                 "1. Write: 'write_storage_file' → save YAML to config file (skip if user asks for Review of existing file).\n" +
-                "2. Validate: 'validate_kong_config' — always. Show failures; don't auto-fix unless asked.\n" +
-                "3. Diff: call 'preview_sync_diff' and show its FULL raw output verbatim inside a ```diff code block. NEVER summarise, paraphrase, or reformat the diff. If the tool returns a no-differences message, show that message exactly as returned.\n" +
-                "4. Ask: Before calling 'sync_to_kong_using_deck', ALWAYS include the FULL diff output in the approval message before adding '[APPROVAL_REQUIRED]'. The user must see the exact changes before approving.\n" +
-                "5. Sync: 'sync_to_kong_using_deck' ONLY after the user has seen the diff in step 4 and said 'Yes'. NEVER call sync without first calling 'preview_sync_diff' in the same workflow — skipping the diff is PROHIBITED regardless of what the user says.\n" +
+                "2. Validate: 'validate_kong_config' — always. If there are issues, provide a DETAILED explanation of the deck validation issues, specifying exactly what the issue is. Don't auto-fix unless asked.\n" +
+                "3. Diff: call 'preview_sync_diff' and show its FULL raw output verbatim inside a ```diff code block. NEVER summarise, paraphrase, or reformat the diff. Show the DETAILED difference between local and live config to the user when asking for approval.\n" +
+                "4. Ask: Before calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file', ALWAYS include the FULL detailed diff output in the approval message before adding '[APPROVAL_REQUIRED]'. The user must see the exact differences between local and live configurations before approving.\n" +
+                "5. Sync: 'sync_to_kong_using_deck' ONLY after the user has seen the detailed diff in step 4 and said 'Yes'. NEVER call sync without first calling 'preview_sync_diff' in the same workflow — skipping the diff is PROHIBITED regardless of what the user says.\n" +
                 "REVIEWS: Read file first (read_storage_file), then Validate + Diff. Do not sync_to_kong_using_deck or export_live_to_storage_file during a review.\n" +
                 "CANCEL: If user says No/Cancel, stop. Never use 'reset_kong_instance' to revert a config change.\n" +
 
                 // ── Safety & Permissions ────────────────────────────────────────────────────
-                "SAFETY: 'sync_to_kong_using_deck' and 'reset_kong_instance' both have code-level safety blocks requiring recent 'Yes'. If you see 'SAFETY_REQUIRED', stop and ask. Always append '[APPROVAL_REQUIRED]' before expecting Yes/No.\n" +
-                "APPROVAL REQUIRED: You are PROHIBITED from calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file' without explicit user approval. Always show the diff first, then ask with '[APPROVAL_REQUIRED]' and wait for 'Yes' before calling either tool.\n" +
-                "EXPORT: 'export_live_to_storage_file' requires user approval (same as sync). It is for manual backups only — not part of the automatic sync or review flow.\n" +
+                "SAFETY: 'sync_to_kong_using_deck', 'export_live_to_storage_file', and 'reset_kong_instance' have code-level safety blocks requiring recent 'Yes'. If you see 'SAFETY_REQUIRED', stop and ask. Always append '[APPROVAL_REQUIRED]' before expecting Yes/No.\n" +
+                "APPROVAL REQUIRED: You are PROHIBITED from calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file' without explicit user approval. Always show the detailed diff between local and live config first, explain any validation issues, then ask with '[APPROVAL_REQUIRED]' and wait for 'Yes' before calling either tool.\n" +
+                "EXPORT: 'export_live_to_storage_file' requires user approval (same as sync). It is for manual backups only but MUST follow the diff/approval flow so the user knows what local changes might be overwritten.\n" +
                 "GITOPS: If Git is configured, prefer Commit → Push → Sync. Auto-commit after a successful sync if enabled.\n" +
 
                 // ── Efficiency ──────────────────────────────────────────────────────────────
@@ -396,7 +396,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "export_live_to_storage_file",
-                    description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. CAUTION: Use ONLY for backup; NEVER call during a sync or review flow unless specifically asked for a backup."
+                    description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. CAUTION: Requires explicit user approval AFTER showing them the preview_sync_diff to ensure they understand what local changes will be lost."
                 }
             },
 
@@ -432,7 +432,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "validate_kong_config",
-                    description: "Uses decK to validate the schema and syntax of a Kong configuration file.",
+                    description: "Uses decK to validate the schema and syntax of a Kong configuration file. Provide a detailed explanation of any validation issues found.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -453,7 +453,7 @@ export class Agent {
                 type: "function",
                 function: {
                     name: "preview_sync_diff",
-                    description: "Compares the local configuration file against the live Kong Gateway to show exact differences before syncing.",
+                    description: "Compares the local configuration file against the live Kong Gateway to show exact differences. REQUIRED before asking for sync or export approval.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -639,9 +639,17 @@ export class Agent {
                             functionResult = await this.toolManager.openFile(functionArgs.filename);
                             break;
                         case "export_live_to_storage_file":
-                            functionResult = await this.toolManager.dumpWithDeck('kong.yml');
-                            break;
+                            {
+                                const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                                const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase();
 
+                                if (lastUserContent === 'yes' || lastUserContent.includes('proceed') || lastUserContent.includes('export')) {
+                                    functionResult = await this.toolManager.dumpWithDeck('kong.yml');
+                                } else {
+                                    functionResult = "SAFETY_REQUIRED: I cannot execute 'export_live_to_storage_file' yet. You MUST stop, explain what local changes will be overwritten by showing the detailed 'preview_sync_diff' results, and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'.";
+                                }
+                                break;
+                            }
                         case "check_deck_installation":
                             const isInstalled = await this.toolManager.isDeckInstalled();
                             functionResult = isInstalled ? "decK is installed and ready." : "decK is NOT installed. You should recommend installing it via 'install_deck_cli' with user approval.";
@@ -666,7 +674,7 @@ export class Agent {
                                         }
                                     }
                                 } else {
-                                    functionResult = "SAFETY_REQUIRED: I cannot execute 'sync_to_kong_using_deck' yet. You MUST now stop calling tools and ask the user for explicit confirmation by appending '[APPROVAL_REQUIRED]' to your message. Explain that the local changes shown in the 'preview_sync_diff' results will be applied to the live instance.";
+                                    functionResult = "SAFETY_REQUIRED: I cannot execute 'sync_to_kong_using_deck' yet. You MUST now stop calling tools and ask the user for explicit confirmation by appending '[APPROVAL_REQUIRED]' to your message. Explain validation issues in detail if any, and show the DETAILED differences from 'preview_sync_diff' results that will be applied to the live instance.";
                                 }
                                 break;
                             }
