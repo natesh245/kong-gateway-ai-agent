@@ -647,7 +647,7 @@ export class Agent {
                                 const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
                                 const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
 
-                                if (lastUserContent === 'yes' || lastUserContent.includes('proceed') || lastUserContent.includes('export')) {
+                                if (lastUserContent === 'yes' || lastUserContent.includes('proceed with export') || lastUserContent.includes('confirm export')) {
                                     functionResult = await this.toolManager.dumpWithDeck('kong.yml');
                                 } else {
                                     functionResult = "SAFETY_REQUIRED: I cannot execute 'export_live_to_storage_file' yet. You MUST stop, explain what local changes will be overwritten by showing the detailed 'preview_sync_diff' results, and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'.";
