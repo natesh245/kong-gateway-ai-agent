@@ -35,7 +35,8 @@ export class Agent {
                 // ── Docker / Setup ──────────────────────────────────────────────────────────
                 "STATUS CHECKS (Local Mode): If the user asks 'is kong running?' or checks status, ALWAYS call 'check_existing_containers' AND 'get_kong_status' (or 'get_instance_details'). Your response MUST show a detailed result containing BOTH the Docker container details and the Kong API details.\n" +
                 "STATUS CHECKS (Remote Mode): If the user asks 'is kong running?' or checks status, DO NOT call 'check_existing_containers' (Docker is not applicable). Instead, call 'verify_connectivity' and 'get_kong_status' (or 'get_instance_details'). Your response MUST show detailed accessibility results for the Admin API, Proxy API, and Kong Manager.\n" +
-                "SETUP: Always call 'check_existing_containers' BEFORE 'start_kong'. If Kong/Postgres containers exist, show their details (Name, Image, Ports) and ask to reuse or restart. Use 'connect_to_existing_instance' to adopt an existing setup.\n" +
+                "SETUP: Always call 'check_existing_containers' BEFORE 'start_kong'. Use 'list_storage_files' to check for existing configuration files.\n" +
+                "CRITICAL: Do not overwrite configuration files if they are already present in the storage directory. A Docker Compose file may have a custom name; identify it by content (services: kong) and reuse it. Similarly for Kong declarative configs.\n" +
                 "Once Kong is confirmed running, STOP calling setup tools — just summarise access details.\n" +
                 "PORTS: Never assume 8000/8001/8002. Always prioritize the ports provided in the **ENVIRONMENT CONTEXT** at the start of the user message. If the context is missing, use ports returned by 'start_kong', 'verify_connectivity', or 'connect_to_existing_instance'.\n" +
                 "Use 'verify_connectivity' to confirm Kong is ready before completing any setup task.\n" +
@@ -227,6 +228,33 @@ export class Agent {
             ...this.usageStats,
             contextLimit: config.get<number>('maxContext') || 130000
         };
+    }
+
+    public async classifyFile(content: string): Promise<'compose' | 'kong' | 'other'> {
+        if (!this.initClient()) return 'other';
+        const sample = content.length > 2000 ? content.substring(0, 2000) : content;
+        
+        try {
+            const response = await this.openai!.chat.completions.create({
+                model: this.config.get<string>('model') || (this.config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o'),
+                messages: [
+                    { 
+                        role: "system", 
+                        content: "Identify if the following YAML is a 'compose' (Docker Compose), 'kong' (Kong Gateway declarative config), or 'other'. Output ONLY the single word classification." 
+                    },
+                    { role: "user", content: sample }
+                ],
+                temperature: 0,
+                max_tokens: 10
+            });
+            
+            const result = response.choices[0]?.message?.content?.toLowerCase().trim() || 'other';
+            if (result.includes('compose')) return 'compose';
+            if (result.includes('kong')) return 'kong';
+            return 'other';
+        } catch (e) {
+            return 'other';
+        }
     }
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {

@@ -14,52 +14,66 @@ export class DockerTool {
 
   public async start(): Promise<string> {
     try {
+      const storagePath = this.storage.getStoragePath();
+      const discovered = await this.storage.findFilesByContent();
+      
+      let composeFile = discovered.compose || 'kong-docker-compose.yml';
+      let composePath = path.join(storagePath, composeFile);
+      const isExisting = fs.existsSync(composePath);
+
       let proxyPort = this.config.get<number>('proxyPort') || 8000;
       let adminPort = this.config.get<number>('adminApiPort') || 8001;
       let managerPort = this.config.get<number>('managerGuiPort') || 8002;
       let dbPort = this.config.get<number>('databasePort') || 5432;
 
-      // Automatic Port Resolution
-      if (await PortUtil.isPortInUse(proxyPort)) {
-        this.platform.showInformationMessage(`Port ${proxyPort} is in use. Finding next available for Proxy...`);
-        proxyPort = await PortUtil.findNextAvailablePort(proxyPort);
-        await this.config.update?.('proxyPort', proxyPort);
-      }
+      // Only perform bootstrapping and port resolution if the file does NOT exist
+      if (!isExisting) {
+        this.platform.showInformationMessage(`No existing Docker Compose found. Bootstrapping at ${composeFile}...`);
+        
+        if (await PortUtil.isPortInUse(proxyPort)) {
+          proxyPort = await PortUtil.findNextAvailablePort(proxyPort);
+          await this.config.update?.('proxyPort', proxyPort);
+        }
 
-      if (await PortUtil.isPortInUse(adminPort)) {
-        this.platform.showInformationMessage(`Port ${adminPort} is in use. Finding next available for Admin API...`);
-        adminPort = await PortUtil.findNextAvailablePort(adminPort);
-        await this.config.update?.('adminApiPort', adminPort);
-      }
+        if (await PortUtil.isPortInUse(adminPort)) {
+          adminPort = await PortUtil.findNextAvailablePort(adminPort);
+          await this.config.update?.('adminApiPort', adminPort);
+        }
 
-      if (await PortUtil.isPortInUse(managerPort)) {
-        this.platform.showInformationMessage(`Port ${managerPort} is in use. Finding next available for Manager GUI...`);
-        managerPort = await PortUtil.findNextAvailablePort(managerPort);
-        await this.config.update?.('managerGuiPort', managerPort);
-      }
+        if (await PortUtil.isPortInUse(managerPort)) {
+          managerPort = await PortUtil.findNextAvailablePort(managerPort);
+          await this.config.update?.('managerGuiPort', managerPort);
+        }
 
-      if (await PortUtil.isPortInUse(dbPort)) {
-        this.platform.showInformationMessage(`Port ${dbPort} is in use. Finding next available for Postgres...`);
-        dbPort = await PortUtil.findNextAvailablePort(dbPort);
-        await this.config.update?.('databasePort', dbPort);
-      }
+        if (await PortUtil.isPortInUse(dbPort)) {
+          dbPort = await PortUtil.findNextAvailablePort(dbPort);
+          await this.config.update?.('databasePort', dbPort);
+        }
 
-      const storagePath = this.storage.getStoragePath();
-      const composePath = path.join(storagePath, 'kong-docker-compose.yml');
-      const composeContent = this.composeContent(proxyPort, adminPort, managerPort, dbPort);
-      fs.writeFileSync(composePath, composeContent, 'utf8');
-      this.storage.updateFileCache('kong-docker-compose.yml', composeContent);
+        const composeContent = this.composeContent(proxyPort, adminPort, managerPort, dbPort);
+        fs.writeFileSync(composePath, composeContent, 'utf8');
+        this.storage.updateFileCache(composeFile, composeContent);
+      } else {
+          this.platform.showInformationMessage(`Using existing configuration: ${composeFile}`);
+          // Ensure we are using the ports FROM the file for the final success message
+          const filePorts = await this.getPortsFromComposeFile();
+          proxyPort = filePorts.proxyPort || proxyPort;
+          adminPort = filePorts.adminApiPort || adminPort;
+          managerPort = filePorts.managerGuiPort || managerPort;
+          dbPort = filePorts.databasePort || dbPort;
+      }
 
       await this.platform.openFileInEditor(composePath);
 
       this.platform.showInformationMessage('Kong Agent: Starting Postgres Database...');
-      await execAsync('docker-compose -f kong-docker-compose.yml up -d kong-database', { cwd: storagePath });
+      await execAsync(`docker-compose -f "${composeFile}" up -d kong-database`, { cwd: storagePath });
 
       this.platform.showInformationMessage('Kong Agent: Bootstrapping database...');
-      await execAsync('docker-compose -f kong-docker-compose.yml run --rm kong kong migrations bootstrap', { cwd: storagePath });
+      // Note: We skip bootstrap if it's already done (Postgres exists), but docker-compose run is safe to re-run.
+      await execAsync(`docker-compose -f "${composeFile}" run --rm kong kong migrations bootstrap`, { cwd: storagePath });
 
       this.platform.showInformationMessage('Kong Agent: Starting Kong Gateway...');
-      await execAsync('docker-compose -f kong-docker-compose.yml up -d kong', { cwd: storagePath });
+      await execAsync(`docker-compose -f "${composeFile}" up -d kong`, { cwd: storagePath });
 
       const successMsg = `Kong Gateway started successfully! Here are your access details:
 

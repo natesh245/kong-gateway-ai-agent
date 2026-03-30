@@ -706,7 +706,14 @@
                     m.files.forEach(f => {
                         const item = document.createElement('div');
                         item.className = 'file-item';
-                        item.innerHTML = '<span class="file-name">' + f + '</span><button class="open-file-btn">Open</button>';
+                        
+                        let labelHtml = '';
+                        if (m.detectedFiles) {
+                            if (m.detectedFiles.compose === f) labelHtml += '<span class="file-tag tag-compose" title="Detected as Docker Compose file">Docker Compose</span>';
+                            if (m.detectedFiles.config === f) labelHtml += '<span class="file-tag tag-config" title="Detected as Kong Gateway configuration">Kong Config</span>';
+                        }
+                        
+                        item.innerHTML = `<span class="file-name">${f}</span>${labelHtml}<button class="open-file-btn">Open</button>`;
                         item.querySelector('.open-file-btn').onclick = () => vscode.postMessage({ type: 'openFile', filename: f });
                         list.appendChild(item);
                     });

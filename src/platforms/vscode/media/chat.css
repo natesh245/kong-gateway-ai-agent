@@ -530,3 +530,23 @@ th { background: rgba(255,255,255,0.05); }
 .approval-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
 .approval-btn:active { transform: translateY(0); }
 .approval-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.file-tag {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+    letter-spacing: 0.02em;
+    opacity: 0.9;
+}
+.tag-compose {
+    background: rgba(36, 150, 237, 0.15);
+    color: #2496ed;
+    border: 1px solid rgba(36, 150, 237, 0.2);
+}
+.tag-config {
+    background: rgba(78, 201, 176, 0.15);
+    color: #4ec9b0;
+    border: 1px solid rgba(78, 201, 176, 0.2);
+}

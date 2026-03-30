@@ -1,12 +1,22 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { IConfig, IAppPlatform } from '../../interfaces/ICoreInterfaces';
 
 export class StorageTool {
   private _fileCache: Map<string, string> = new Map();
+  private _classificationCache: Map<string, 'compose' | 'kong' | 'other'> = new Map();
+  private _agent: any;
 
   constructor(private config: IConfig, private platform: IAppPlatform) { }
 
+  /**
+   * Inject the Agent instance for LLM-powered file classification.
+   */
+  public setAgent(agent: any) {
+    this._agent = agent;
+  }
+  
   public getStoragePath(): string {
     const customPath = this.config.get<string>('storagePath');
     const storagePath = customPath || this.platform.getStoragePath();
@@ -79,6 +89,38 @@ export class StorageTool {
 
   public getFileCache(filename: string): string | undefined {
     return this._fileCache.get(filename);
+  }
+
+  public async findFilesByContent(): Promise<{ compose?: string, config?: string }> {
+    const files = await this.listStorageFiles();
+    const storagePath = this.getStoragePath();
+    const detected: { compose?: string, config?: string } = {};
+
+    for (const file of files) {
+      const fullPath = path.join(storagePath, file);
+      try {
+        const content = fs.readFileSync(fullPath, 'utf8');
+        const hash = crypto.createHash('md5').update(content).digest('hex');
+
+        // Check cache first
+        let type = this._classificationCache.get(hash);
+
+        // If not in cache and Agent is available, use LLM
+        if (!type && this._agent && (file.endsWith('.yml') || file.endsWith('.yaml'))) {
+            type = await this._agent.classifyFile(content);
+            if (type) {
+                this._classificationCache.set(hash, type);
+            }
+        }
+
+        if (type === 'compose') detected.compose = file;
+        if (type === 'kong') detected.config = file;
+        
+      } catch (e) {
+        continue;
+      }
+    }
+    return detected;
   }
 
   public async initializeCache() {

@@ -21,6 +21,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         private platform: IAppPlatform
     ) {
         this._agent = new Agent(config, toolManager, platform);
+        this.toolManager.storage.setAgent(this._agent);
         this.toolManager.initializeCache();
         this._setupWatcher();
 
@@ -314,6 +315,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 showThinking: this.config.get('showThinking') !== false,
                 models: await this._agent.fetchAvailableModels(),
                 files: await this.toolManager.listStorageFiles(),
+                detectedFiles: await this.toolManager.storage.findFilesByContent(),
                 usageStats: this._agent.getUsageStats()
             });
         }
