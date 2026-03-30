@@ -54,4 +54,18 @@ export class SanitizationUtil {
         // Simple regex to redact potential API keys (look for patterns like key=XYZ or "key": "XYZ")
         return str.replace(/([kK]ey|[tT]oken|[pP]assword|[sS]ecret)\s*[:=]\s*["']?([^"'\s,]+)["']?/g, '$1: [REDACTED]');
     }
+
+    /**
+     * Strips any injected [ENVIRONMENT CONTEXT: ...] or legacy [system context ...] 
+     * from a user message string before processing its content for safety checks.
+     */
+    public static stripContext(content: string): string {
+        if (!content) return content;
+        return content
+            .replace(/\[ENVIRONMENT CONTEXT:[\s\S]*?\]\n\n/gi, '')
+            .replace(/\[system context[\s\S]*?\]\n\n/gi, '')
+            .trim();
+    }
 }
+
+

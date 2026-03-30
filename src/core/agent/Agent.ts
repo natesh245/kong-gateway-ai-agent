@@ -510,7 +510,7 @@ export class Agent {
                         case "export_live_to_storage_file":
                             {
                                 const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                                const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
+                                const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
 
                                 if (lastUserContent === 'yes' || lastUserContent.includes('proceed with export') || lastUserContent.includes('confirm export')) {
                                     functionResult = await this.toolManager.dumpWithDeck('kong.yml');
@@ -530,7 +530,7 @@ export class Agent {
                             {
                                 // Safety check: verify the user gave a "Yes" recently
                                 const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                                const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
+                                const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
 
                                 if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
                                     functionResult = await this.toolManager.syncWithDeck(functionArgs.filename);
@@ -582,13 +582,14 @@ export class Agent {
                             // as their last message before this tool call sequence was initiated.
                             // We look for a clear, standalone 'yes' or a specific confirmation.
                             const latestUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                            const userText = (latestUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
+                            const userText = SanitizationUtil.stripContext(latestUserMsg?.content as string || "").toLowerCase();
 
                             // Stricter check: only allow 'yes' or explicit confirmation phrases
                             const isConfirmed = userText === 'yes' ||
                                 userText === 'yes, proceed' ||
                                 userText.includes('confirm reset') ||
                                 userText.includes('proceed with reset');
+
 
                             if (isConfirmed && !userText.includes('no') && !userText.includes('cancel')) {
                                 functionResult = await this.toolManager.resetWithDeck();
