@@ -23,9 +23,13 @@ export class Agent {
         totalTokens: 0,
         lastTurnUsage: { inputTokens: 0, outputTokens: 0 }
     };
+    private activeFiles: { compose?: string, config?: string } = {};
+
 
     constructor(private config: IConfig, private toolManager: ToolManager, private platform: IAppPlatform) {
         this.kongApi = new KongApiClient(config);
+        this.toolManager.storage.setAgent(this);
+
 
         // System prompt
         this.messages.push({
@@ -54,6 +58,7 @@ export class Agent {
                 "5. Sync: Execute sync ONLY after obtaining explicit approval in step 4. Skipping the diff or approval step is strictly PROHIBITED.\n" +
                 "REVIEWS: Read file first (read_storage_file), then Validate + Diff. Do not sync_to_kong_using_deck or export_live_to_storage_file during a review.\n" +
                 "CANCEL: If user says No/Cancel, stop. Never use 'reset_kong_instance' to revert a config change.\n" +
+                "PROTECTION: You are STRICTLY PROHIBITED from overwriting files listed as 'Detected Compose' or 'Detected Config' via 'write_storage_file' without explicit [APPROVAL_REQUIRED] from the user. Re-use existing custom-named files instead of creating new ones.\n" +
 
                 // ── Safety & Permissions ────────────────────────────────────────────────────
                 "SAFETY: 'sync_to_kong_using_deck', 'export_live_to_storage_file', and 'reset_kong_instance' have code-level safety blocks. If you see 'SAFETY_REQUIRED' in a tool response, you forgot to ask for approval. Stop, show the diff, and ask with '[APPROVAL_REQUIRED]'.\n" +
@@ -291,11 +296,20 @@ export class Agent {
             const managerPort = config.get<number>('managerGuiPort') || 8002;
             const workspace = config.get<string>('kongWorkspace') || 'default';
 
+            const discovered = await this.toolManager.storage.findFilesByContent();
+            this.activeFiles = discovered;
+            const activeCompose = discovered.compose || 'none (default: kong-docker-compose.yml)';
+            const activeConfig = discovered.config || 'none (default: kong.yml)';
+
+
             const contextHeader = `[ENVIRONMENT CONTEXT: You are in **${kongMode.toUpperCase()} MODE**.\n` +
                                 `- Proxy Port: ${proxyPort}\n` +
                                 `- Admin API Port: ${adminPort}\n` +
                                 `- Kong Manager Port: ${managerPort}\n` +
-                                `- Workspace: ${workspace}]\n\n`;
+                                `- Workspace: ${workspace}\n` +
+                                `- Detected Compose: ${activeCompose}\n` +
+                                `- Detected Config: ${activeConfig}]\n\n`;
+
             
             // Final safety scrub for any injected context
             const safeContent = contextHeader + SanitizationUtil.scrubString(content);
@@ -475,14 +489,34 @@ export class Agent {
                             }
                             break;
                         case "write_storage_file":
-                            const oldContent = this.toolManager.getFileCache(functionArgs.filename) || "";
-                            const newContent = functionArgs.content;
-                            await this.toolManager.writeStorageFile(functionArgs.filename, newContent);
+                            {
+                                const filename = functionArgs.filename;
+                                const newContent = functionArgs.content;
+                                const isActive = filename === this.activeFiles.compose || filename === this.activeFiles.config;
 
-                            const writeDiff = DiffUtil.generateUnifiedDiff(functionArgs.filename, oldContent, newContent);
-                            const chatDiff = DiffUtil.formatForChat(writeDiff);
-                            functionResult = `Successfully wrote to '${functionArgs.filename}'.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
-                            break;
+                                if (isActive) {
+                                    const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                                    const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
+                                    
+                                    if (lastUserContent === 'yes' || lastUserContent.includes('confirm overwrite') || lastUserContent.includes('proceed with update')) {
+                                        const oldContent = this.toolManager.getFileCache(filename) || "";
+                                        await this.toolManager.writeStorageFile(filename, newContent);
+                                        const writeDiff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
+                                        const chatDiff = DiffUtil.formatForChat(writeDiff);
+                                        functionResult = `Successfully updated protected file: ${filename}.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
+                                    } else {
+                                        functionResult = `SAFETY_REQUIRED: I cannot overwrite the active file '${filename}' without explicit user confirmation. You MUST show the proposed changes, explain the rationale, and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'.`;
+                                    }
+                                } else {
+                                    const oldContent = this.toolManager.getFileCache(filename) || "";
+                                    await this.toolManager.writeStorageFile(filename, newContent);
+                                    const writeDiff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
+                                    const chatDiff = DiffUtil.formatForChat(writeDiff);
+                                    functionResult = `Successfully wrote to '${filename}'.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
+                                }
+                                break;
+                            }
+
                         case "check_existing_containers":
                             const existingJson = await this.toolManager.findExistingContainers();
                             functionResult = `Found existing containers: ${existingJson}. Ask the user confirm.`;
@@ -513,7 +547,7 @@ export class Agent {
                                 const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
 
                                 if (lastUserContent === 'yes' || lastUserContent.includes('proceed with export') || lastUserContent.includes('confirm export')) {
-                                    functionResult = await this.toolManager.dumpWithDeck('kong.yml');
+                                    functionResult = await this.toolManager.dumpWithDeck(this.activeFiles.config || 'kong.yml');
                                 } else {
                                     functionResult = "SAFETY_REQUIRED: I cannot execute 'export_live_to_storage_file' yet. You MUST stop, explain what local changes will be overwritten by showing the detailed 'preview_sync_diff' results, and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'.";
                                 }
@@ -533,15 +567,17 @@ export class Agent {
                                 const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
 
                                 if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
-                                    functionResult = await this.toolManager.syncWithDeck(functionArgs.filename);
+                                    const targetFile = functionArgs.filename || this.activeFiles.config || 'kong.yml';
+                                    functionResult = await this.toolManager.syncWithDeck(targetFile);
                                     if (!functionResult.includes('failed')) {
                                         const config = this.config;
                                         if (config.get('autoCommit')) {
-                                            const commitRes = await this.toolManager.gitCommit(`Auto-sync from Kong Agent: updated ${functionArgs.filename}`);
+                                            const commitRes = await this.toolManager.gitCommit(`Auto-sync from Kong Agent: updated ${targetFile}`);
                                             const pushRes = await this.toolManager.gitPush();
                                             functionResult += `\n\n[GitOps Sync]: ${commitRes}\n${pushRes}`;
                                         }
                                     }
+
                                 } else {
                                     functionResult = "SAFETY_REQUIRED: I cannot execute 'sync_to_kong_using_deck' yet. You MUST now stop calling tools and ask the user for explicit confirmation by appending '[APPROVAL_REQUIRED]' to your message. Explain validation issues in detail if any, and show the DETAILED differences from 'preview_sync_diff' results that will be applied to the live instance.";
                                 }
@@ -566,7 +602,7 @@ export class Agent {
                                 const pullRes = await this.toolManager.gitPull();
                                 functionResult = pullRes;
                                 if (!pullRes.includes('failed') && functionArgs.sync_to_kong) {
-                                    const syncRes = await this.toolManager.syncWithDeck('kong.yml');
+                                    const syncRes = await this.toolManager.syncWithDeck(this.activeFiles.config || 'kong.yml');
                                     functionResult += `\n\nSync Result:\n${syncRes}`;
                                 }
                                 break;

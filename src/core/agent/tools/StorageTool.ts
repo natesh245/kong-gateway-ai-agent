@@ -113,8 +113,19 @@ export class StorageTool {
             }
         }
 
-        if (type === 'compose') detected.compose = file;
-        if (type === 'kong') detected.config = file;
+        if (type === 'compose') {
+            // Favor: 1. Custom named (not kong-docker-compose) 2. kong-docker-compose.yml
+            if (!detected.compose || (detected.compose === 'kong-docker-compose.yml' && file !== 'kong-docker-compose.yml')) {
+                detected.compose = file;
+            }
+        }
+        if (type === 'kong') {
+            // Favor: 1. Custom named (not kong.yml) 2. kong.yml
+            if (!detected.config || (detected.config === 'kong.yml' && file !== 'kong.yml')) {
+                detected.config = file;
+            }
+        }
+
         
       } catch (e) {
         continue;

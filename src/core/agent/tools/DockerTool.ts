@@ -26,9 +26,10 @@ export class DockerTool {
       let managerPort = this.config.get<number>('managerGuiPort') || 8002;
       let dbPort = this.config.get<number>('databasePort') || 5432;
 
-      // Only perform bootstrapping and port resolution if the file does NOT exist
-      if (!isExisting) {
+      // Only perform bootstrapping if NO compose file was identified by content
+      if (!isExisting && !discovered.compose) {
         this.platform.showInformationMessage(`No existing Docker Compose found. Bootstrapping at ${composeFile}...`);
+
         
         if (await PortUtil.isPortInUse(proxyPort)) {
           proxyPort = await PortUtil.findNextAvailablePort(proxyPort);
@@ -213,8 +214,11 @@ export class DockerTool {
   public async getPortsFromComposeFile(): Promise<Record<string, number>> {
       try {
           const storagePath = this.storage.getStoragePath();
-          const composePath = path.join(storagePath, 'kong-docker-compose.yml');
+          const discovered = await this.storage.findFilesByContent();
+          const composeFile = discovered.compose || 'kong-docker-compose.yml';
+          const composePath = path.join(storagePath, composeFile);
           if (!fs.existsSync(composePath)) return {};
+
 
           const content = fs.readFileSync(composePath, 'utf8');
           const detected: Record<string, number> = {};
