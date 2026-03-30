@@ -404,9 +404,9 @@
             if (geminiKeyRow) geminiKeyRow.style.display = provider === 'gemini' ? 'flex' : 'none';
 
             // Clear model input for the new provider
-            if (modelInput) {
-                modelInput.value = '';
-                modelInput.placeholder = 'Loading models...';
+            if (modelSelect) {
+                modelSelect.value = '';
+                modelSelect.placeholder = 'Loading models...';
             }
 
             const apiKey = (provider === 'openrouter') ? 
@@ -562,7 +562,10 @@
 
         let hasChanges = false;
         for (const [key, val] of Object.entries(currentConfig)) {
-            if (oldConfig[key] !== val) {
+            const oldVal = (oldConfig[key] !== undefined && oldConfig[key] !== null) ? oldConfig[key].toString().trim() : '';
+            const newVal = (val !== undefined && val !== null) ? val.toString().trim() : '';
+            
+            if (oldVal !== newVal) {
                 hasChanges = true;
                 break;
             }
