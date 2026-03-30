@@ -48,26 +48,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 new vscode.RelativePattern(storageUri, '**/*.{yml,yaml,json}')
             );
 
-            this._watcher.onDidChange(uri => this._handleFileChange(uri));
-            this._watcher.onDidCreate(uri => this._handleFileChange(uri));
+            this._watcher.onDidChange(uri => this._handleFileChange(uri, 'modified'));
+            this._watcher.onDidCreate(uri => this._handleFileChange(uri, 'created'));
+            this._watcher.onDidDelete(uri => this._handleFileChange(uri, 'deleted'));
         }
+
     }
 
-    private _handleFileChange(uri: vscode.Uri) {
+    private _handleFileChange(uri: vscode.Uri, changeType: 'created' | 'modified' | 'deleted') {
         if (this._debounceTimer) {
             clearTimeout(this._debounceTimer);
         }
 
-        this._debounceTimer = setTimeout(() => {
+        this._debounceTimer = setTimeout(async () => {
             if (this._view) {
                 const filename = path.basename(uri.fsPath);
+                
+                // Refresh the managed files list in the webview
+                await this._updateWebviewConfig();
+
+                // Notify user specifically about the change
                 this._view.webview.postMessage({
                     type: 'fileChanged',
-                    filename: filename
+                    filename: filename,
+                    changeType: changeType
                 });
             }
         }, 1000);
     }
+
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,

@@ -733,27 +733,41 @@
                     });
                 }
             }
-        }
-
- else if (m.type === 'fileChanged') {
+        } else if (m.type === 'fileChanged') {
             const toast = document.getElementById('notification');
+
             const fileNameSpan = document.getElementById('changed-filename');
             const reviewBtn = document.getElementById('review-btn');
             const dismissBtn = document.getElementById('dismiss-btn');
+            const changeText = toast?.querySelector('span');
 
             if (toast && fileNameSpan) {
                 fileNameSpan.innerText = m.filename;
+                
+                if (changeText) {
+                    const verb = m.changeType === 'created' ? 'created' : m.changeType === 'deleted' ? 'deleted' : 'modified';
+                    changeText.innerHTML = `Detected <b>${verb}</b> in <b id="changed-filename" style="color:var(--accent);">${m.filename}</b>`;
+                }
+
+                // If deleted, review doesn't make sense
+                if (m.changeType === 'deleted') {
+                    reviewBtn.style.display = 'none';
+                } else {
+                    reviewBtn.style.display = 'block';
+                    reviewBtn.onclick = () => {
+                        vscode.postMessage({ type: 'requestReview', filename: m.filename });
+                        toast.style.display = 'none';
+                    };
+                }
+
                 toast.style.display = 'flex';
                 
-                reviewBtn.onclick = () => {
-                    vscode.postMessage({ type: 'requestReview', filename: m.filename });
-                    toast.style.display = 'none';
-                };
                 dismissBtn.onclick = () => {
                     toast.style.display = 'none';
                 };
             }
-        } else if (m.type === 'toolStatus') {
+        }
+ else if (m.type === 'toolStatus') {
             setToolStatus(m.status);
         } else if (m.type === 'updateUsage') {
             updateUsageUI(m.stats);
