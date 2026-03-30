@@ -602,10 +602,18 @@
 
         const changes = [];
         const detect = (key, label) => {
-            const oldVal = (oldConfig[key] !== undefined && oldConfig[key] !== null) ? oldConfig[key].toString().trim() : '';
-            const newVal = (newConfig[key] !== undefined && newConfig[key] !== null) ? newConfig[key].toString().trim() : '';
+            let oldValRaw = oldConfig[key];
+            let newValRaw = newConfig[key];
             
-            if (newVal !== oldVal) {
+            // Normalize to strings for comparison, but handle nulls/undefineds as empty
+            const oldVal = (oldValRaw !== undefined && oldValRaw !== null) ? oldValRaw.toString().trim() : '';
+            const newVal = (newValRaw !== undefined && newValRaw !== null) ? newValRaw.toString().trim() : '';
+            
+            // Special handling for booleans which might come back as strings "true"/"false" from state
+            const oldValParsed = (oldVal === 'true') ? 'true' : (oldVal === 'false' ? 'false' : oldVal);
+            const newValParsed = (newVal === 'true') ? 'true' : (newVal === 'false' ? 'false' : newVal);
+
+            if (newValParsed !== oldValParsed) {
                 const sensitiveKeys = ['openRouterApiKey', 'geminiApiKey', 'kongAdminToken'];
                 const isSensitive = sensitiveKeys.includes(key);
                 
