@@ -153,6 +153,75 @@ export class DockerTool {
     }
   }
 
+  public async getPortsFromRunningContainers(): Promise<Record<string, number>> {
+      try {
+          const { stdout } = await execAsync('docker ps --format "{{.Ports}}|{{.Image}}"');
+          const lines = stdout.split('\n').filter(l => l.trim() !== '');
+          const detected: Record<string, number> = {};
+
+          for (const line of lines) {
+              const [ports, image] = line.split('|');
+              if (!ports || !image) continue;
+
+              // Extract mappings like 0.0.0.0:8003->8001/tcp
+              const mappings = ports.split(',').map(p => p.trim());
+              for (const mapping of mappings) {
+                  const match = mapping.match(/:(\d+)->(\d+)\/tcp/);
+                  if (match) {
+                      const external = parseInt(match[1]);
+                      const internal = parseInt(match[2]);
+
+                      if (image.includes('kong')) {
+                          if (internal === 8000) detected.proxyPort = external;
+                          if (internal === 8001) detected.adminApiPort = external;
+                          if (internal === 8002) detected.managerGuiPort = external;
+                      } else if (image.includes('postgres')) {
+                          if (internal === 5432) detected.databasePort = external;
+                      }
+                  }
+              }
+          }
+          return detected;
+      } catch (e) {
+          console.error("Failed to detect ports from containers:", e);
+          return {};
+      }
+  }
+
+  public async getPortsFromComposeFile(): Promise<Record<string, number>> {
+      try {
+          const storagePath = this.storage.getStoragePath();
+          const composePath = path.join(storagePath, 'kong-docker-compose.yml');
+          if (!fs.existsSync(composePath)) return {};
+
+          const content = fs.readFileSync(composePath, 'utf8');
+          const detected: Record<string, number> = {};
+
+          // Extract ports using regex from the YAML
+          // Matches line "- "8003:8001"" or "- 8003:8001"
+          const extractPort = (internalPort: number) => {
+              const regex = new RegExp(`["']?(\\d+)["']?:${internalPort}`, 'g');
+              const match = regex.exec(content);
+              return match ? parseInt(match[1]) : null;
+          };
+
+          const proxy = extractPort(8000);
+          const admin = extractPort(8001);
+          const manager = extractPort(8002);
+          const db = extractPort(5432);
+
+          if (proxy) detected.proxyPort = proxy;
+          if (admin) detected.adminApiPort = admin;
+          if (manager) detected.managerGuiPort = manager;
+          if (db) detected.databasePort = db;
+
+          return detected;
+      } catch (e) {
+          console.error("Failed to detect ports from compose file:", e);
+          return {};
+      }
+  }
+
   private composeContent(proxyPort: number, adminPort: number, managerPort: number, dbPort: number): string {
     return `version: '3.9'
 x-kong-config: &kong-env

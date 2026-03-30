@@ -561,11 +561,11 @@
         if (!saveBtn) return;
         const state = vscode.getState() || {};
         const oldConfig = state.config || {};
-        if (Object.keys(oldConfig).length === 0) return;
 
         const currentConfig = getUIConfig();
 
         let hasChanges = false;
+        // Compare all keys in the current UI config against the baseline
         for (const [key, val] of Object.entries(currentConfig)) {
             const oldVal = (oldConfig[key] !== undefined && oldConfig[key] !== null) ? oldConfig[key].toString().trim() : '';
             const newVal = (val !== undefined && val !== null) ? val.toString().trim() : '';
@@ -606,7 +606,13 @@
             const newVal = (newConfig[key] !== undefined && newConfig[key] !== null) ? newConfig[key].toString().trim() : '';
             
             if (newVal !== oldVal) {
-                changes.push(`| **${label}** | \`${oldVal || 'None'}\` → \`${newVal || 'None'}\` |`);
+                const sensitiveKeys = ['openRouterApiKey', 'geminiApiKey', 'kongAdminToken'];
+                const isSensitive = sensitiveKeys.includes(key);
+                
+                const displayOld = (isSensitive && oldVal) ? '[REDACTED]' : (oldVal || 'None');
+                const displayNew = (isSensitive && newVal) ? '[REDACTED]' : (newVal || 'None');
+                
+                changes.push(`| **${label}** | \`${displayOld}\` → \`${displayNew}\` |`);
             }
         };
 
@@ -681,94 +687,22 @@
             if (m.role === 'agent') typing.style.display = 'none';
             appendMessage(m.role, m.content, undefined, m.lastUsage);
         } else if (m.type === 'setConfig') {
-            const provider = m.provider || 'openrouter';
-            document.getElementById('provider-select').value = provider;
-            
-            const modelInput = getModelInput();
-            const currentModel = m.model || '';
-            
-            // Sync available models to state immediately
-            if (m.models) {
-                const state = vscode.getState() || {};
-                state.availableModels = m.models;
-                vscode.setState(state);
-                populateModelSelect(m.models, currentModel);
-            } else {
-                vscode.postMessage({ type: 'fetchModels' });
-            }
-
-            // Ensure listeners are attached
-            initializeModelSearch();
-
-            document.getElementById('proxy-port-input').value = m.proxyPort || 8000;
-            document.getElementById('admin-port-input').value = m.adminApiPort || 8001;
-            document.getElementById('manager-port-input').value = m.managerGuiPort || 8002;
-            document.getElementById('db-port-input').value = m.databasePort || 5432;
-            document.getElementById('workspace-input').value = m.kongWorkspace || 'default';
-            document.getElementById('api-key-input').value = m.openRouterApiKey || '';
-            document.getElementById('gemini-api-key-input').value = m.geminiApiKey || '';
-            document.getElementById('max-reasoning-turns-input').value = m.maxReasoningTurns || 10;
-            document.getElementById('max-tool-calls-input').value = m.maxToolCalls || 10;
-            document.getElementById('max-context-input').value = m.maxContext || 130000;
-            document.getElementById('max-timeout-input').value = m.maxAgentTimeout || 100;
-            document.getElementById('admin-token-input').value = m.kongAdminToken || '';
-            document.getElementById('remote-admin-input').value = m.remoteAdminApiUrl || '';
-            document.getElementById('remote-proxy-input').value = m.remoteProxyBaseUrl || '';
-            document.getElementById('remote-manager-input').value = m.remoteManagerGuiUrl || '';
-            document.getElementById('skip-tls-input').checked = m.skipTlsVerify === true;
-            document.getElementById('show-thinking-toggle').checked = m.showThinking !== false;
-            document.getElementById('storage-input').value = m.storagePath || '';
-            document.getElementById('git-remote-input').value = m.gitRemoteUrl || '';
-            document.getElementById('auto-commit-input').checked = m.autoCommit === true;
-
-            // Seed state baseline
-            const state = vscode.getState() || {};
-            state.config = getUIConfig();
-            vscode.setState(state);
-            
-            const kongMode = m.kongMode || 'local';
-            document.getElementById('kong-mode-select').value = kongMode;
-            document.getElementById('local-settings').classList.toggle('hidden', kongMode !== 'local');
-            document.getElementById('remote-settings').classList.toggle('hidden', kongMode === 'local');
-            document.getElementById('check-ports-btn').classList.toggle('hidden', kongMode !== 'local');
-            
-            checkConfigChanges();
-            
-            // Update Quick Bar
-            const badge = document.getElementById('current-provider-badge');
-            const modelInfo = document.getElementById('current-model-info');
-            if (badge) {
-                badge.innerText = provider === 'openrouter' ? 'OpenRouter' : 'Gemini';
-                badge.style.background = provider === 'openrouter' ? 'var(--accent)' : '#4ec9b0';
-            }
-            if (modelInfo) modelInfo.innerText = currentModel;
-            
-            // Toggle API key row visibility based on provider
-            const apiKeyRow = document.getElementById('api-key-row');
-            const geminiApiKeyRow = document.getElementById('gemini-api-key-row');
-            if (apiKeyRow) apiKeyRow.classList.toggle('hidden', provider !== 'openrouter');
-            if (geminiApiKeyRow) geminiApiKeyRow.classList.toggle('hidden', provider !== 'gemini');
-            
+            syncUIWithConfig(m);
             if (m.usageStats) {
                 updateUsageUI(m.usageStats);
             }
-            
-            const showThinking = m.showThinking !== false;
-            document.getElementById('show-thinking-toggle').checked = showThinking;
-            document.querySelectorAll('.thinking-session').forEach(el => {
-                el.classList.toggle('hidden-thinking', !showThinking);
-            });
-            
             if (m.files) {
                 const list = document.getElementById('file-list');
-                list.innerHTML = '';
-                m.files.forEach(f => {
-                    const item = document.createElement('div');
-                    item.className = 'file-item';
-                    item.innerHTML = '<span class="file-name">' + f + '</span><button class="open-file-btn">Open</button>';
-                    item.querySelector('.open-file-btn').onclick = () => vscode.postMessage({ type: 'openFile', filename: f });
-                    list.appendChild(item);
-                });
+                if (list) {
+                    list.innerHTML = '';
+                    m.files.forEach(f => {
+                        const item = document.createElement('div');
+                        item.className = 'file-item';
+                        item.innerHTML = '<span class="file-name">' + f + '</span><button class="open-file-btn">Open</button>';
+                        item.querySelector('.open-file-btn').onclick = () => vscode.postMessage({ type: 'openFile', filename: f });
+                        list.appendChild(item);
+                    });
+                }
             }
         } else if (m.type === 'fileChanged') {
             const toast = document.getElementById('notification');
@@ -811,7 +745,8 @@
             state.availableModels = m.models;
             vscode.setState(state);
             
-            const currentModelValue = document.getElementById('model-input').value;
+            const modelInput = document.getElementById('model-input');
+            const currentModelValue = modelInput ? modelInput.value : '';
             populateModelSelect(m.models, currentModelValue);
         } else if (m.type === 'performClear') {
             // Aggressive UI Clear triggered from Extension
@@ -832,6 +767,104 @@
             chat.scrollTop = 0;
         }
     });
+
+    // --- State Restoration ---
+    const previousState = vscode.getState();
+    if (previousState && previousState.config) {
+        syncUIWithConfig(previousState.config);
+    }
+
+    function syncUIWithConfig(config) {
+        if (!config) return;
+
+        const provider = config.provider || config.openRouterApiKey ? 'openrouter' : 'gemini'; // fallback detection
+        if (config.provider) {
+            document.getElementById('provider-select').value = config.provider;
+        }
+        
+        const currentModel = config.model || '';
+        
+        // Sync available models to state immediately if provided
+        if (config.models) {
+            const state = vscode.getState() || {};
+            state.availableModels = config.models;
+            vscode.setState(state);
+            populateModelSelect(config.models, currentModel);
+        } else {
+            // Check if we have models in our state already
+            const savedState = vscode.getState() || {};
+            if (savedState.availableModels) {
+                populateModelSelect(savedState.availableModels, currentModel);
+            } else {
+                vscode.postMessage({ type: 'fetchModels' });
+            }
+        }
+
+        initializeModelSearch();
+
+        // Populate fields with reasonable defaults if missing
+        const setVal = (id, val, def = '') => {
+            const el = document.getElementById(id);
+            if (el) el.value = (val !== undefined && val !== null) ? val : def;
+        };
+
+        setVal('proxy-port-input', config.proxyPort, '8000');
+        setVal('admin-port-input', config.adminApiPort, '8001');
+        setVal('manager-port-input', config.managerGuiPort, '8002');
+        setVal('db-port-input', config.databasePort, '5432');
+        setVal('workspace-input', config.kongWorkspace, 'default');
+        setVal('api-key-input', config.openRouterApiKey);
+        setVal('gemini-api-key-input', config.geminiApiKey);
+        setVal('max-reasoning-turns-input', config.maxReasoningTurns, '10');
+        setVal('max-tool-calls-input', config.maxToolCalls, '10');
+        setVal('max-context-input', config.maxContext, '130000');
+        setVal('max-timeout-input', config.maxAgentTimeout, '100');
+        setVal('admin-token-input', config.kongAdminToken);
+        setVal('remote-admin-input', config.remoteAdminApiUrl);
+        setVal('remote-proxy-input', config.remoteProxyBaseUrl);
+        setVal('remote-manager-input', config.remoteManagerGuiUrl);
+        setVal('storage-input', config.storagePath);
+        setVal('git-remote-input', config.gitRemoteUrl);
+
+        if (document.getElementById('skip-tls-input')) 
+            document.getElementById('skip-tls-input').checked = config.skipTlsVerify === true || config.skipTlsVerify === 'true';
+        if (document.getElementById('show-thinking-toggle'))
+            document.getElementById('show-thinking-toggle').checked = config.showThinking !== false && config.showThinking !== 'false';
+        if (document.getElementById('auto-commit-input'))
+            document.getElementById('auto-commit-input').checked = config.autoCommit === true || config.autoCommit === 'true';
+
+        const kongMode = config.kongMode || 'local';
+        const modeSelect = document.getElementById('kong-mode-select');
+        if (modeSelect) {
+            modeSelect.value = kongMode;
+            document.getElementById('local-settings').classList.toggle('hidden', kongMode !== 'local');
+            document.getElementById('remote-settings').classList.toggle('hidden', kongMode === 'local');
+            document.getElementById('check-ports-btn').classList.toggle('hidden', kongMode !== 'local');
+        }
+
+        // Update Quick Bar
+        const activeProvider = config.provider || (config.openRouterApiKey ? 'openrouter' : 'gemini');
+        const badge = document.getElementById('current-provider-badge');
+        const modelInfo = document.getElementById('current-model-info');
+        if (badge) {
+            badge.innerText = activeProvider === 'openrouter' ? 'OpenRouter' : 'Gemini';
+            badge.style.background = activeProvider === 'openrouter' ? 'var(--accent)' : '#4ec9b0';
+        }
+        if (modelInfo) modelInfo.innerText = currentModel;
+        
+        // Toggle API key row visibility
+        const apiKeyRow = document.getElementById('api-key-row');
+        const geminiApiKeyRow = document.getElementById('gemini-api-key-row');
+        if (apiKeyRow) apiKeyRow.classList.toggle('hidden', activeProvider !== 'openrouter');
+        if (geminiApiKeyRow) geminiApiKeyRow.classList.toggle('hidden', activeProvider !== 'gemini');
+
+        // Seed state baseline AFTER all DOM updates are complete
+        const state = vscode.getState() || {};
+        state.config = getUIConfig();
+        vscode.setState(state);
+        
+        checkConfigChanges();
+    }
 
     function populateModelSelect(models, selectedValue) {
         const input = document.getElementById('model-input');

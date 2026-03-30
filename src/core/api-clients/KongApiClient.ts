@@ -1,8 +1,14 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import * as https from 'https';
 import { IConfig } from '../interfaces/ICoreInterfaces';
+import { SanitizationUtil } from '../utils/SanitizationUtil';
 
 export class KongApiClient {
+    private static readonly SAFE_INSTANCE_FIELDS = [
+        'version', 'hostname', 'tagline', 'lua_version', 'architecture', 
+        'kms_version', 'timers', 'plugins_available'
+    ];
+
     constructor(private config: IConfig) {}
 
     private getBaseUrl(): string {
@@ -49,7 +55,8 @@ export class KongApiClient {
     public async getStatus(): Promise<string> {
         try {
             const res = await axios.get(`${this.getBaseUrl()}/status`, this.getRequestConfig());
-            return JSON.stringify(res.data, null, 2);
+            const scrubbed = SanitizationUtil.scrubObject(res.data);
+            return JSON.stringify(scrubbed, null, 2);
         } catch (e: any) {
             return `Kong Admin API unreachable: ${e.message} at ${this.getBaseUrl()}`;
         }
@@ -58,7 +65,16 @@ export class KongApiClient {
     public async getInstanceInfo(): Promise<string> {
         try {
             const res = await axios.get(`${this.getBaseUrl()}/`, this.getRequestConfig());
-            return JSON.stringify(res.data, null, 2);
+            
+            // Whitelist-only approach for instance info
+            const info: any = {};
+            for (const key of KongApiClient.SAFE_INSTANCE_FIELDS) {
+                if (res.data[key] !== undefined) {
+                    info[key] = res.data[key];
+                }
+            }
+            
+            return JSON.stringify(info, null, 2);
         } catch (e: any) {
             return `Failed to fetch instance info: ${e.message}`;
         }

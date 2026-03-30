@@ -51,5 +51,42 @@ export class ToolManager {
   public updateFileCache(filename: string, content: string) { return this.storage.updateFileCache(filename, content); }
   public getFileCache(filename: string): string | undefined { return this.storage.getFileCache(filename); }
   public async verifyConnectivity() { return this.docker.verifyConnectivity(); }
+  public async reconcilePorts(): Promise<string> {
+      if (this.config.get('kongMode') !== 'local') {
+          return "ℹ️ Port reconciliation is only available for Local (Docker) Kong legacy instances.";
+      }
+
+      try {
+          const containerPorts = await this.docker.getPortsFromRunningContainers();
+          const composePorts = await this.docker.getPortsFromComposeFile();
+          
+          // Prioritize container ports as they represent the actual running state
+          const detected = { ...composePorts, ...containerPorts };
+          const updates: string[] = [];
+
+          const checkAndUpdate = async (key: string, label: string) => {
+              const current = this.config.get<number>(key);
+              const found = detected[key];
+              if (found !== undefined && found !== current) {
+                  await this.config.update?.(key, found);
+                  updates.push(`| **${label}** | \`${current || 'None'}\` → \`${found}\` |`);
+              }
+          };
+
+          await checkAndUpdate('proxyPort', 'Proxy Port');
+          await checkAndUpdate('adminApiPort', 'Admin API Port');
+          await checkAndUpdate('managerGuiPort', 'Manager GUI Port');
+          await checkAndUpdate('databasePort', 'Postgres Port');
+
+          if (updates.length > 0) {
+              return `### 🛠️ Port Settings Reconciled\n\nDetected mismatches between configuration and the running environment. The following settings have been updated:\n\n| Setting | Change |\n| :--- | :--- |\n${updates.join('\n')}\n\n*Connection check now uses these updated values.*`;
+          } else {
+              return "✅ Port settings are already in sync with the running environment.";
+          }
+      } catch (e: any) {
+          return `❌ Port reconciliation failed: ${e.message}`;
+      }
+  }
+
   public async openManager() { return this.docker.openManager(); }
 }

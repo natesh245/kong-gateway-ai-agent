@@ -23,6 +23,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._agent = new Agent(config, toolManager, platform);
         this.toolManager.initializeCache();
         this._setupWatcher();
+
+        // Listen for configuration changes to sync the webview automatically
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('kongAgent')) {
+                this._updateWebviewConfig();
+            }
+        }, null, context.subscriptions);
     }
 
     private _setupWatcher() {

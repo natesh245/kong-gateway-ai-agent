@@ -6,6 +6,7 @@ import { KongApiClient } from "../api-clients/KongApiClient";
 import { DiffUtil } from "../utils/DiffUtil";
 import axios from "axios";
 import { IConfig, IAppPlatform } from "../interfaces/ICoreInterfaces";
+import { SanitizationUtil } from "../utils/SanitizationUtil";
 
 export class Agent {
     private openai: OpenAI | null = null;
@@ -59,10 +60,14 @@ export class Agent {
                 // ── Efficiency & Troubleshooting ───────────────────────────────────────────
                 "EFFICIENCY: Bundle tool calls where possible. In the declarative workflow, call write+validate+diff in one turn. Skip redundant status checks.\n" +
                 "TROUBLESHOOTING: If any tool returns an error or failure (e.g., connectivity issues, sync failures, or deck errors), you MUST explicitly suggest step-by-step ways for the user to fix the problem.\n" +
+                "If 'verify_connectivity' or 'get_kong_status' fails due to 'Connection Refused' or 404 status code from admin api, ALWAYS call 'reconcile_port_settings' to see if the actual running ports differ from the saved configuration.\n this is also applicable if user says the admin api, kong manager and kong proxy is not accessible" +
 
                 // ── Output Format ───────────────────────────────────────────────────────────
                 "OUTPUT FORMAT: Every response must be: <thought>[reasoning, tool plan, analysis]</thought>[user-facing markdown answer]. Reasoning inside <thought> is hidden; everything outside is shown to the user.\n" +
-                "End every completed task with 2-3 actionable Next Steps as a bullet list."
+                "End every completed task with 2-3 actionable Next Steps as a bullet list.\n\n" +
+
+                // ── Security ────────────────────────────────────────────────────────────────
+                "SECURITY: You must NEVER request, display, or repeat full API keys, tokens, or passwords in your reasoning or final response. If you encounter data marked as '[REDACTED]', treat it as valid and proceed without asking for the raw value."
         });
     }
 
@@ -79,7 +84,8 @@ export class Agent {
             'write_storage_file': 'Saving configuration...',
             'git_sync_push': 'Pushing changes to Git...',
             'git_sync_pull': 'Pulling updates from Git...',
-            'check_existing_containers': 'Scanning for active Kong instances...'
+            'check_existing_containers': 'Scanning for active Kong instances...',
+            'reconcile_port_settings': 'Reconciling port settings with Docker...'
         };
         return mapping[name] || `Executing ${name}...`;
     }
@@ -217,7 +223,7 @@ export class Agent {
 
     public getUsageStats() {
         const config = this.config;
-        return { 
+        return {
             ...this.usageStats,
             contextLimit: config.get<number>('maxContext') || 130000
         };
@@ -242,7 +248,10 @@ export class Agent {
         const runAgentTask = async () => {
             const kongMode = config.get<string>('kongMode') || 'local';
             const contextHeader = `[SYSTEM CONTEXT: You are currently operating in **${kongMode.toUpperCase()} MODE**.]\n\n`;
-            this.messages.push({ role: "user", content: contextHeader + content });
+
+            // Final safety scrub for any injected context
+            const safeContent = contextHeader + SanitizationUtil.scrubString(content);
+            this.messages.push({ role: "user", content: safeContent });
 
             const model = config.get<string>('model') || (config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o');
 
@@ -254,7 +263,7 @@ export class Agent {
         };
 
         const maxAgentTimeout = config.get<number>('maxAgentTimeout') || 100;
-        
+
         let timerId: NodeJS.Timeout;
         const timeoutPromise = new Promise<void>((_, reject) => {
             timerId = setTimeout(() => {
@@ -266,7 +275,7 @@ export class Agent {
         try {
             await Promise.race([runAgentTask(), timeoutPromise]);
         } catch (e: any) {
-             onUpdate(`Agent Timeout: ${e.message}`);
+            onUpdate(`Agent Timeout: ${e.message}`);
         } finally {
             if (timerId!) clearTimeout(timerId);
         }
@@ -441,11 +450,17 @@ export class Agent {
             {
                 type: "function",
                 function: {
+                    name: "reconcile_port_settings",
+                    description: "Detects incorrect port settings by inspecting running containers and the docker-compose file, then updates the configuration to match reality. Use this when connection or health checks fail."
+                }
+            },
+            {
+                type: "function",
+                function: {
                     name: "export_live_to_storage_file",
                     description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. CAUTION: Requires explicit user approval AFTER showing them the preview_sync_diff to ensure they understand what local changes will be lost."
                 }
             },
-
             {
                 type: "function",
                 function: {
@@ -644,6 +659,9 @@ export class Agent {
                             await config.update?.('managerGuiPort', functionArgs.manager);
                             functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}.`;
                             break;
+                        case "reconcile_port_settings":
+                            functionResult = await this.toolManager.reconcilePorts();
+                            break;
                         case "list_storage_files":
                             const files = fs.readdirSync(this.toolManager.getStoragePath());
                             functionResult = `Files in storage folder:\n${files.join('\n')}`;
@@ -710,11 +728,11 @@ export class Agent {
                             break;
                         case "sync_to_kong_using_deck":
                             {
-                            // Safety check: verify the user gave a "Yes" recently
-                            const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                            const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
+                                // Safety check: verify the user gave a "Yes" recently
+                                const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                                const lastUserContent = (lastUserMsg?.content as string || "").toLowerCase().replace(/\[system context[\s\S]*?\]\n\n/, '').trim();
 
-                            if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
+                                if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
                                     functionResult = await this.toolManager.syncWithDeck(functionArgs.filename);
                                     if (!functionResult.includes('failed')) {
                                         const config = this.config;
@@ -793,13 +811,17 @@ export class Agent {
                     anyToolTriggeredSafety = true;
                 }
 
-                // Transparency: Notify UI result
-                onUpdate(functionResult, 'toolResult');
+                // --- GLOBAL SAFETY SCRUB ---
+                // Ensure no raw keys leak in the tool result before it enters the Agent's context or UI
+                const safeFunctionResult = SanitizationUtil.scrubString(functionResult);
+
+                // Transparency: Notify UI result (scrubbed)
+                onUpdate(safeFunctionResult, 'toolResult');
 
                 this.messages.push({
                     tool_call_id: toolCall.id,
                     role: "tool",
-                    content: functionResult
+                    content: safeFunctionResult
                 } as any);
 
                 if (anyToolTriggeredSafety) break;
