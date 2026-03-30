@@ -4,7 +4,9 @@ import * as fs from 'fs';
 import { Agent } from '../../core/agent/Agent';
 import { ToolManager } from '../../core/agent/tools/ToolManager';
 import { DiffUtil } from '../../core/utils/DiffUtil';
+import { PortUtil } from '../../core/utils/PortUtil';
 import { IConfig, IAppPlatform } from '../../core/interfaces/ICoreInterfaces';
+
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kongAgentChat';
@@ -123,10 +125,45 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (data.storagePath) await this.config.update?.('storagePath', data.storagePath);
                         if (data.kongMode) await this.config.update?.('kongMode', data.kongMode);
                         
-                        if (data.proxyPort) await this.config.update?.('proxyPort', parseInt(data.proxyPort));
-                        if (data.adminApiPort) await this.config.update?.('adminApiPort', parseInt(data.adminApiPort));
-                        if (data.managerGuiPort) await this.config.update?.('managerGuiPort', parseInt(data.managerGuiPort));
-                        if (data.databasePort) await this.config.update?.('databasePort', parseInt(data.databasePort));
+                        const updatedLocalPorts: Record<string, number> = {};
+                        const containerPorts = await this.toolManager.docker.getPortsFromRunningContainers();
+
+                        const checkAndSavePort = async (key: string, newValueStr: string) => {
+                            const newPort = parseInt(newValueStr);
+                            const currentPort = this.config.get<number>(key);
+                            
+                            if (newPort !== currentPort) {
+                                // Whitelist: if this port is ALREADY the mapping used by Kong/Postgres for this specific service.
+                                const isOwnedByKong = containerPorts[key] === newPort;
+
+                                if (!isOwnedByKong && await PortUtil.isPortInUse(newPort)) {
+                                    this._view?.webview.postMessage({ type: 'addMessage', role: 'system', content: `❌ Error saving settings: Port **${newPort}** for ${key} is already in use by another application. Reverted to ${currentPort}.` });
+                                } else {
+                                    await this.config.update?.(key, newPort);
+                                    updatedLocalPorts[key] = newPort;
+                                }
+                            }
+                        };
+
+
+                        if (data.proxyPort) await checkAndSavePort('proxyPort', data.proxyPort);
+                        if (data.adminApiPort) await checkAndSavePort('adminApiPort', data.adminApiPort);
+                        if (data.managerGuiPort) await checkAndSavePort('managerGuiPort', data.managerGuiPort);
+                        if (data.databasePort) await checkAndSavePort('databasePort', data.databasePort);
+                        
+                        // Sync updated ports to Docker Compose if in local mode
+                        const currentMode = data.kongMode || this.config.get<string>('kongMode');
+                        if (currentMode === 'local' && Object.keys(updatedLocalPorts).length > 0) {
+                            try {
+                                const msg = await this.toolManager.docker.updatePortsInComposeFile(updatedLocalPorts);
+                                if (msg) {
+                                    this._view?.webview.postMessage({ type: 'addMessage', role: 'system', content: `✅ Successfully synced port changes to Docker Compose file:\n${msg}` });
+                                }
+                            } catch (e: any) {
+                                this._view?.webview.postMessage({ type: 'addMessage', role: 'system', content: `⚠️ Settings saved, but failed to sync with Docker Compose: ${e.message}` });
+                            }
+                        }
+
                         if (data.maxReasoningTurns) await this.config.update?.('maxReasoningTurns', parseInt(data.maxReasoningTurns));
                         if (data.maxToolCalls) await this.config.update?.('maxToolCalls', parseInt(data.maxToolCalls));
                         if (data.maxContext) await this.config.update?.('maxContext', parseInt(data.maxContext));

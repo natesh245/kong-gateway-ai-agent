@@ -248,6 +248,66 @@ export class DockerTool {
       }
   }
 
+  public async updatePortsInComposeFile(updatedPorts: Record<string, number>): Promise<string | null> {
+      try {
+          const storagePath = this.storage.getStoragePath();
+          const discovered = await this.storage.findFilesByContent();
+          const composeFile = discovered.compose;
+          
+          if (!composeFile) {
+              return null; // No compose file found to sync with
+          }
+
+          const composePath = path.join(storagePath, composeFile);
+          if (!fs.existsSync(composePath)) {
+              return null;
+          }
+
+          let content = fs.readFileSync(composePath, 'utf8');
+          const updates: string[] = [];
+
+          const updatePortMapping = (internalPort: number, label: string, newPort?: number) => {
+              if (newPort) {
+                  const regex = new RegExp(`(["']?)(\\d+)(["']?):${internalPort}(\\b|/)`, 'g');
+                  let didReplace = false;
+                  content = content.replace(regex, (match, p1, oldExternal, p3, p4) => {
+                      didReplace = true;
+                      return `${p1}${newPort}${p3}:${internalPort}${p4}`;
+                  });
+                  if (didReplace) updates.push(`- ${label} → ${newPort}`);
+              }
+          };
+
+          const updateEnvVar = (envVar: string, newPort?: number) => {
+              if (newPort) {
+                  const regex = new RegExp(`(${envVar}:\\s*)(.*)`, 'g');
+                  content = content.replace(regex, `$1http://localhost:${newPort}`);
+              }
+          };
+
+          updatePortMapping(8000, "Proxy Request Port", updatedPorts.proxyPort);
+          updatePortMapping(8001, "Admin API Port", updatedPorts.adminApiPort);
+          updatePortMapping(8002, "Kong Manager Port", updatedPorts.managerGuiPort);
+          updatePortMapping(5432, "Database Port", updatedPorts.databasePort);
+
+          updateEnvVar('KONG_ADMIN_GUI_URL', updatedPorts.managerGuiPort);
+          updateEnvVar('KONG_ADMIN_API_URI', updatedPorts.adminApiPort);
+          updateEnvVar('KONG_ADMIN_GUI_API_URL', updatedPorts.adminApiPort);
+
+          if (updates.length > 0) {
+              fs.writeFileSync(composePath, content, 'utf8');
+              this.storage.updateFileCache(composeFile, content);
+              return updates.join('\\n');
+          }
+
+          return null; // No matching lines were replaced
+      } catch (e: any) {
+          throw new Error(`Failed to update Docker Compose ports: ${e.message}`);
+      }
+  }
+
+
+
   private composeContent(proxyPort: number, adminPort: number, managerPort: number, dbPort: number): string {
     return `version: '3.9'
 x-kong-config: &kong-env
