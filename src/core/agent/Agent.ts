@@ -37,7 +37,7 @@ export class Agent {
                 "STATUS CHECKS (Remote Mode): If the user asks 'is kong running?' or checks status, DO NOT call 'check_existing_containers' (Docker is not applicable). Instead, call 'verify_connectivity' and 'get_kong_status' (or 'get_instance_details'). Your response MUST show detailed accessibility results for the Admin API, Proxy API, and Kong Manager.\n" +
                 "SETUP: Always call 'check_existing_containers' BEFORE 'start_kong'. If Kong/Postgres containers exist, show their details (Name, Image, Ports) and ask to reuse or restart. Use 'connect_to_existing_instance' to adopt an existing setup.\n" +
                 "Once Kong is confirmed running, STOP calling setup tools — just summarise access details.\n" +
-                "PORTS: Never assume 8000/8001/8002. Always use ports returned by 'start_kong', 'verify_connectivity', or 'connect_to_existing_instance'.\n" +
+                "PORTS: Never assume 8000/8001/8002. Always prioritize the ports provided in the **ENVIRONMENT CONTEXT** at the start of the user message. If the context is missing, use ports returned by 'start_kong', 'verify_connectivity', or 'connect_to_existing_instance'.\n" +
                 "Use 'verify_connectivity' to confirm Kong is ready before completing any setup task.\n" +
                 "Use 'get_instance_details' for deep technical info; summarise with Markdown tables.\n" +
                 "Storage directory access (read_storage_file / write_storage_file / list_storage_files) is available for inspecting or editing config files.\n" +
@@ -247,8 +247,17 @@ export class Agent {
 
         const runAgentTask = async () => {
             const kongMode = config.get<string>('kongMode') || 'local';
-            const contextHeader = `[SYSTEM CONTEXT: You are currently operating in **${kongMode.toUpperCase()} MODE**.]\n\n`;
+            const proxyPort = config.get<number>('proxyPort') || 8000;
+            const adminPort = config.get<number>('adminApiPort') || 8001;
+            const managerPort = config.get<number>('managerGuiPort') || 8002;
+            const workspace = config.get<string>('kongWorkspace') || 'default';
 
+            const contextHeader = `[ENVIRONMENT CONTEXT: You are in **${kongMode.toUpperCase()} MODE**.\n` +
+                                `- Proxy Port: ${proxyPort}\n` +
+                                `- Admin API Port: ${adminPort}\n` +
+                                `- Kong Manager Port: ${managerPort}\n` +
+                                `- Workspace: ${workspace}]\n\n`;
+            
             // Final safety scrub for any injected context
             const safeContent = contextHeader + SanitizationUtil.scrubString(content);
             this.messages.push({ role: "user", content: safeContent });
