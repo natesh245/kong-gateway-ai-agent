@@ -78,10 +78,15 @@
           "default": 5432,
           "description": "The local port for the Postgres Database."
         },
-        "kongAgent.maxToolDepth": {
+        "kongAgent.maxReasoningTurns": {
           "type": "number",
           "default": 10,
-          "description": "Maximum tool call depth per message to prevent loops."
+          "description": "Maximum reasoning turns (LLM round-trips) per message to prevent infinite loops."
+        },
+        "kongAgent.maxToolCalls": {
+          "type": "number",
+          "default": 10,
+          "description": "Maximum total number of individual tool calls allowed per message to prevent runaway costs/actions."
         },
         "kongAgent.maxContext": {
           "type": "number",

@@ -13,6 +13,7 @@ export class Agent {
     private kongApi: KongApiClient;
     private isCancelled: boolean = false;
     private abortController: AbortController | null = null;
+    private toolCallCount = 0;
     private usageStats = {
         inputTokens: 0,
         outputTokens: 0,
@@ -232,6 +233,7 @@ export class Agent {
             onUpdate("⚠️ **Context Limit Exceeded**: The agent token usage surpassed the absolute limit. To prevent instability, your conversation history has been forcefully cleared. Starting a fresh context...\n\n");
         }
 
+        this.toolCallCount = 0;
         if (!this.initClient()) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
             return;
@@ -274,8 +276,15 @@ export class Agent {
         if (!this.openai || this.isCancelled) return;
 
         const config = this.config;
-        const maxDepth = config.get<number>('maxToolDepth') || 10;
+        const maxReasoningTurns = config.get<number>('maxReasoningTurns') || 10;
+        const maxToolCalls = config.get<number>('maxToolCalls') || 10;
         const maxAgentTimeout = config.get<number>('maxAgentTimeout') || 100;
+
+        // Check for total tool call limit before a new turn starts
+        if (this.toolCallCount >= maxToolCalls) {
+            onUpdate(`Agent Error: Maximum tool calls limit (${maxToolCalls}) reached for this message. Forcefully aborting.`);
+            return;
+        }
 
         // Check for timeout
         if ((Date.now() - startTime) / 1000 > maxAgentTimeout) {
@@ -292,8 +301,8 @@ export class Agent {
         }
 
         // Prevent infinite loops
-        if (depth > maxDepth) {
-            onUpdate(`Agent Error: Max tool call depth (${maxDepth}) reached to prevent infinite loop.`);
+        if (depth > maxReasoningTurns) {
+            onUpdate(`Agent Error: Max reasoning turns (${maxReasoningTurns}) reached to prevent infinite loop.`);
             return;
         }
 
@@ -583,6 +592,12 @@ export class Agent {
 
             let anyToolTriggeredSafety = false;
             for (const toolCall of responseMessage.tool_calls) {
+                if (this.toolCallCount >= maxToolCalls) {
+                    onUpdate(`Agent Error: Maximum tool calls limit (${maxToolCalls}) reached during execution. Partial results returned. Forcefully aborting.`);
+                    break;
+                }
+                this.toolCallCount++;
+
                 if (this.isCancelled) {
                     onUpdate("Agent task cancelled by user.", 'agent');
                     return;
@@ -786,6 +801,8 @@ export class Agent {
                     role: "tool",
                     content: functionResult
                 } as any);
+
+                if (anyToolTriggeredSafety) break;
             }
 
             // Always recurse so the LLM can see the Tool results (even errors/safety blocks) and format a user-facing reply.

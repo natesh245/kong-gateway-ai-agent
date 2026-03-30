@@ -544,7 +544,8 @@
             adminPort: document.getElementById('admin-port-input')?.value?.toString() || '8001',
             managerPort: document.getElementById('manager-port-input')?.value?.toString() || '8002',
             databasePort: document.getElementById('db-port-input')?.value?.toString() || '5432',
-            maxDepth: document.getElementById('max-depth-input')?.value?.toString() || '10',
+            maxReasoningTurns: document.getElementById('max-reasoning-turns-input')?.value?.toString() || '10',
+            maxToolCalls: document.getElementById('max-tool-calls-input')?.value?.toString() || '10',
             maxContext: document.getElementById('max-context-input')?.value?.toString() || '130000',
             maxAgentTimeout: document.getElementById('max-timeout-input')?.value?.toString() || '100',
             kongWorkspace: document.getElementById('workspace-input')?.value || 'default',
@@ -598,7 +599,8 @@
             adminPort: (document.getElementById('admin-port-input')?.value || '8001').toString(),
             managerPort: (document.getElementById('manager-port-input')?.value || '8002').toString(),
             databasePort: (document.getElementById('db-port-input')?.value || '5432').toString(),
-            maxDepth: (document.getElementById('max-depth-input')?.value || '10').toString(),
+            maxReasoningTurns: (document.getElementById('max-reasoning-turns-input')?.value || '10').toString(),
+            maxToolCalls: (document.getElementById('max-tool-calls-input')?.value || '10').toString(),
             maxContext: (document.getElementById('max-context-input')?.value || '130000').toString(),
             maxAgentTimeout: (document.getElementById('max-timeout-input')?.value || '100').toString(),
             kongWorkspace: document.getElementById('workspace-input').value
@@ -619,7 +621,8 @@
         detect('storagePath', 'Storage Path');
         detect('proxyPort', 'Proxy Port');
         detect('adminPort', 'Admin Port');
-        detect('maxDepth', 'Tool Depth');
+        detect('maxReasoningTurns', 'Reasoning Turns');
+        detect('maxToolCalls', 'Tool Limit');
         detect('maxContext', 'Max Context');
         detect('maxAgentTimeout', 'Agent Timeout');
         detect('kongWorkspace', 'Workspace');
@@ -651,7 +654,8 @@
             adminPort: newConfig.adminPort || '8001',
             managerPort: messageData.managerPort || '8002',
             databasePort: messageData.databasePort || '5432',
-            maxDepth: newConfig.maxDepth || '10',
+            maxReasoningTurns: newConfig.maxReasoningTurns || '10',
+            maxToolCalls: newConfig.maxToolCalls || '10',
             maxContext: newConfig.maxContext || '130000',
             maxAgentTimeout: newConfig.maxAgentTimeout || '100',
             kongWorkspace: newConfig.kongWorkspace || 'default',
@@ -737,7 +741,8 @@
 
             document.getElementById('api-key-input').value = m.apiKey || '';
             document.getElementById('gemini-api-key-input').value = m.geminiApiKey || '';
-            document.getElementById('max-depth-input').value = m.maxDepth || 10;
+            document.getElementById('max-reasoning-turns-input').value = m.maxReasoningTurns || 10;
+            document.getElementById('max-tool-calls-input').value = m.maxToolCalls || 10;
             document.getElementById('max-context-input').value = m.maxContext || 130000;
             document.getElementById('max-timeout-input').value = m.maxAgentTimeout || 100;
 
@@ -756,7 +761,8 @@
                 adminPort: m.adminPort ? m.adminPort.toString() : '8001',
                 managerPort: m.managerPort ? m.managerPort.toString() : '8002',
                 databasePort: m.databasePort ? m.databasePort.toString() : '5432',
-                maxDepth: m.maxDepth ? m.maxDepth.toString() : '10',
+                maxReasoningTurns: m.maxReasoningTurns ? m.maxReasoningTurns.toString() : '10',
+                maxToolCalls: m.maxToolCalls ? m.maxToolCalls.toString() : '10',
                 maxContext: m.maxContext ? m.maxContext.toString() : '130000',
                 maxAgentTimeout: m.maxAgentTimeout ? m.maxAgentTimeout.toString() : '100',
                 kongWorkspace: m.kongWorkspace || 'default',

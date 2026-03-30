@@ -106,7 +106,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (data.adminPort) await this.config.update?.('adminApiPort', parseInt(data.adminPort));
                         if (data.managerPort) await this.config.update?.('managerGuiPort', parseInt(data.managerPort));
                         if (data.databasePort) await this.config.update?.('databasePort', parseInt(data.databasePort));
-                        if (data.maxDepth) await this.config.update?.('maxToolDepth', parseInt(data.maxDepth));
+                        if (data.maxReasoningTurns) await this.config.update?.('maxReasoningTurns', parseInt(data.maxReasoningTurns));
+                        if (data.maxToolCalls) await this.config.update?.('maxToolCalls', parseInt(data.maxToolCalls));
                         if (data.maxContext) await this.config.update?.('maxContext', parseInt(data.maxContext));
                         if (data.maxAgentTimeout) await this.config.update?.('maxAgentTimeout', parseInt(data.maxAgentTimeout));
                         
@@ -296,7 +297,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 skipTlsVerify: this.config.get('skipTlsVerify') === true,
                 gitRemoteUrl: this.config.get('gitRemoteUrl') || '',
                 autoCommit: this.config.get('autoCommit') === true,
-                maxDepth: this.config.get('maxToolDepth') || 10,
+                maxReasoningTurns: this.config.get('maxReasoningTurns') || 10,
+                maxToolCalls: this.config.get('maxToolCalls') || 10,
                 maxContext: this.config.get('maxContext') || 130000,
                 maxAgentTimeout: this.config.get('maxAgentTimeout') || 100,
                 showThinking: this.config.get('showThinking') !== false,

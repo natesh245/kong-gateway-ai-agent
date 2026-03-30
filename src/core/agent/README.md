@@ -19,7 +19,8 @@ The agent uses a **Multi-turn Chat Completion Loop**. It is instructed to expres
 ### Features:
 - **Streaming Logic**: Logic inside `<thought>` can be streamed to the UI separately from the final answer.
 - **Recursive Tool Use**: If a task requires multiple steps (e.g., Check Port -> Start Postgres -> Start Kong), the agent will automatically call these tools in sequence.
-- **Depth Control**: A `maxToolDepth` setting prevents infinite loops in case of tool failures.
+- **Depth Control**: A `maxReasoningTurns` setting prevents infinite loops in case of tool failures.
+- **Tool Limits**: A `maxToolCalls` setting limits the total number of individual tools executed per message.
 
 ---
 
