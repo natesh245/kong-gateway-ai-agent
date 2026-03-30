@@ -95,33 +95,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     }
                 case 'updateConfig':
                     {
-                        await this.config.update?.('provider', data.provider);
-                        await this.config.update?.('model', data.model);
-                        await this.config.update?.('openRouterApiKey', data.apiKey);
-                        await this.config.update?.('geminiApiKey', data.geminiApiKey);
-                        await this.config.update?.('storagePath', data.storagePath);
-                        await this.config.update?.('kongMode', data.kongMode);
+                        if (data.provider) await this.config.update?.('provider', data.provider);
+                        if (data.model) await this.config.update?.('model', data.model);
+                        if (data.openRouterApiKey !== undefined) await this.config.update?.('openRouterApiKey', data.openRouterApiKey);
+                        if (data.geminiApiKey !== undefined) await this.config.update?.('geminiApiKey', data.geminiApiKey);
+                        if (data.storagePath) await this.config.update?.('storagePath', data.storagePath);
+                        if (data.kongMode) await this.config.update?.('kongMode', data.kongMode);
                         
                         if (data.proxyPort) await this.config.update?.('proxyPort', parseInt(data.proxyPort));
-                        if (data.adminPort) await this.config.update?.('adminApiPort', parseInt(data.adminPort));
-                        if (data.managerPort) await this.config.update?.('managerGuiPort', parseInt(data.managerPort));
+                        if (data.adminApiPort) await this.config.update?.('adminApiPort', parseInt(data.adminApiPort));
+                        if (data.managerGuiPort) await this.config.update?.('managerGuiPort', parseInt(data.managerGuiPort));
                         if (data.databasePort) await this.config.update?.('databasePort', parseInt(data.databasePort));
                         if (data.maxReasoningTurns) await this.config.update?.('maxReasoningTurns', parseInt(data.maxReasoningTurns));
                         if (data.maxToolCalls) await this.config.update?.('maxToolCalls', parseInt(data.maxToolCalls));
                         if (data.maxContext) await this.config.update?.('maxContext', parseInt(data.maxContext));
                         if (data.maxAgentTimeout) await this.config.update?.('maxAgentTimeout', parseInt(data.maxAgentTimeout));
                         
-                        await this.config.update?.('remoteAdminApiUrl', data.remoteAdminUrl);
-                        await this.config.update?.('remoteProxyBaseUrl', data.remoteProxyUrl);
-                        await this.config.update?.('remoteManagerGuiUrl', data.remoteManagerUrl);
+                        if (data.remoteAdminApiUrl) await this.config.update?.('remoteAdminApiUrl', data.remoteAdminApiUrl);
+                        if (data.remoteProxyBaseUrl) await this.config.update?.('remoteProxyBaseUrl', data.remoteProxyBaseUrl);
+                        if (data.remoteManagerGuiUrl) await this.config.update?.('remoteManagerGuiUrl', data.remoteManagerGuiUrl);
                         
-                        await this.config.update?.('kongWorkspace', data.kongWorkspace);
-                        await this.config.update?.('kongAdminToken', data.kongAdminToken);
-                        await this.config.update?.('skipTlsVerify', data.skipTlsVerify);
-                        await this.config.update?.('gitRemoteUrl', data.gitRemoteUrl);
-                        await this.config.update?.('autoCommit', data.autoCommit);
+                        if (data.kongWorkspace) await this.config.update?.('kongWorkspace', data.kongWorkspace);
+                        if (data.kongAdminToken !== undefined) await this.config.update?.('kongAdminToken', data.kongAdminToken);
+                        if (data.skipTlsVerify !== undefined) await this.config.update?.('skipTlsVerify', data.skipTlsVerify === 'true');
+                        if (data.showThinking !== undefined) await this.config.update?.('showThinking', data.showThinking === 'true');
+                        if (data.gitRemoteUrl !== undefined) await this.config.update?.('gitRemoteUrl', data.gitRemoteUrl);
+                        if (data.autoCommit !== undefined) await this.config.update?.('autoCommit', data.autoCommit === 'true');
 
-                        this.toolManager.initializeCache();
+                        if (this.toolManager && typeof this.toolManager.initializeCache === 'function') {
+                            this.toolManager.initializeCache();
+                        }
                         this._setupWatcher();
                         this.platform.showInformationMessage('Kong Gateway Agent: Configuration saved successfully.');
                         this._updateWebviewConfig();
@@ -281,17 +284,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 type: 'setConfig',
                 provider: this.config.get('provider'),
                 model: this.config.get('model'),
-                apiKey: this.config.get('openRouterApiKey'),
+                openRouterApiKey: this.config.get('openRouterApiKey'),
                 geminiApiKey: this.config.get('geminiApiKey'),
                 storagePath: this.config.get('storagePath'),
                 kongMode: this.config.get('kongMode') || 'local',
                 proxyPort: this.config.get('proxyPort'),
-                adminPort: this.config.get('adminApiPort'),
-                managerPort: this.config.get('managerGuiPort'),
+                adminApiPort: this.config.get('adminApiPort'),
+                managerGuiPort: this.config.get('managerGuiPort'),
                 databasePort: this.config.get('databasePort') || 5432,
-                remoteAdminUrl: this.config.get('remoteAdminApiUrl'),
-                remoteProxyUrl: this.config.get('remoteProxyBaseUrl'),
-                remoteManagerUrl: this.config.get('remoteManagerGuiUrl'),
+                remoteAdminApiUrl: this.config.get('remoteAdminApiUrl'),
+                remoteProxyBaseUrl: this.config.get('remoteProxyBaseUrl'),
+                remoteManagerGuiUrl: this.config.get('remoteManagerGuiUrl'),
                 kongWorkspace: this.config.get('kongWorkspace') || 'default',
                 kongAdminToken: this.config.get('kongAdminToken'),
                 skipTlsVerify: this.config.get('skipTlsVerify') === true,

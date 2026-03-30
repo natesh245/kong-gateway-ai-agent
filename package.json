@@ -146,6 +146,16 @@
           "type": "string",
           "default": "",
           "description": "The RBAC Admin token for authentication."
+        },
+        "kongAgent.showThinking": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the agent's internal reasoning process in the chat."
+        },
+        "kongAgent.skipTlsVerify": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip TLS certificate verification when connecting to the Kong Admin API."
         }
       }
     }

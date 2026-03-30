@@ -395,13 +395,13 @@
     const providerSelect = document.getElementById('provider-select');
     if (providerSelect) {
         providerSelect.onchange = (e) => {
+            const provider = e.target.value;
             const apiKeyRow = document.getElementById('api-key-row');
             const geminiKeyRow = document.getElementById('gemini-api-key-row');
             const modelSelect = document.getElementById('model-input');
-            const provider = e.target.value;
             
-            if (apiKeyRow) apiKeyRow.style.display = provider === 'openrouter' ? 'flex' : 'none';
-            if (geminiKeyRow) geminiKeyRow.style.display = provider === 'gemini' ? 'flex' : 'none';
+            if (apiKeyRow) apiKeyRow.classList.toggle('hidden', provider !== 'openrouter');
+            if (geminiKeyRow) geminiKeyRow.classList.toggle('hidden', provider !== 'gemini');
 
             // Clear model input for the new provider
             if (modelSelect) {
@@ -529,36 +529,41 @@
 
     const saveBtn = document.getElementById('save-config-btn');
 
+    function getUIConfig() {
+        return {
+            provider: document.getElementById('provider-select')?.value,
+            model: document.getElementById('model-input')?.value,
+            kongMode: document.getElementById('kong-mode-select')?.value,
+            storagePath: document.getElementById('storage-input')?.value,
+            proxyPort: document.getElementById('proxy-port-input')?.value?.toString(),
+            adminApiPort: document.getElementById('admin-port-input')?.value?.toString(),
+            managerGuiPort: document.getElementById('manager-port-input')?.value?.toString(),
+            databasePort: document.getElementById('db-port-input')?.value?.toString(),
+            maxReasoningTurns: document.getElementById('max-reasoning-turns-input')?.value?.toString(),
+            maxToolCalls: document.getElementById('max-tool-calls-input')?.value?.toString(),
+            maxContext: document.getElementById('max-context-input')?.value?.toString(),
+            maxAgentTimeout: document.getElementById('max-timeout-input')?.value?.toString(),
+            kongWorkspace: document.getElementById('workspace-input')?.value,
+            openRouterApiKey: document.getElementById('api-key-input')?.value,
+            geminiApiKey: document.getElementById('gemini-api-key-input')?.value,
+            remoteAdminApiUrl: document.getElementById('remote-admin-input')?.value,
+            remoteProxyBaseUrl: document.getElementById('remote-proxy-input')?.value,
+            remoteManagerGuiUrl: document.getElementById('remote-manager-input')?.value,
+            kongAdminToken: document.getElementById('admin-token-input')?.value,
+            skipTlsVerify: document.getElementById('skip-tls-input')?.checked ? 'true' : 'false',
+            showThinking: document.getElementById('show-thinking-toggle')?.checked ? 'true' : 'false',
+            gitRemoteUrl: document.getElementById('git-remote-input')?.value,
+            autoCommit: document.getElementById('auto-commit-input')?.checked ? 'true' : 'false'
+        };
+    }
+
     function checkConfigChanges() {
         if (!saveBtn) return;
         const state = vscode.getState() || {};
         const oldConfig = state.config || {};
         if (Object.keys(oldConfig).length === 0) return;
 
-        const currentConfig = {
-            provider: document.getElementById('provider-select')?.value || 'openrouter',
-            model: document.getElementById('model-input')?.value || '',
-            kongMode: document.getElementById('kong-mode-select')?.value || 'local',
-            storagePath: document.getElementById('storage-input')?.value || 'Default',
-            proxyPort: document.getElementById('proxy-port-input')?.value?.toString() || '8000',
-            adminPort: document.getElementById('admin-port-input')?.value?.toString() || '8001',
-            managerPort: document.getElementById('manager-port-input')?.value?.toString() || '8002',
-            databasePort: document.getElementById('db-port-input')?.value?.toString() || '5432',
-            maxReasoningTurns: document.getElementById('max-reasoning-turns-input')?.value?.toString() || '10',
-            maxToolCalls: document.getElementById('max-tool-calls-input')?.value?.toString() || '10',
-            maxContext: document.getElementById('max-context-input')?.value?.toString() || '130000',
-            maxAgentTimeout: document.getElementById('max-timeout-input')?.value?.toString() || '100',
-            kongWorkspace: document.getElementById('workspace-input')?.value || 'default',
-            apiKey: document.getElementById('api-key-input')?.value || '',
-            geminiApiKey: document.getElementById('gemini-api-key-input')?.value || '',
-            remoteAdminUrl: document.getElementById('remote-admin-input')?.value || '',
-            remoteProxyUrl: document.getElementById('remote-proxy-input')?.value || '',
-            remoteManagerUrl: document.getElementById('remote-manager-input')?.value || '',
-            kongAdminToken: document.getElementById('admin-token-input')?.value || '',
-            skipTlsVerify: document.getElementById('skip-tls-input')?.checked ? 'true' : 'false',
-            gitRemoteUrl: document.getElementById('git-remote-input')?.value || '',
-            autoCommit: document.getElementById('auto-commit-input')?.checked ? 'true' : 'false'
-        };
+        const currentConfig = getUIConfig();
 
         let hasChanges = false;
         for (const [key, val] of Object.entries(currentConfig)) {
@@ -593,28 +598,15 @@
         const oldState = vscode.getState() || {};
         const oldConfig = oldState.config || {};
         
-        const newConfig = {
-            provider: document.getElementById('provider-select').value,
-            model: document.getElementById('model-input').value,
-            kongMode: document.getElementById('kong-mode-select').value,
-            storagePath: document.getElementById('storage-input').value,
-            proxyPort: (document.getElementById('proxy-port-input')?.value || '8000').toString(),
-            adminPort: (document.getElementById('admin-port-input')?.value || '8001').toString(),
-            managerPort: (document.getElementById('manager-port-input')?.value || '8002').toString(),
-            databasePort: (document.getElementById('db-port-input')?.value || '5432').toString(),
-            maxReasoningTurns: (document.getElementById('max-reasoning-turns-input')?.value || '10').toString(),
-            maxToolCalls: (document.getElementById('max-tool-calls-input')?.value || '10').toString(),
-            maxContext: (document.getElementById('max-context-input')?.value || '130000').toString(),
-            maxAgentTimeout: (document.getElementById('max-timeout-input')?.value || '100').toString(),
-            kongWorkspace: document.getElementById('workspace-input').value
-        };
+        const newConfig = getUIConfig();
 
         const changes = [];
         const detect = (key, label) => {
-            const oldVal = oldConfig[key] || '';
-            const newVal = newConfig[key] || '';
-            if (oldVal && newVal !== oldVal) {
-                changes.push(`| **${label}** | \`${oldVal}\` → \`${newVal}\` |`);
+            const oldVal = (oldConfig[key] !== undefined && oldConfig[key] !== null) ? oldConfig[key].toString().trim() : '';
+            const newVal = (newConfig[key] !== undefined && newConfig[key] !== null) ? newConfig[key].toString().trim() : '';
+            
+            if (newVal !== oldVal) {
+                changes.push(`| **${label}** | \`${oldVal || 'None'}\` → \`${newVal || 'None'}\` |`);
             }
         };
 
@@ -623,79 +615,45 @@
         detect('kongMode', 'Execution Mode');
         detect('storagePath', 'Storage Path');
         detect('proxyPort', 'Proxy Port');
-        detect('adminPort', 'Admin Port');
+        detect('adminApiPort', 'Admin Port');
+        detect('managerGuiPort', 'Manager Port');
+        detect('databasePort', 'Database Port');
         detect('maxReasoningTurns', 'Reasoning Turns');
         detect('maxToolCalls', 'Tool Limit');
         detect('maxContext', 'Max Context');
         detect('maxAgentTimeout', 'Agent Timeout');
         detect('kongWorkspace', 'Workspace');
+        detect('openRouterApiKey', 'OpenRouter Key');
+        detect('geminiApiKey', 'Gemini Key');
+        detect('remoteAdminApiUrl', 'Remote Admin URL');
+        detect('remoteProxyBaseUrl', 'Remote Proxy URL');
+        detect('remoteManagerGuiUrl', 'Remote Manager URL');
+        detect('kongAdminToken', 'Admin Token');
+        detect('skipTlsVerify', 'Skip TLS');
+        detect('showThinking', 'Show Thinking');
+        detect('gitRemoteUrl', 'Git URL');
+        detect('autoCommit', 'Auto Commit');
 
         const messageData = {
             type: 'updateConfig',
-            ...newConfig,
-            apiKey: document.getElementById('api-key-input').value,
-            geminiApiKey: document.getElementById('gemini-api-key-input').value,
-            managerPort: document.getElementById('manager-port-input').value,
-            databasePort: document.getElementById('db-port-input').value,
-            remoteAdminUrl: document.getElementById('remote-admin-input').value,
-            remoteProxyUrl: document.getElementById('remote-proxy-input').value,
-            remoteManagerUrl: document.getElementById('remote-manager-input').value,
-            kongAdminToken: document.getElementById('admin-token-input').value,
-            skipTlsVerify: document.getElementById('skip-tls-input').checked,
-            gitRemoteUrl: document.getElementById('git-remote-input').value,
-            autoCommit: document.getElementById('auto-commit-input').checked
+            ...newConfig
         };
         vscode.postMessage(messageData);
 
         // Save current to state for next diff
-        oldState.config = {
-            provider: newConfig.provider || 'openrouter',
-            model: newConfig.model || '',
-            kongMode: newConfig.kongMode || 'local',
-            storagePath: newConfig.storagePath || 'Default',
-            proxyPort: newConfig.proxyPort || '8000',
-            adminPort: newConfig.adminPort || '8001',
-            managerPort: messageData.managerPort || '8002',
-            databasePort: messageData.databasePort || '5432',
-            maxReasoningTurns: newConfig.maxReasoningTurns || '10',
-            maxToolCalls: newConfig.maxToolCalls || '10',
-            maxContext: newConfig.maxContext || '130000',
-            maxAgentTimeout: newConfig.maxAgentTimeout || '100',
-            kongWorkspace: newConfig.kongWorkspace || 'default',
-            apiKey: messageData.apiKey || '',
-            geminiApiKey: messageData.geminiApiKey || '',
-            remoteAdminUrl: messageData.remoteAdminUrl || '',
-            remoteProxyUrl: messageData.remoteProxyUrl || '',
-            remoteManagerUrl: messageData.remoteManagerUrl || '',
-            kongAdminToken: messageData.kongAdminToken || '',
-            skipTlsVerify: messageData.skipTlsVerify ? 'true' : 'false',
-            gitRemoteUrl: messageData.gitRemoteUrl || '',
-            autoCommit: messageData.autoCommit ? 'true' : 'false'
-        };
+        oldState.config = { ...newConfig };
         vscode.setState(oldState);
-        checkConfigChanges();
-
-        // Minimize settings panel
-        const settingsContainer = document.querySelector('.settings-container');
-        if (settingsContainer) {
-            settingsContainer.open = false;
-        }
-        showToast('✅ Configuration saved successfully!');
 
         if (changes.length > 0) {
-            const summary = `### ⚙️ Configuration Updated\n\n| Setting | Change |\n| :--- | :--- |\n${changes.join('\n')}\n\nI'm ready to continue. How can I help you?`;
+            const summary = `### ✅ Configuration Saved\n\n| Setting | Change |\n| :--- | :--- |\n${changes.join('\n')}`;
             appendMessage('agent', summary);
         } else {
-            appendMessage('agent', `### ⚙️ Configuration Saved\n\nNo values were changed.\n\nI'm ready to continue. How can I help you?`);
+            showToast('✅ Configuration saved successfully!');
         }
         
-        // Auto-refresh models when saving if provider or key is new
-        const provider = document.getElementById('provider-select').value;
-        const apiKey = (provider === 'openrouter') ? 
-            document.getElementById('api-key-input').value : 
-            document.getElementById('gemini-api-key-input').value;
-
-        vscode.postMessage({ type: 'fetchModels', provider, apiKey });
+        saveBtn.disabled = true;
+        saveBtn.innerText = 'No Changes to Save';
+        saveBtn.style.opacity = '0.5';
     };
 
     // Initial Welcome Message
@@ -742,66 +700,37 @@
             // Ensure listeners are attached
             initializeModelSearch();
 
-            document.getElementById('api-key-input').value = m.apiKey || '';
+            document.getElementById('proxy-port-input').value = m.proxyPort || 8000;
+            document.getElementById('admin-port-input').value = m.adminApiPort || 8001;
+            document.getElementById('manager-port-input').value = m.managerGuiPort || 8002;
+            document.getElementById('db-port-input').value = m.databasePort || 5432;
+            document.getElementById('workspace-input').value = m.kongWorkspace || 'default';
+            document.getElementById('api-key-input').value = m.openRouterApiKey || '';
             document.getElementById('gemini-api-key-input').value = m.geminiApiKey || '';
             document.getElementById('max-reasoning-turns-input').value = m.maxReasoningTurns || 10;
             document.getElementById('max-tool-calls-input').value = m.maxToolCalls || 10;
             document.getElementById('max-context-input').value = m.maxContext || 130000;
             document.getElementById('max-timeout-input').value = m.maxAgentTimeout || 100;
+            document.getElementById('admin-token-input').value = m.kongAdminToken || '';
+            document.getElementById('remote-admin-input').value = m.remoteAdminApiUrl || '';
+            document.getElementById('remote-proxy-input').value = m.remoteProxyBaseUrl || '';
+            document.getElementById('remote-manager-input').value = m.remoteManagerGuiUrl || '';
+            document.getElementById('skip-tls-input').checked = m.skipTlsVerify === true;
+            document.getElementById('show-thinking-toggle').checked = m.showThinking !== false;
+            document.getElementById('storage-input').value = m.storagePath || '';
+            document.getElementById('git-remote-input').value = m.gitRemoteUrl || '';
+            document.getElementById('auto-commit-input').checked = m.autoCommit === true;
 
-            // Trigger visibility toggle
-            document.getElementById('api-key-row').style.display = provider === 'openrouter' ? 'flex' : 'none';
-            document.getElementById('gemini-api-key-row').style.display = provider === 'gemini' ? 'flex' : 'none';
-
-            // Seed the initial state block so we have a reliable diff baseline on next save
+            // Seed state baseline
             const state = vscode.getState() || {};
-            state.config = {
-                provider: m.provider || 'openrouter',
-                model: m.model || '',
-                kongMode: m.kongMode || 'local',
-                storagePath: m.storagePath || 'Default',
-                proxyPort: m.proxyPort ? m.proxyPort.toString() : '8000',
-                adminPort: m.adminPort ? m.adminPort.toString() : '8001',
-                managerPort: m.managerPort ? m.managerPort.toString() : '8002',
-                databasePort: m.databasePort ? m.databasePort.toString() : '5432',
-                maxReasoningTurns: m.maxReasoningTurns ? m.maxReasoningTurns.toString() : '10',
-                maxToolCalls: m.maxToolCalls ? m.maxToolCalls.toString() : '10',
-                maxContext: m.maxContext ? m.maxContext.toString() : '130000',
-                maxAgentTimeout: m.maxAgentTimeout ? m.maxAgentTimeout.toString() : '100',
-                kongWorkspace: m.kongWorkspace || 'default',
-                apiKey: m.apiKey || '',
-                geminiApiKey: m.geminiApiKey || '',
-                remoteAdminUrl: m.remoteAdminUrl || '',
-                remoteProxyUrl: m.remoteProxyUrl || '',
-                remoteManagerUrl: m.remoteManagerUrl || '',
-                kongAdminToken: m.kongAdminToken || '',
-                skipTlsVerify: m.skipTlsVerify === true ? 'true' : 'false',
-                gitRemoteUrl: m.gitRemoteUrl || '',
-                autoCommit: m.autoCommit === true ? 'true' : 'false'
-            };
+            state.config = getUIConfig();
             vscode.setState(state);
-            document.getElementById('storage-input').value = m.storagePath || 'Default';
             
             const kongMode = m.kongMode || 'local';
             document.getElementById('kong-mode-select').value = kongMode;
             document.getElementById('local-settings').classList.toggle('hidden', kongMode !== 'local');
             document.getElementById('remote-settings').classList.toggle('hidden', kongMode === 'local');
             document.getElementById('check-ports-btn').classList.toggle('hidden', kongMode !== 'local');
-
-            document.getElementById('proxy-port-input').value = m.proxyPort || 8000;
-            document.getElementById('admin-port-input').value = m.adminPort || 8001;
-            document.getElementById('manager-port-input').value = m.managerPort || 8002;
-            document.getElementById('db-port-input').value = m.databasePort || 5432;
-
-            document.getElementById('remote-admin-input').value = m.remoteAdminUrl || '';
-            document.getElementById('remote-proxy-input').value = m.remoteProxyUrl || '';
-            document.getElementById('remote-manager-input').value = m.remoteManagerUrl || '';
-            
-            document.getElementById('workspace-input').value = m.kongWorkspace || 'default';
-            document.getElementById('admin-token-input').value = m.kongAdminToken || '';
-            document.getElementById('skip-tls-input').checked = m.skipTlsVerify === true;
-            document.getElementById('git-remote-input').value = m.gitRemoteUrl || '';
-            document.getElementById('auto-commit-input').checked = m.autoCommit === true;
             
             checkConfigChanges();
             
@@ -813,6 +742,12 @@
                 badge.style.background = provider === 'openrouter' ? 'var(--accent)' : '#4ec9b0';
             }
             if (modelInfo) modelInfo.innerText = currentModel;
+            
+            // Toggle API key row visibility based on provider
+            const apiKeyRow = document.getElementById('api-key-row');
+            const geminiApiKeyRow = document.getElementById('gemini-api-key-row');
+            if (apiKeyRow) apiKeyRow.classList.toggle('hidden', provider !== 'openrouter');
+            if (geminiApiKeyRow) geminiApiKeyRow.classList.toggle('hidden', provider !== 'gemini');
             
             if (m.usageStats) {
                 updateUsageUI(m.usageStats);
