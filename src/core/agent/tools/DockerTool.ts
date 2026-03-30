@@ -224,12 +224,13 @@ export class DockerTool {
           const detected: Record<string, number> = {};
 
           // Extract ports using regex from the YAML
-          // Matches line "- "8003:8001"" or "- 8003:8001"
+          // Matches line "- "8003:8001"" or "- 127.0.0.1:8003:8001"
           const extractPort = (internalPort: number) => {
-              const regex = new RegExp(`["']?(\\d+)["']?:${internalPort}`, 'g');
+              const regex = new RegExp(`^\\s*-\\s+["']?(?:[0-9.]+:)?(\\d+)["']?:${internalPort}\\b`, 'm');
               const match = regex.exec(content);
               return match ? parseInt(match[1]) : null;
           };
+
 
           const proxy = extractPort(8000);
           const admin = extractPort(8001);
@@ -268,11 +269,12 @@ export class DockerTool {
 
           const updatePortMapping = (internalPort: number, label: string, newPort?: number) => {
               if (newPort) {
-                  const regex = new RegExp(`(["']?)(\\d+)(["']?):${internalPort}(\\b|/)`, 'g');
+                  // ^\s*-\s+["']?(?:[0-9.]+::?)?(\d+)["']?:8001\b
+                  const regex = new RegExp(`(^\\s*-\\s+["']?(?:[0-9.]+:)?)((\\d+))(["']?:${internalPort}\\b)`, 'gm');
                   let didReplace = false;
-                  content = content.replace(regex, (match, p1, oldExternal, p3, p4) => {
+                  content = content.replace(regex, (match, prefix, oldExternal, portNum, suffix) => {
                       didReplace = true;
-                      return `${p1}${newPort}${p3}:${internalPort}${p4}`;
+                      return `${prefix}${newPort}${suffix}`;
                   });
                   if (didReplace) updates.push(`- ${label} → ${newPort}`);
               }
