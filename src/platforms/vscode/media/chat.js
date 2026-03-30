@@ -147,21 +147,23 @@
         };
     }
 
-    function appendMessage(role, content, className, usage) {
+    function appendMessage(role, content, className, usage, isHistory = false) {
+
         console.log(`[UI Trace]: Message Role=${role}, Content Length=${content?.length || 0}`);
         const isThinking = (role === 'toolCall' || role === 'toolResult' || role === 'thought');
 
         if (role === 'user') {
-            stopThinkingSession();
+            if (!isHistory) stopThinkingSession();
             const div = document.createElement('div');
             div.className = 'message user';
             div.innerText = content;
             chat.appendChild(div);
             
             // Proactive Thinking Start
-            startThinkingSession(); 
+            if (!isHistory) startThinkingSession(); 
             return;
         }
+
 
         let messageEl = null;
 
@@ -699,6 +701,17 @@
             if (m.usageStats) {
                 updateUsageUI(m.usageStats);
             }
+            if (m.history && chat.children.length === 0) {
+                m.history.forEach(msg => {
+                    if (msg.role === 'system') return;
+                    if (msg.role === 'assistant' && msg.content) {
+                        appendMessage('assistant', msg.content, undefined, undefined, true);
+                    } else if (msg.role === 'user') {
+                        appendMessage('user', msg.content, undefined, undefined, true);
+                    }
+                });
+            }
+
             if (m.files) {
                 const list = document.getElementById('file-list');
                 if (list) {
@@ -714,12 +727,15 @@
                         }
                         
                         item.innerHTML = `<span class="file-name">${f}</span>${labelHtml}<button class="open-file-btn">Open</button>`;
-                        item.querySelector('.open-file-btn').onclick = () => vscode.postMessage({ type: 'openFile', filename: f });
+                        const btn = item.querySelector('.open-file-btn');
+                        if (btn) btn.onclick = () => vscode.postMessage({ type: 'openFile', filename: f });
                         list.appendChild(item);
                     });
                 }
             }
-        } else if (m.type === 'fileChanged') {
+        }
+
+ else if (m.type === 'fileChanged') {
             const toast = document.getElementById('notification');
             const fileNameSpan = document.getElementById('changed-filename');
             const reviewBtn = document.getElementById('review-btn');

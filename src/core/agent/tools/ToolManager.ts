@@ -17,7 +17,8 @@ export class ToolManager {
   constructor(private config: IConfig, private platform: IAppPlatform) {
     this.storage = new StorageTool(config, platform);
     this.docker = new DockerTool(this.storage, config, platform);
-    this.deck = new DeckTool(this.storage, config);
+    this.deck = new DeckTool(this.storage, config, platform);
+
     this.git = new GitTool(this.storage);
   }
 

@@ -95,22 +95,30 @@ export class DockerTool {
   public async stop(): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
-      await execAsync('docker-compose -f kong-docker-compose.yml down', { cwd: storagePath });
+      const discovered = await this.storage.findFilesByContent();
+      const composeFile = discovered.compose || 'kong-docker-compose.yml';
+      
+      await execAsync(`docker-compose -f "${composeFile}" down`, { cwd: storagePath });
       return "Kong Gateway stopped.";
     } catch (e: any) {
       throw new Error(`Failed to stop Kong: ${e.message}`);
     }
   }
 
+
   public async status(): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
-      const { stdout } = await execAsync('docker-compose -f kong-docker-compose.yml ps', { cwd: storagePath });
+      const discovered = await this.storage.findFilesByContent();
+      const composeFile = discovered.compose || 'kong-docker-compose.yml';
+
+      const { stdout } = await execAsync(`docker-compose -f "${composeFile}" ps`, { cwd: storagePath });
       return `Docker Compose Status:\n${stdout}`;
     } catch (e: any) {
       return `Error fetching status: ${e.message}`;
     }
   }
+
 
   public async findExistingContainers(): Promise<string> {
     try {

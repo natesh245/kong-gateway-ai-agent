@@ -2,12 +2,14 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { StorageTool } from './StorageTool';
-import { IConfig } from '../../interfaces/ICoreInterfaces';
+import { IConfig, IAppPlatform } from '../../interfaces/ICoreInterfaces';
+
 
 const execAsync = promisify(exec);
 
 export class DeckTool {
-  constructor(private storage: StorageTool, private config: IConfig) { }
+  constructor(private storage: StorageTool, private config: IConfig, private platform: IAppPlatform) { }
+
 
   public async isDeckInstalled(): Promise<boolean> {
     try {
@@ -19,14 +21,25 @@ export class DeckTool {
   }
 
   public async installDeck(): Promise<string> {
+    if (process.platform !== 'darwin') {
+      return "Kong Agent: Automatic installation of decK is currently only supported on macOS via Homebrew. Please install decK manually from https://github.com/Kong/deck/releases";
+    }
+
     try {
+      this.platform.showInformationMessage("Kong Agent: Attempting to install decK via Homebrew...");
+
+      await execAsync('brew --version'); // Check if brew exists
       await execAsync('brew tap kong/tap');
       await execAsync('brew install deck');
       return "Successfully installed decK CLI via Homebrew.";
     } catch (e: any) {
+      if (e.message.includes('command not found')) {
+        return "Kong Agent: Homebrew (brew) was not found on your system. Please install Homebrew first or download decK manually from https://github.com/Kong/deck/releases";
+      }
       throw new Error(`Failed to install decK: ${e.message}`);
     }
   }
+
 
   public async getAdminUrl(isHost: boolean): Promise<string> {
     const mode = this.config.get<string>('kongMode') || 'local';

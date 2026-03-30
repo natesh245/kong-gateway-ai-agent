@@ -12,6 +12,8 @@ An AI-powered VS Code extension that provides a declarative, GitOps-first interf
 - **Enterprise Support**: Handles **Workspaces**, **RBAC Tokens**, and **TLS Verification** settings.
 - **Safety First**: Mandatory validation and diff previews before syncing changes to live instances.
 - **Visual Excellence**: Modern, premium chat UI with "Thinking Process" toggles and error highlighting.
+- **Persistence**: Chat history is automatically saved to VS Code's global state and persists across sessions.
+
 
 ---
 
@@ -20,6 +22,8 @@ An AI-powered VS Code extension that provides a declarative, GitOps-first interf
 The project follows a modular architecture:
 - **`src/core/`**: Platform-agnostic logic (Agent, Tool Management, Kong API Client).
 - **`src/platforms/`**: Platform-specific implementations (e.g., VS Code extension, Webview).
+- **`src/test/`**: End-to-End (E2E) testing suite using `@vscode/test-electron` and Mocha.
+
 
 For more details, see the sub-READMEs in each directory.
 
@@ -28,8 +32,9 @@ For more details, see the sub-READMEs in each directory.
 ## 🛠️ Prerequisites
 
 1.  **Docker Desktop**: Required for Local mode and the Dockerized decK fallback.
-2.  **decK CLI** (Optional): If installed on your host, the agent will use it directly for faster performance.
+2.  **decK CLI**: The agent includes automated installation for macOS (via Homebrew) and robust fallback logic for other platforms.
 3.  **OpenRouter/Gemini API Key**: Required for the LLM-based reasoning agent.
+
 
 ---
 
@@ -47,6 +52,20 @@ npm install
 - Open the project in VS Code.
 - Press `F5` (or go to **Run > Start Debug** ) to launch a new VS Code window with the extension loaded.
 - Click the **Kong Agent** icon (⚡) in the Activity Bar to open the chat sidebar.
+- Your conversation history will be automatically restored on every launch.
+
+### 3. Testing & Quality
+Run the automated test suite to verify extension health:
+```bash
+npm run compile
+npm test
+```
+Check code quality:
+```bash
+npm run lint
+npm run format
+```
+
 
 ---
 

@@ -24,6 +24,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.toolManager.storage.setAgent(this._agent);
         this.toolManager.initializeCache();
         this._setupWatcher();
+        this._loadHistory();
+
 
         // Listen for configuration changes to sync the webview automatically
         vscode.workspace.onDidChangeConfiguration(e => {
@@ -99,8 +101,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             // Update session total in real-time
                             webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
                         });
+                        await this._saveHistory();
                         break;
                     }
+
                 case 'updateConfig':
                     {
                         if (data.provider) await this.config.update?.('provider', data.provider);
@@ -286,6 +290,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    private async _loadHistory() {
+        const history = this.context.globalState.get<any[]>('kongAgentChatHistory', []);
+        if (history.length > 0) {
+            this._agent.setMessages(history);
+        }
+    }
+
+    private async _saveHistory() {
+        const history = this._agent.getMessages();
+        // Limit history to last 50 messages to prevent state bloat
+        const limitedHistory = history.slice(-50);
+        await this.context.globalState.update('kongAgentChatHistory', limitedHistory);
+    }
+
+
     private async _updateWebviewConfig() {
         if (this._view) {
             this._view.webview.postMessage({
@@ -316,10 +335,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 models: await this._agent.fetchAvailableModels(),
                 files: await this.toolManager.listStorageFiles(),
                 detectedFiles: await this.toolManager.storage.findFilesByContent(),
-                usageStats: this._agent.getUsageStats()
+                usageStats: this._agent.getUsageStats(),
+                history: this._agent.getMessages()
             });
         }
     }
+
 
     private _getHtmlForWebview(webview: vscode.Webview) {
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'platforms', 'vscode', 'media', 'chat.css'));

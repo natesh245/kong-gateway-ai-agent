@@ -164,18 +164,34 @@
     "vscode:prepublish": "npm run package",
     "compile": "tsc -p ./",
     "watch": "esbuild src/platforms/vscode/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
-    "build": "esbuild src/platforms/vscode/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node"
+    "build": "esbuild src/platforms/vscode/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "lint": "eslint src --ext ts",
+    "format": "prettier --write \"src/**/*.{ts,js,css,html}\"",
+    "test": "node ./dist/test/runTest.js"
+
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
     "@types/vscode": "^1.86.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/test-electron": "^2.3.9",
     "esbuild": "^0.20.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "glob": "^10.3.10",
+    "@types/glob": "^8.1.0",
+    "mocha": "^10.3.0",
+    "prettier": "^3.2.5",
     "typescript": "^5.3.3"
   },
+
   "dependencies": {
     "@types/diff": "^7.0.2",
     "axios": "^1.6.7",
     "diff": "^8.0.4",
     "openai": "^4.28.0"
   }
+
 }
