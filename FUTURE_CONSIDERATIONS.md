@@ -36,6 +36,22 @@ We are currently persisting chat messages using VS Code's native `ExtensionConte
 
 [See proposed LangChain Migration Plan](file:///Users/natesh/.gemini/antigravity/brain/75beacb7-63b5-4ea0-92a5-6c56860f8b62/langchain_migration_plan.md)
 
+### Frontend Migration: React for VS Code Chat
+**Status**: 💡 Proposed (Feasibility Confirmed)
+
+**Goal**: Replace the current 1,000-line vanilla JavaScript `chat.js` with a modern React-based architecture to improve maintainability, state management, and UI extensibility.
+
+**Key Benefits**:
+- **Declarative UI**: Move away from manual DOM manipulation (`document.createElement`) to state-driven rendering.
+- **Component isolation**: Individual components for Thinking bubbles, Message units, Port-check cards, and Settings inputs.
+- **Type Safety**: Use TypeScript for the entire frontend to prevent common runtime errors in the webview.
+- **Improved State Sync**: Use React hooks (e.g., `useVsCodeApi`) to manage the complex configuration and history synchronization.
+
+**Proposed Architecture**:
+- **Bundling**: Use `esbuild` to bundle `src/platforms/vscode/webview/index.tsx` into a single `dist/webview/chat.js`.
+- **VS Code Toolkit**: Leverage `@vscode/webview-ui-toolkit` for native-looking components (buttons, text fields, checkboxes).
+- **Communication Layer**: A custom React context to handle `postMessage` and `onMessage` events seamlessly.
+
 ### Full-Screen Mode (WebApp Layout)
 **Status**: 💡 Proposed
 
