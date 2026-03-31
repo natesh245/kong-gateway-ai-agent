@@ -249,21 +249,21 @@ export class Agent {
     public async classifyFile(content: string): Promise<'compose' | 'kong' | 'other'> {
         if (!this.initClient()) return 'other';
         const sample = content.length > 2000 ? content.substring(0, 2000) : content;
-        
+
         try {
             const response = await this.openai!.chat.completions.create({
                 model: this.config.get<string>('model') || (this.config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o'),
                 messages: [
-                    { 
-                        role: "system", 
-                        content: "Identify if the following YAML is a 'compose' (Docker Compose), 'kong' (Kong Gateway declarative config), or 'other'. Output ONLY the single word classification." 
+                    {
+                        role: "system",
+                        content: "Identify if the following YAML is a 'compose' (Docker Compose), 'kong' (Kong Gateway declarative config), or 'other'. Output ONLY the single word classification."
                     },
                     { role: "user", content: sample }
                 ],
                 temperature: 0,
                 max_tokens: 10
             });
-            
+
             const result = response.choices[0]?.message?.content?.toLowerCase().trim() || 'other';
             if (result.includes('compose')) return 'compose';
             if (result.includes('kong')) return 'kong';
@@ -303,19 +303,19 @@ export class Agent {
 
 
             const contextHeader = `[ENVIRONMENT CONTEXT: You are in **${kongMode.toUpperCase()} MODE**.\n` +
-                                `- Proxy Port: ${proxyPort}\n` +
-                                `- Admin API Port: ${adminPort}\n` +
-                                `- Kong Manager Port: ${managerPort}\n` +
-                                `- Workspace: ${workspace}\n` +
-                                `- Detected Compose: ${activeCompose}\n` +
-                                `- Detected Config: ${activeConfig}]\n\n`;
+                `- Proxy Port: ${proxyPort}\n` +
+                `- Admin API Port: ${adminPort}\n` +
+                `- Kong Manager Port: ${managerPort}\n` +
+                `- Workspace: ${workspace}\n` +
+                `- Detected Compose: ${activeCompose}\n` +
+                `- Detected Config: ${activeConfig}]\n\n`;
 
-            
+
             // Final safety scrub for any injected context
             const safeContent = contextHeader + SanitizationUtil.scrubString(content);
             this.messages.push({ role: "user", content: safeContent });
 
-            const model = config.get<string>('model') || (config.get<string>('provider') === 'local' ? 'llama3.1' : 'openai/gpt-4o');
+            const model = config.get<string>('model') || "None";
 
             try {
                 await this.runLoop(model, onUpdate, 0, Date.now());
@@ -497,7 +497,7 @@ export class Agent {
                                 if (isActive) {
                                     const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
                                     const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
-                                    
+
                                     if (lastUserContent === 'yes' || lastUserContent.includes('confirm overwrite') || lastUserContent.includes('proceed with update')) {
                                         const oldContent = this.toolManager.getFileCache(filename) || "";
                                         await this.toolManager.writeStorageFile(filename, newContent);
