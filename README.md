@@ -105,5 +105,19 @@ The agent enforces a professional GitOps lifecycle:
 
 ---
 
+## 🚀 Roadmap / Future Features
+
+- **Multiple Chat Sessions**: Support for switching between different Kong environments or tasks without losing context or mixing settings.
+- **SQLite Storage**: Migrating from VS Code `globalState` to a more robust local database for infinite chat history and faster searches.
+
+---
+
+## 📝 Documentation
+
+- [Future Considerations](FUTURE_CONSIDERATIONS.md): Tracking ideas and future enhancements.
+- [Known Issues](ISSUES.md): Tracking known issues and bugs.
+
+---
+
 ## 📄 License
 MIT
