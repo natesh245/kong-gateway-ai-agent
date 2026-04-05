@@ -12,7 +12,7 @@ const execAsync = promisify(exec);
 export class DockerTool {
   constructor(private storage: StorageTool, private config: IConfig, private platform: IAppPlatform) { }
 
-  public async start(): Promise<string> {
+  public async start(signal?: AbortSignal): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
       const discovered = await this.storage.findFilesByContent();
@@ -67,14 +67,14 @@ export class DockerTool {
       await this.platform.openFileInEditor(composePath);
 
       this.platform.showInformationMessage('Kong Agent: Starting Postgres Database...');
-      await execAsync(`docker-compose -f "${composeFile}" up -d kong-database`, { cwd: storagePath });
+      await execAsync(`docker-compose -f "${composeFile}" up -d kong-database`, { cwd: storagePath, signal });
 
       this.platform.showInformationMessage('Kong Agent: Bootstrapping database...');
       // Note: We skip bootstrap if it's already done (Postgres exists), but docker-compose run is safe to re-run.
-      await execAsync(`docker-compose -f "${composeFile}" run --rm kong kong migrations bootstrap`, { cwd: storagePath });
+      await execAsync(`docker-compose -f "${composeFile}" run --rm kong kong migrations bootstrap`, { cwd: storagePath, signal });
 
       this.platform.showInformationMessage('Kong Agent: Starting Kong Gateway...');
-      await execAsync(`docker-compose -f "${composeFile}" up -d kong`, { cwd: storagePath });
+      await execAsync(`docker-compose -f "${composeFile}" up -d kong`, { cwd: storagePath, signal });
 
       const successMsg = `Kong Gateway started successfully! Here are your access details:
 
@@ -89,41 +89,44 @@ export class DockerTool {
 
       return successMsg;
     } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       throw new Error(`Failed to start Kong: ${e.message}`);
     }
   }
 
-  public async stop(): Promise<string> {
+  public async stop(signal?: AbortSignal): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
       const discovered = await this.storage.findFilesByContent();
       const composeFile = discovered.compose || 'kong-docker-compose.yml';
       
-      await execAsync(`docker-compose -f "${composeFile}" down`, { cwd: storagePath });
+      await execAsync(`docker-compose -f "${composeFile}" down`, { cwd: storagePath, signal });
       return "Kong Gateway stopped.";
     } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       throw new Error(`Failed to stop Kong: ${e.message}`);
     }
   }
 
 
-  public async status(): Promise<string> {
+  public async status(signal?: AbortSignal): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
       const discovered = await this.storage.findFilesByContent();
       const composeFile = discovered.compose || 'kong-docker-compose.yml';
 
-      const { stdout } = await execAsync(`docker-compose -f "${composeFile}" ps`, { cwd: storagePath });
+      const { stdout } = await execAsync(`docker-compose -f "${composeFile}" ps`, { cwd: storagePath, signal });
       return `Docker Compose Status:\n${stdout}`;
     } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       return `Error fetching status: ${e.message}`;
     }
   }
 
 
-  public async findExistingContainers(): Promise<string> {
+  public async findExistingContainers(signal?: AbortSignal): Promise<string> {
     try {
-      const { stdout: nameOut } = await execAsync('docker ps --format "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"');
+      const { stdout: nameOut } = await execAsync('docker ps --format "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"', { signal });
       const lines = nameOut.split('\n').filter(l => l.trim() !== '');
 
       const existing = lines.filter(line => {
@@ -162,6 +165,16 @@ export class DockerTool {
       return results;
     } catch (e: any) {
       return { admin: false, proxy: false, error: e.message };
+    }
+  }
+
+  public async getKongConfig(): Promise<any> {
+    const adminPort = this.config.get<number>('adminApiPort') || 8001;
+    try {
+      const resp = await axios.get(`http://localhost:${adminPort}/`, { timeout: 2000 });
+      return resp.data;
+    } catch (e: any) {
+      return { error: `Failed to fetch Kong config: ${e.message}` };
     }
   }
 

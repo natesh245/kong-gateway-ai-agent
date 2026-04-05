@@ -22,3 +22,13 @@ export interface IAppPlatform {
     showErrorMessage(message: string): void;
     openFileInEditor(filePath: string): Promise<void>;
 }
+
+export interface IMessage {
+    role: string;
+    content: string;
+    complete?: boolean;
+    startTime?: number;
+    endTime?: number;
+    lastUsage?: any;
+    className?: string;
+}

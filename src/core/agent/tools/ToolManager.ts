@@ -25,28 +25,32 @@ export class ToolManager {
   // Delegate Methods for backward compatibility or convenience
 
   public getStoragePath(): string { return this.storage.getStoragePath(); }
-  public async start(): Promise<string> { return this.docker.start(); }
-  public async stop(): Promise<string> { return this.docker.stop(); }
-  public async status(): Promise<string> { return this.docker.status(); }
-  public async findExistingContainers(): Promise<string> { return this.docker.findExistingContainers(); }
+  public async start(signal?: AbortSignal): Promise<string> { return this.docker.start(signal); }
+  public async stop(signal?: AbortSignal): Promise<string> { return this.docker.stop(signal); }
+  public async status(signal?: AbortSignal): Promise<string> { return this.docker.status(signal); }
+  public async findExistingContainers(signal?: AbortSignal): Promise<string> { return this.docker.findExistingContainers(signal); }
   public async listStorageFiles(): Promise<string[]> { return this.storage.listStorageFiles(); }
+  public async readStorageFile(filename: string): Promise<string> { return this.storage.readStorageFile(filename); }
   public async openFile(filename: string): Promise<string> { return this.storage.openFile(filename); }
   public async writeStorageFile(filename: string, content: string): Promise<void> { return this.storage.writeStorageFile(filename, content); }
   
-  public async isDeckInstalled(): Promise<boolean> { return this.deck.isDeckInstalled(); }
-  public async installDeck(): Promise<string> { return this.deck.installDeck(); }
+  public get connectivity() { return this.docker; }
+  public async getKongConfig(): Promise<any> { return this.docker.getKongConfig(); }
+  
+  public async isDeckInstalled(signal?: AbortSignal): Promise<boolean> { return this.deck.isDeckInstalled(signal); }
+  public async installDeck(signal?: AbortSignal): Promise<string> { return this.deck.installDeck(signal); }
   public async getAdminUrl(isHost: boolean): Promise<string> { return this.deck.getAdminUrl(isHost); }
-  public async syncWithDeck(filename: string): Promise<string> { return this.deck.syncWithDeck(filename); }
-  public async validateWithDeck(filename: string): Promise<string> { return this.deck.validateWithDeck(filename); }
-  public async dumpWithDeck(filename: string): Promise<string> { return this.deck.dumpWithDeck(filename); }
-  public async resetWithDeck(): Promise<string> { return this.deck.resetWithDeck(); }
-  public async diffWithDeck(filename: string): Promise<string> { return this.deck.diffWithDeck(filename); }
+  public async syncWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.syncWithDeck(filename, signal); }
+  public async validateWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.validateWithDeck(filename, signal); }
+  public async dumpWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.dumpWithDeck(filename, signal); }
+  public async resetWithDeck(signal?: AbortSignal): Promise<string> { return this.deck.resetWithDeck(signal); }
+  public async diffWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.diffWithDeck(filename, signal); }
 
-  public async gitInit(remoteUrl?: string): Promise<string> { return this.git.gitInit(remoteUrl); }
-  public async gitCommit(message: string): Promise<string> { return this.git.gitCommit(message); }
-  public async gitPush(): Promise<string> { return this.git.gitPush(); }
-  public async gitPull(): Promise<string> { return this.git.gitPull(); }
-  public async gitStatus(): Promise<string> { return this.git.gitStatus(); }
+  public async gitInit(remoteUrl?: string, signal?: AbortSignal): Promise<string> { return this.git.gitInit(remoteUrl, signal); }
+  public async gitCommit(message: string, signal?: AbortSignal): Promise<string> { return this.git.gitCommit(message, signal); }
+  public async gitPush(signal?: AbortSignal): Promise<string> { return this.git.gitPush(signal); }
+  public async gitPull(signal?: AbortSignal): Promise<string> { return this.git.gitPull(signal); }
+  public async gitStatus(signal?: AbortSignal): Promise<string> { return this.git.gitStatus(signal); }
 
   public async initializeCache() { return this.storage.initializeCache(); }
   public updateFileCache(filename: string, content: string) { return this.storage.updateFileCache(filename, content); }

@@ -15,9 +15,18 @@ export class DiffUtil {
      * Formats a raw unified diff for the webview.
      * This adds simple HTML-like markers or just returns the string for the webview to handle.
      */
-    public static formatForChat(diffStr: string): string {
-        // Return parts only (skip header)
+    public static formatForChat(diffStr: string | undefined): string {
+        if (!diffStr) return "No changes detected.";
+        
         const lines = diffStr.split('\n');
-        return lines.slice(4).join('\n'); // Skip the ---, +++, and index lines
+        // diffStr structure:
+        // Index: filename
+        // =======================
+        // --- filename O
+        // +++ filename M
+        if (lines.length <= 4) return "No changes detected.";
+        
+        const diffBody = lines.slice(4).join('\n').trim();
+        return diffBody || "No changes detected.";
     }
 }

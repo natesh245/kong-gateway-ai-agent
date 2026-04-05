@@ -11,16 +11,16 @@ export class DeckTool {
   constructor(private storage: StorageTool, private config: IConfig, private platform: IAppPlatform) { }
 
 
-  public async isDeckInstalled(): Promise<boolean> {
+  public async isDeckInstalled(signal?: AbortSignal): Promise<boolean> {
     try {
-      await execAsync('deck version');
+      await execAsync('deck version', { signal });
       return true;
     } catch (e) {
       return false;
     }
   }
 
-  public async installDeck(): Promise<string> {
+  public async installDeck(signal?: AbortSignal): Promise<string> {
     if (process.platform !== 'darwin') {
       return "Kong Agent: Automatic installation of decK is currently only supported on macOS via Homebrew. Please install decK manually from https://github.com/Kong/deck/releases";
     }
@@ -28,9 +28,9 @@ export class DeckTool {
     try {
       this.platform.showInformationMessage("Kong Agent: Attempting to install decK via Homebrew...");
 
-      await execAsync('brew --version'); // Check if brew exists
-      await execAsync('brew tap kong/tap');
-      await execAsync('brew install deck');
+      await execAsync('brew --version', { signal }); // Check if brew exists
+      await execAsync('brew tap kong/tap', { signal });
+      await execAsync('brew install deck', { signal });
       return "Successfully installed decK CLI via Homebrew.";
     } catch (e: any) {
       if (e.message.includes('command not found')) {
@@ -73,23 +73,23 @@ export class DeckTool {
     return args;
   }
 
-  public async syncWithDeck(filename: string): Promise<string> {
+  public async syncWithDeck(filename: string, signal?: AbortSignal): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
       const filePath = path.join(storagePath, filename);
-      const isHostInstalled = await this.isDeckInstalled();
+      const isHostInstalled = await this.isDeckInstalled(signal);
 
       if (isHostInstalled) {
         const args = await this.getDeckArgs(true);
         let command = `deck gateway sync "${filePath}" ${args.join(' ')}`;
         try {
-          const { stdout } = await execAsync(command);
+          const { stdout } = await execAsync(command, { signal });
           return stdout || "Sync completed successfully (Host CLI).";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             command = `deck sync -s "${filePath}" ${args.join(' ')}`;
-            const { stdout } = await execAsync(command);
+            const { stdout } = await execAsync(command, { signal });
             return stdout || "Sync completed successfully (Host CLI fallback).";
           }
           throw e;
@@ -99,19 +99,20 @@ export class DeckTool {
         const args = await this.getDeckArgs(false);
         const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway sync "${dockerFilePath}" ${args.join(' ')}`;
         try {
-          const { stdout } = await execAsync(dockerCommand);
+          const { stdout } = await execAsync(dockerCommand, { signal });
           return stdout || "Sync completed successfully (Dockerized decK).";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck sync -s "${dockerFilePath}" ${args.join(' ')}`;
-            const { stdout } = await execAsync(fallbackDocker);
+            const { stdout } = await execAsync(fallbackDocker, { signal });
             return stdout || "Sync completed successfully (Dockerized fallback).";
           }
           throw e;
         }
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       if (e.message.includes('docker')) {
         return `decK sync failed: Docker is not running or image 'kong/deck' could not be pulled. \n\nError: ${e.message}`;
       }
@@ -119,23 +120,23 @@ export class DeckTool {
     }
   }
 
-  public async validateWithDeck(filename: string): Promise<string> {
+  public async validateWithDeck(filename: string, signal?: AbortSignal): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
       const filePath = path.join(storagePath, filename);
-      const isHostInstalled = await this.isDeckInstalled();
+      const isHostInstalled = await this.isDeckInstalled(signal);
 
       if (isHostInstalled) {
         const args = await this.getDeckArgs(true);
         let command = `deck gateway validate "${filePath}" ${args.join(' ')}`;
         try {
-          const { stdout } = await execAsync(command);
+          const { stdout } = await execAsync(command, { signal });
           return stdout || "Configuration is valid.";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             command = `deck validate -s "${filePath}" ${args.join(' ')}`;
-            const { stdout } = await execAsync(command);
+            const { stdout } = await execAsync(command, { signal });
             return stdout || "Configuration is valid (fallback mode).";
           }
           throw e;
@@ -145,40 +146,41 @@ export class DeckTool {
         const args = await this.getDeckArgs(false);
         const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway validate "${dockerFilePath}" ${args.join(' ')}`;
         try {
-          const { stdout } = await execAsync(dockerCommand);
+          const { stdout } = await execAsync(dockerCommand, { signal });
           return stdout || "Configuration is valid (Dockerized decK).";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck validate -s "${dockerFilePath}" ${args.join(' ')}`;
-            const { stdout } = await execAsync(fallbackDocker);
+            const { stdout } = await execAsync(fallbackDocker, { signal });
             return stdout || "Configuration is valid (Dockerized fallback).";
           }
           throw e;
         }
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       return `Validation failed: ${e.stderr || e.message}`;
     }
   }
 
-  public async dumpWithDeck(filename: string): Promise<string> {
+  public async dumpWithDeck(filename: string, signal?: AbortSignal): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
       const filePath = path.join(storagePath, filename);
-      const isHostInstalled = await this.isDeckInstalled();
+      const isHostInstalled = await this.isDeckInstalled(signal);
 
       if (isHostInstalled) {
         const args = await this.getDeckArgs(true);
         let command = `deck gateway dump -o "${filePath}" ${args.join(' ')}`;
         try {
-          const { stdout } = await execAsync(command);
+          const { stdout } = await execAsync(command, { signal });
           return stdout || `Exported configuration to ${filename} (Host CLI).`;
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             command = `deck dump -o "${filePath}" ${args.join(' ')}`;
-            const { stdout } = await execAsync(command);
+            const { stdout } = await execAsync(command, { signal });
             return stdout || `Exported configuration to ${filename} (Host CLI fallback).`;
           }
           throw e;
@@ -187,7 +189,7 @@ export class DeckTool {
         const args = await this.getDeckArgs(false);
         const dockerCommand = `docker run --rm kong/deck gateway dump ${args.join(' ')}`;
         try {
-          const { stdout } = await execAsync(dockerCommand);
+          const { stdout } = await execAsync(dockerCommand, { signal });
           if (stdout && stdout.trim().length > 0) {
             this.storage.writeStorageFile(filename, stdout);
             return `Exported configuration to ${filename} (Dockerized decK - Volume-less).`;
@@ -197,7 +199,7 @@ export class DeckTool {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             const fallbackDocker = `docker run --rm kong/deck dump ${args.join(' ')}`;
-            const { stdout } = await execAsync(fallbackDocker);
+            const { stdout } = await execAsync(fallbackDocker, { signal });
             if (stdout && stdout.trim().length > 0) {
               this.storage.writeStorageFile(filename, stdout);
               return `Exported configuration to ${filename} (Dockerized fallback - Volume-less).`;
@@ -207,25 +209,26 @@ export class DeckTool {
         }
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       return `decK dump failed: ${e.stderr || e.message}`;
     }
   }
 
-  public async resetWithDeck(): Promise<string> {
+  public async resetWithDeck(signal?: AbortSignal): Promise<string> {
     try {
-      const isHostInstalled = await this.isDeckInstalled();
+      const isHostInstalled = await this.isDeckInstalled(signal);
 
       if (isHostInstalled) {
         const args = await this.getDeckArgs(true);
         let command = `deck gateway reset --force ${args.join(' ')}`;
         try {
-          const { stdout } = await execAsync(command);
+          const { stdout } = await execAsync(command, { signal });
           return stdout || "Kong configuration reset successfully (Host CLI).";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             command = `deck reset --force ${args.join(' ')}`;
-            const { stdout } = await execAsync(command);
+            const { stdout } = await execAsync(command, { signal });
             return stdout || "Kong configuration reset successfully (Host CLI fallback).";
           }
           throw e;
@@ -235,41 +238,42 @@ export class DeckTool {
         const args = await this.getDeckArgs(false);
         const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway reset --force ${args.join(' ')}`;
         try {
-          const { stdout } = await execAsync(dockerCommand);
+          const { stdout } = await execAsync(dockerCommand, { signal });
           return stdout || "Kong configuration reset successfully (Dockerized decK).";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck reset --force ${args.join(' ')}`;
-            const { stdout } = await execAsync(fallbackDocker);
+            const { stdout } = await execAsync(fallbackDocker, { signal });
             return stdout || "Kong configuration reset successfully (Dockerized fallback).";
           }
           throw e;
         }
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       return `decK reset failed: ${e.stderr || e.message}`;
     }
   }
 
-  public async diffWithDeck(filename: string): Promise<string> {
+  public async diffWithDeck(filename: string, signal?: AbortSignal): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
       const filePath = path.join(storagePath, filename);
-      const isHostInstalled = await this.isDeckInstalled();
+      const isHostInstalled = await this.isDeckInstalled(signal);
 
       if (isHostInstalled) {
         const args = await this.getDeckArgs(true);
         let command = `deck gateway diff "${filePath}" ${args.join(' ')}`;
         try {
-          const { stdout, stderr } = await execAsync(command);
+          const { stdout, stderr } = await execAsync(command, { signal });
           const rawResult = stdout || stderr;
           return rawResult || "✅ No differences found — local config matches live Kong. Nothing to sync.";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             command = `deck diff -s "${filePath}" ${args.join(' ')}`;
-            const { stdout, stderr } = await execAsync(command);
+            const { stdout, stderr } = await execAsync(command, { signal });
             const rawFallback = stdout || stderr;
             return rawFallback || "✅ No differences found — local config matches live Kong. Nothing to sync.";
           }
@@ -283,14 +287,14 @@ export class DeckTool {
         const args = await this.getDeckArgs(false);
         const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck gateway diff "${dockerFilePath}" ${args.join(' ')}`;
         try {
-          const { stdout, stderr } = await execAsync(dockerCommand);
+          const { stdout, stderr } = await execAsync(dockerCommand, { signal });
           const raw = stdout || stderr;
           return raw || "✅ No differences found — local config matches live Kong. Nothing to sync.";
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck diff -s "${dockerFilePath}" ${args.join(' ')}`;
-            const { stdout, stderr } = await execAsync(fallbackDocker);
+            const { stdout, stderr } = await execAsync(fallbackDocker, { signal });
             const rawDockerFallback = stdout || stderr;
             return rawDockerFallback || "✅ No differences found — local config matches live Kong. Nothing to sync.";
           }
@@ -301,6 +305,7 @@ export class DeckTool {
         }
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       return `decK diff failed: ${e.stderr || e.message}`;
     }
   }

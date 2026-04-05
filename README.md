@@ -55,11 +55,23 @@ npm install
 - Your conversation history will be automatically restored on every launch.
 
 ### 3. Testing & Quality
-Run the automated test suite to verify extension health:
+
+#### Automated Logic Tests
+Run the core test suite (decK interactions, agent logic):
 ```bash
 npm run compile
 npm test
 ```
+
+#### Visual Webview Testing
+For rapid UI iteration without launching a full VS Code instance, use the provided **Webview Harness**:
+1. Start a local server (e.g., `npx serve .`) from the root.
+2. Open `src/platforms/vscode/test/webview-harness.html` in your browser.
+3. This harness mocks the VS Code API and CSS variables, allowing you to test:
+    - Chat scrolling and message rendering.
+    - Component styling and theme consistency.
+    - Configuration panel interactions.
+
 Check code quality:
 ```bash
 npm run lint

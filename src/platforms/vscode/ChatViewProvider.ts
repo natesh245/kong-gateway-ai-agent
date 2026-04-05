@@ -6,6 +6,7 @@ import { ToolManager } from '../../core/agent/tools/ToolManager';
 import { DiffUtil } from '../../core/utils/DiffUtil';
 import { PortUtil } from '../../core/utils/PortUtil';
 import { IConfig, IAppPlatform } from '../../core/interfaces/ICoreInterfaces';
+import { MessageUtils } from '../../core/utils/MessageUtils';
 
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
@@ -42,17 +43,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this._watcher.dispose();
         }
 
-        const storagePath = this.toolManager.getStoragePath();
+        try {
+            const storagePath = this.toolManager.getStoragePath();
 
-        if (storagePath && fs.existsSync(storagePath)) {
-            const storageUri = vscode.Uri.file(storagePath);
-            this._watcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(storageUri, '**/*.{yml,yaml,json}')
-            );
+            if (storagePath && fs.existsSync(storagePath)) {
+                const storageUri = vscode.Uri.file(storagePath);
+                this._watcher = vscode.workspace.createFileSystemWatcher(
+                    new vscode.RelativePattern(storageUri, '**/*.{yml,yaml,json}')
+                );
 
-            this._watcher.onDidChange(uri => this._handleFileChange(uri, 'modified'));
-            this._watcher.onDidCreate(uri => this._handleFileChange(uri, 'created'));
-            this._watcher.onDidDelete(uri => this._handleFileChange(uri, 'deleted'));
+                this._watcher.onDidChange(uri => this._handleFileChange(uri, 'modified'));
+                this._watcher.onDidCreate(uri => this._handleFileChange(uri, 'created'));
+                this._watcher.onDidDelete(uri => this._handleFileChange(uri, 'deleted'));
+            }
+        } catch (e) {
+            // Safe ignore: workspace path is not set yet, so don't watch anything
         }
 
     }
@@ -93,21 +98,41 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-
-        this._updateWebviewConfig();
+        
+        // Push updates whenever the view becomes visible
+        webviewView.onDidChangeVisibility(() => {
+            if (webviewView.visible) {
+                this._updateWebviewConfig();
+            }
+        });
 
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
+                case 'ready':
+                    // Push the 'Instant' data first
+                    this._updateWebviewConfig();
+                    break;
                 case 'prompt':
                     {
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: data.value });
+                        // Immediate feedback
+                        webviewView.webview.postMessage({ type: 'toolStatus', status: '🧬 Activity: Analyzing request...' });
+                        
                         await this._agent.processMessage(data.value, (content: string, type: string = 'agent') => {
                             if (type === 'toolStatus') {
                                 webviewView.webview.postMessage({ type: 'toolStatus', status: content });
                             } else {
                                 // For the final message (agent type), include usage
-                                const usage = type === 'agent' ? this._agent.getUsageStats().lastTurnUsage : undefined;
-                                webviewView.webview.postMessage({ type: 'addMessage', role: type, content, lastUsage: usage });
+                                const usageTotal = this._agent.getUsageStats().lastTurnUsage;
+                                
+                                webviewView.webview.postMessage({ 
+                                    type: 'addMessage', 
+                                    role: type, 
+                                    content, 
+                                    lastUsage: usageTotal 
+                                });
+                                // AUTO-SAVE history after each response
+                                this._saveHistory();
                             }
                             // Update session total in real-time
                             webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
@@ -118,6 +143,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
                 case 'updateConfig':
                     {
+                        // 1. Capture Old Config for Diffing
+                        const oldConfig: Record<string, any> = {
+                            provider: this.config.get('provider'),
+                            model: this.config.get('model'),
+                            storagePath: this.config.get('storagePath'),
+                            kongMode: this.config.get('kongMode'),
+                            proxyPort: this.config.get('proxyPort'),
+                            adminApiPort: this.config.get('adminApiPort'),
+                            managerGuiPort: this.config.get('managerGuiPort'),
+                            databasePort: this.config.get('databasePort'),
+                            remoteAdminApiUrl: this.config.get('remoteAdminApiUrl'),
+                            remoteProxyBaseUrl: this.config.get('remoteProxyBaseUrl'),
+                            remoteManagerGuiUrl: this.config.get('remoteManagerGuiUrl'),
+                            maxReasoningTurns: this.config.get('maxReasoningTurns'),
+                            maxToolCalls: this.config.get('maxToolCalls'),
+                            maxContext: this.config.get('maxContext'),
+                            maxAgentTimeout: this.config.get('maxAgentTimeout'),
+                            gitRemoteUrl: this.config.get('gitRemoteUrl'),
+                            skipTlsVerify: this.config.get('skipTlsVerify'),
+                            autoCommit: this.config.get('autoCommit'),
+                            kongWorkspace: this.config.get('kongWorkspace'),
+                            showThinking: this.config.get('showThinking'),
+                            openRouterApiKey: this.config.get('openRouterApiKey'),
+                            geminiApiKey: this.config.get('geminiApiKey')
+                        };
+
                         if (data.provider) await this.config.update?.('provider', data.provider);
                         if (data.model) await this.config.update?.('model', data.model);
                         if (data.openRouterApiKey !== undefined) await this.config.update?.('openRouterApiKey', data.openRouterApiKey);
@@ -164,10 +215,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             }
                         }
 
-                        if (data.maxReasoningTurns) await this.config.update?.('maxReasoningTurns', parseInt(data.maxReasoningTurns));
-                        if (data.maxToolCalls) await this.config.update?.('maxToolCalls', parseInt(data.maxToolCalls));
-                        if (data.maxContext) await this.config.update?.('maxContext', parseInt(data.maxContext));
-                        if (data.maxAgentTimeout) await this.config.update?.('maxAgentTimeout', parseInt(data.maxAgentTimeout));
+                        const toBool = (val: any) => val === true || val === 'true';
+                        
+                        if (data.maxReasoningTurns) await this.config.update?.('maxReasoningTurns', Number(data.maxReasoningTurns));
+                        if (data.maxToolCalls) await this.config.update?.('maxToolCalls', Number(data.maxToolCalls));
+                        if (data.maxContext) await this.config.update?.('maxContext', Number(data.maxContext));
+                        if (data.maxAgentTimeout) await this.config.update?.('maxAgentTimeout', Number(data.maxAgentTimeout));
                         
                         if (data.remoteAdminApiUrl) await this.config.update?.('remoteAdminApiUrl', data.remoteAdminApiUrl);
                         if (data.remoteProxyBaseUrl) await this.config.update?.('remoteProxyBaseUrl', data.remoteProxyBaseUrl);
@@ -175,10 +228,72 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         
                         if (data.kongWorkspace) await this.config.update?.('kongWorkspace', data.kongWorkspace);
                         if (data.kongAdminToken !== undefined) await this.config.update?.('kongAdminToken', data.kongAdminToken);
-                        if (data.skipTlsVerify !== undefined) await this.config.update?.('skipTlsVerify', data.skipTlsVerify === 'true');
-                        if (data.showThinking !== undefined) await this.config.update?.('showThinking', data.showThinking === 'true');
+                        if (data.skipTlsVerify !== undefined) await this.config.update?.('skipTlsVerify', toBool(data.skipTlsVerify));
+                        if (data.showThinking !== undefined) await this.config.update?.('showThinking', toBool(data.showThinking));
                         if (data.gitRemoteUrl !== undefined) await this.config.update?.('gitRemoteUrl', data.gitRemoteUrl);
-                        if (data.autoCommit !== undefined) await this.config.update?.('autoCommit', data.autoCommit === 'true');
+                        if (data.autoCommit !== undefined) await this.config.update?.('autoCommit', toBool(data.autoCommit));
+
+                        // 2. Generate and Record Diff
+                        const labelMap: Record<string, string> = {
+                            provider: 'LLM Provider',
+                            model: 'Model ID',
+                            kongMode: 'Gateway Mode',
+                            storagePath: 'Workspace Path',
+                            adminApiPort: 'Admin API Port',
+                            managerGuiPort: 'Manager GUI Port',
+                            proxyPort: 'Proxy Port',
+                            databasePort: 'Database Port',
+                            maxReasoningTurns: 'Max Reasoning',
+                            maxToolCalls: 'Max Tool Calls',
+                            maxContext: 'Max Context',
+                            maxAgentTimeout: 'Timeout (s)',
+                            kongWorkspace: 'Workspace',
+                            kongAdminToken: 'Admin Token',
+                            skipTlsVerify: 'Skip TLS Verification',
+                            gitRemoteUrl: 'Git Remote URL',
+                            autoCommit: 'Auto-Commit',
+                            showThinking: 'Show Thinking Logs',
+                            remoteAdminApiUrl: 'Remote Admin URL',
+                            remoteProxyBaseUrl: 'Remote Proxy URL',
+                            remoteManagerGuiUrl: 'Remote Manager URL',
+                            openRouterApiKey: 'OpenRouter API Key',
+                            geminiApiKey: 'Gemini API Key'
+                        };
+
+                        const changes: string[] = [];
+                        const diffKeys = Object.keys(labelMap);
+                        for (const key of diffKeys) {
+                            const oldValRaw = oldConfig[key];
+                            const newValRaw = data[key];
+                            
+                            // Only diff if the key is actually present in the incoming data
+                            if (newValRaw === undefined) continue;
+
+                            let oldVal = (oldValRaw !== undefined && oldValRaw !== null) ? oldValRaw.toString().trim() : '';
+                            let newVal = (newValRaw !== undefined && newValRaw !== null) ? newValRaw.toString().trim() : '';
+
+                            if (oldVal !== newVal) {
+                                const label = labelMap[key];
+                                const isSensitive = key.toLowerCase().includes('key') || key.toLowerCase().includes('token') || key.toLowerCase().includes('password') || key.toLowerCase().includes('secret');
+
+                                if (isSensitive) {
+                                    oldVal = oldVal ? '[REDACTED]' : 'empty';
+                                    newVal = newVal ? '[REDACTED]' : 'empty';
+                                } else if (key === 'gitRemoteUrl') {
+                                    const maskUrl = (url: string) => url.replace(/([^:]+):([^@]+)@/, '$1:***@').replace(/\/\/([^@]+)@/, '//***@');
+                                    oldVal = oldVal ? maskUrl(oldVal) : 'empty';
+                                    newVal = newVal ? maskUrl(newVal) : 'empty';
+                                }
+                                changes.push(`- **${label}**: \`${oldVal}\` → \`${newVal}\``);
+                            }
+                        }
+
+                        if (changes.length > 0) {
+                            const diffMessage = `### ⚙️ Configuration Settings Changed\n${changes.join('\n')}`;
+                            const history = this._agent.getMessages();
+                            history.push({ role: 'ui-diff', content: diffMessage });
+                            this._agent.setMessages(history);
+                        }
 
                         if (this.toolManager && typeof this.toolManager.initializeCache === 'function') {
                             this.toolManager.initializeCache();
@@ -209,14 +324,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'requestReview':
                     {
                         const filename = data.filename;
+                        // Immediate feedback
+                        webviewView.webview.postMessage({ type: 'toolStatus', status: `🧬 Activity: Analyzing diffs for ${filename}...` });
+                        
                         const storagePath = this.toolManager.getStoragePath();
                         const fullPath = path.join(storagePath, filename);
                         
                         if (fs.existsSync(fullPath)) {
                             const newContent = fs.readFileSync(fullPath, 'utf8');
-                            const oldContent = this.toolManager.getFileCache(filename) || "";
+                            
+                            // 1. Check for a Pre-Agent Write snapshot first
+                            const snapshot = this.toolManager.storage.getPreWriteSnapshot(filename);
+                            const oldContent = snapshot !== undefined ? snapshot : (this.toolManager.getFileCache(filename) || "");
+                            
+                            // 2. Generate the diff
                             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(diff);
+                            
                             const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nPlease review it according to the DECLARATIVE WORKFLOW. **DO NOT CALL SYNC TOOLS**. Stop after showing the preview diff.`;
                             
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
@@ -228,6 +352,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                                 } else {
                                     const usage = type === 'agent' ? this._agent.getUsageStats().lastTurnUsage : undefined;
                                     webviewView.webview.postMessage({ type: 'addMessage', role: type, content, lastUsage: usage });
+                                    // AUTO-SAVE
+                                    this._saveHistory();
                                 }
                                 // Update usage stats in real-time
                                 webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
@@ -350,15 +476,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this.context.globalState.update('kongAgentChatHistory', limitedHistory);
     }
 
-
     private async _updateWebviewConfig() {
         if (this._view) {
+            const history = this._agent.getMessages();
+            
+            // Phase 1: INSTANT SYNC (no blockers)
             this._view.webview.postMessage({
                 type: 'setConfig',
                 provider: this.config.get('provider'),
                 model: this.config.get('model'),
-                openRouterApiKey: this.config.get('openRouterApiKey'),
-                geminiApiKey: this.config.get('geminiApiKey'),
                 storagePath: this.config.get('storagePath'),
                 kongMode: this.config.get('kongMode') || 'local',
                 proxyPort: this.config.get('proxyPort'),
@@ -373,32 +499,51 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 skipTlsVerify: this.config.get('skipTlsVerify') === true,
                 gitRemoteUrl: this.config.get('gitRemoteUrl') || '',
                 autoCommit: this.config.get('autoCommit') === true,
-                maxReasoningTurns: this.config.get('maxReasoningTurns') || 10,
-                maxToolCalls: this.config.get('maxToolCalls') || 10,
-                maxContext: this.config.get('maxContext') || 130000,
-                maxAgentTimeout: this.config.get('maxAgentTimeout') || 100,
                 showThinking: this.config.get('showThinking') !== false,
-                models: await this._agent.fetchAvailableModels(),
-                files: await this.toolManager.listStorageFiles(),
-                detectedFiles: await this.toolManager.storage.findFilesByContent(),
                 usageStats: this._agent.getUsageStats(),
-                history: this._agent.getMessages()
+                history: history
             });
+
+            // Phase 2: ASYNC HEAVY SYNC (non-blocking updates)
+            (async () => {
+                try {
+                    const [models, files, detectedFiles] = await Promise.all([
+                        this._agent.fetchAvailableModels(),
+                        this.toolManager.listStorageFiles(),
+                        this.toolManager.storage.findFilesByContent()
+                    ]);
+                    
+                    if (this._view) {
+                        this._view.webview.postMessage({
+                            type: 'setConfig',
+                            models,
+                            files,
+                            detectedFiles
+                        });
+                    }
+                } catch (e) {
+                    console.error('Async startup update failed:', e);
+                }
+            })();
         }
     }
 
 
     private _getHtmlForWebview(webview: vscode.Webview) {
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'platforms', 'vscode', 'media', 'chat.css'));
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'platforms', 'vscode', 'media', 'chat.js'));
-        const htmlPath = path.join(this._extensionUri.fsPath, 'src', 'platforms', 'vscode', 'media', 'chat.html');
+        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.js'));
         
-        let html = fs.readFileSync(htmlPath, 'utf8');
-        
-        // Replace placeholders
-        html = html.replace(/\${styleUri}/g, styleUri.toString());
-        html = html.replace(/\${scriptUri}/g, scriptUri.toString());
-        
-        return html;
+        return `<!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <link rel="stylesheet" href="${styleUri}">
+            </head>
+            <body>
+                <div id="root"></div>
+                <script type="module" src="${scriptUri}"></script>
+            </body>
+            </html>`;
     }
 }

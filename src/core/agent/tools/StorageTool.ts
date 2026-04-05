@@ -7,6 +7,7 @@ export class StorageTool {
   private _fileCache: Map<string, string> = new Map();
   private _classificationCache: Map<string, 'compose' | 'kong' | 'other'> = new Map();
   private _agent: any;
+  private _preWriteSnapshots: Map<string, string> = new Map();
 
   constructor(private config: IConfig, private platform: IAppPlatform) { }
 
@@ -19,12 +20,15 @@ export class StorageTool {
   
   public getStoragePath(): string {
     const customPath = this.config.get<string>('storagePath');
-    const storagePath = customPath || this.platform.getStoragePath();
-
-    if (!fs.existsSync(storagePath)) {
-      fs.mkdirSync(storagePath, { recursive: true });
+    
+    if (!customPath || customPath.trim() === '') {
+      return '';
     }
-    return storagePath;
+
+    if (!fs.existsSync(customPath)) {
+      fs.mkdirSync(customPath, { recursive: true });
+    }
+    return customPath;
   }
 
   public async listStorageFiles(): Promise<string[]> {
@@ -40,9 +44,36 @@ export class StorageTool {
     }
   }
 
+  public async readStorageFile(filename: string): Promise<string> {
+    try {
+      const storagePath = this.getStoragePath();
+      if (!storagePath) return "Error: Workspace path is not configured. Please prompt the user to open the Configuration Settings panel and set a Local Workspace Path.";
+      let filePath = path.join(storagePath, filename);
+
+      if (!fs.existsSync(filePath)) {
+        const altFilename = filename.endsWith('.yml') ? filename.replace('.yml', '.yaml') : (filename.endsWith('.yaml') ? filename.replace('.yaml', '.yml') : null);
+        if (altFilename) {
+          const altFilePath = path.join(storagePath, altFilename);
+          if (fs.existsSync(altFilePath)) {
+            filePath = altFilePath;
+          }
+        }
+      }
+
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath, 'utf8');
+      } else {
+        return `Error: File '${filename}' not found in storage directory.`;
+      }
+    } catch (e: any) {
+      return `Error: Failed to read file: ${e.message}`;
+    }
+  }
+
   public async openFile(filename: string): Promise<string> {
     try {
       const storagePath = this.getStoragePath();
+      if (!storagePath) return "Error: Workspace path is not configured. Please prompt the user to open the Configuration Settings panel and set a Local Workspace Path.";
       let filePath = path.join(storagePath, filename);
 
       if (!fs.existsSync(filePath)) {
@@ -70,7 +101,13 @@ export class StorageTool {
   public async writeStorageFile(filename: string, content: string): Promise<void> {
     try {
       const storagePath = this.getStoragePath();
+      if (!storagePath) throw new Error("Workspace path is not configured. Please prompt the user to open the Configuration Settings panel and set a Local Workspace Path.");
       const filePath = path.join(storagePath, filename);
+      
+      // Save a "Pre-Agent Write" snapshot to ensure the watcher's "Review" button shows the correct diff
+      const currentCache = this.getFileCache(filename) || "";
+      this._preWriteSnapshots.set(filename, currentCache);
+
       fs.writeFileSync(filePath, content, 'utf8');
       this.updateFileCache(filename, content);
 
@@ -150,5 +187,16 @@ export class StorageTool {
     } catch (e) {
       console.error(`Failed to initialize cache: ${e}`);
     }
+  }
+
+  /**
+   * Retrieves a "Pre-Agent Write" snapshot and clears it.
+   */
+  public getPreWriteSnapshot(filename: string): string | undefined {
+    const snapshot = this._preWriteSnapshots.get(filename);
+    if (snapshot !== undefined) {
+      this._preWriteSnapshots.delete(filename);
+    }
+    return snapshot;
   }
 }

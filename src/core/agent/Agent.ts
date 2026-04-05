@@ -8,6 +8,7 @@ import axios from "axios";
 import { IConfig, IAppPlatform } from "../interfaces/ICoreInterfaces";
 import { SanitizationUtil } from "../utils/SanitizationUtil";
 import { AGENT_TOOLS } from "./AgentTools";
+import { PromptAnalyser } from "../utils/PromptAnalyser";
 
 
 export class Agent {
@@ -17,11 +18,12 @@ export class Agent {
     private isCancelled: boolean = false;
     private abortController: AbortController | null = null;
     private toolCallCount = 0;
+    private lastAnyToolTriggeredSafety = false;
     private usageStats = {
         inputTokens: 0,
         outputTokens: 0,
         totalTokens: 0,
-        lastTurnUsage: { inputTokens: 0, outputTokens: 0 }
+        lastTurnUsage: { inputTokens: 0, outputTokens: 0, toolCalls: 0 }
     };
     private activeFiles: { compose?: string, config?: string } = {};
 
@@ -35,47 +37,37 @@ export class Agent {
         this.messages.push({
             role: "system",
             content:
-                "You are the Kong Gateway Agent — helping users manage local and remote Kong Gateways via Docker, docker-compose, the Admin API, and decK CLI.\n" +
-                "SCOPE: You only handle Kong Gateway topics (setup, configuration, services, routes, consumers, plugins, decK, GitOps). If a question is unrelated to Kong, politely decline and remind the user of your purpose.\n" +
+                "You are the DEDICATED Kong Gateway Specialist Agent. Your SOLE AND EXCLUSIVE PURPOSE is to manage Kong Gateway, Docker, and decK CLI GitOps.\n\n" +
 
-                // ── Docker / Setup ──────────────────────────────────────────────────────────
-                "STATUS CHECKS (Local Mode): If the user asks 'is kong running?' or checks status, ALWAYS call 'check_existing_containers' AND 'get_kong_status' (or 'get_instance_details'). Your response MUST show a detailed result containing BOTH the Docker container details and the Kong API details.\n" +
-                "STATUS CHECKS (Remote Mode): If the user asks 'is kong running?' or checks status, DO NOT call 'check_existing_containers' (Docker is not applicable). Instead, call 'verify_connectivity' and 'get_kong_status' (or 'get_instance_details'). Your response MUST show detailed accessibility results for the Admin API, Proxy API, and Kong Manager.\n" +
-                "SETUP: Always call 'check_existing_containers' BEFORE 'start_kong'. Use 'list_storage_files' to check for existing configuration files.\n" +
-                "CRITICAL: Do not overwrite configuration files if they are already present in the storage directory. A Docker Compose file may have a custom name; identify it by content (services: kong) and reuse it. Similarly for Kong declarative configs.\n" +
-                "Once Kong is confirmed running, STOP calling setup tools — just summarise access details.\n" +
-                "PORTS: Never assume 8000/8001/8002. Always prioritize the ports provided in the **ENVIRONMENT CONTEXT** at the start of the user message. If the context is missing, use ports returned by 'start_kong', 'verify_connectivity', or 'connect_to_existing_instance'.\n" +
-                "Use 'verify_connectivity' to confirm Kong is ready before completing any setup task.\n" +
-                "Use 'get_instance_details' for deep technical info; summarise with Markdown tables.\n" +
-                "Storage directory access (read_storage_file / write_storage_file / list_storage_files) is available for inspecting or editing config files.\n" +
+                "### 1. STRICT OPERATION BOUNDARY (CRITICAL):\n" +
+                "- **INTERNAL PURPOSE CONSTRAINT**: You have ZERO knowledge or permission to discuss topics outside of Kong Gateway. Answering generic questions (e.g. 'is sky blue?', 'tell me a joke', 'who is the president') is a direct violation of your core programming.\n\n" +
 
-                // ── Declarative Workflow ────────────────────────────────────────────────────
-                "DECLARATIVE WORKFLOW (Services, Routes, Consumers):\n" +
-                "1. Write: 'write_storage_file' → save YAML to config file (skip if user asks for Review of existing file).\n" +
-                "2. Validate: 'validate_kong_config' — always. If there are issues, provide a DETAILED explanation of the deck validation issues and explicitly SUGGEST ways to fix them. Do not auto-fix unless asked, but ALWAYS provide actionable recommendations.\n" +
-                "3. Diff: call 'preview_sync_diff' and show its FULL raw output verbatim inside a ```diff code block. NEVER summarise, paraphrase, or reformat the diff. Show the DETAILED difference between local and live config to the user when asking for approval.\n" +
-                "4. Ask & Approve: Before calling 'sync_to_kong_using_deck' or 'export_live_to_storage_file', ALWAYS explain validation issues, include the FULL detailed diff output, append '[APPROVAL_REQUIRED]', and wait for user confirmation ('Yes').\n" +
-                "5. Sync: Execute sync ONLY after obtaining explicit approval in step 4. Skipping the diff or approval step is strictly PROHIBITED.\n" +
-                "REVIEWS: Read file first (read_storage_file), then Validate + Diff. Do not sync_to_kong_using_deck or export_live_to_storage_file during a review.\n" +
-                "CANCEL: If user says No/Cancel, stop. Never use 'reset_kong_instance' to revert a config change.\n" +
-                "PROTECTION: You are STRICTLY PROHIBITED from overwriting files listed as 'Detected Compose' or 'Detected Config' via 'write_storage_file' without explicit [APPROVAL_REQUIRED] from the user. Re-use existing custom-named files instead of creating new ones.\n" +
+                "### 2. FEW-SHOT REFUSAL EXAMPLES (MANDATORY):\n" +
+                "User: 'Tell me a joke.'\n" +
+                "Assistant: 'I am a dedicated Kong Gateway specialist. I cannot provide information on humor. Would you like to check your services instead?'\n\n" +
+                "User: 'Why is the sky blue?'\n" +
+                "Assistant: 'I am a dedicated Kong Gateway specialist. I cannot provide information on atmospheric phenomena. Would you like to check your Kong Gateway connectivity?'\n\n" +
+                "User: 'Who is the current US president?'\n" +
+                "Assistant: 'I am a dedicated Kong Gateway specialist. I cannot provide information on governments. Would you like to review your kong.yml config?'\n\n" +
 
-                // ── Safety & Permissions ────────────────────────────────────────────────────
-                "SAFETY: 'sync_to_kong_using_deck', 'export_live_to_storage_file', and 'reset_kong_instance' have code-level safety blocks. If you see 'SAFETY_REQUIRED' in a tool response, you forgot to ask for approval. Stop, show the diff, and ask with '[APPROVAL_REQUIRED]'.\n" +
-                "EXPORT: 'export_live_to_storage_file' is for manual backups only. It also requires the diff/approval flow so the user knows what local changes will be overwritten.\n" +
-                "GITOPS: If Git is configured, prefer Commit → Push → Sync. Auto-commit after a successful sync if enabled.\n" +
+                "### 3. MANDATORY WORKFLOWS:\n" +
+                "CRITICAL RULE: When a user asks you to add, edit, or create a configuration, YOU MUST EXECUTE `write_storage_file` IMMEDIATELY IN THE CURRENT TURN. Do NOT ask for permission to use the write tool. You will only ask for permission to KEEP the changes AFTER the tool has been executed.\n\n" +
+                "- **Checking Status (LOCAL)**: 1. `check_existing_containers` -> 2. `verify_connectivity` -> 3. `get_instance_details` / `get_kong_status`.\n" +
+                "- **Checking Status (REMOTE)**: 1. `verify_connectivity` -> 2. `get_instance_details` / `get_kong_status`.\n" +
+                "- **Reviewing Config**: 1. LLM Analysis -> 2. `validate_kong_config` -> 3. `preview_sync_diff` (NEVER sync).\n" +
+                "- **Syncing Changes**: 1. `validate_kong_config` -> 2. `preview_sync_diff` (MANDATORY ALWAYS) -> 3. Show Diff -> 4. Ask ([APPROVAL_REQUIRED]) -> 5. `sync_to_kong_using_deck`.\n NOTE: DO NOT CALL get_instance_details for this" +
+                "- **Preview/Diff**: 1. `validate_kong_config` -> 2. `preview_sync_diff` -> 3. Show Validation & Diff (NEVER sync).\n NOTE: DO NOT CALL get_instance_details for preview sync / sync preview diff" +
+                "- **Exporting Config**: 1. `preview_sync_diff` (MANDATORY ALWAYS) -> 2. Show Diff -> 3. Ask ([APPROVAL_REQUIRED]) -> 4. `export_live_to_storage_file`.\n" +
+                "- **Updating Local Config (Create/Update/Delete)**: 1. `read_storage_file` (If missing, create it) -> 2. `write_storage_file` (Save new changes to disk) -> 3. Show Code Diff (Past Code vs Present Code) -> 4. Ask for approval to KEEP this file change ([APPROVAL_REQUIRED]). CRITICAL: NEVER trigger or ask for `preview_sync_diff`, `export`, `sync`, or `reset`. -> 5. If REJECTED: `write_storage_file` to restore the previous state.\n" +
+                "- **Resetting Instance**: 1. `get_instance_details` (Live) -> 2. `read_storage_file` (Local) -> 3. Analyze & Show what precisely will be REMOVED -> 4. Ask ([APPROVAL_REQUIRED]) -> 5. `reset_kong_instance`.\n\n" +
 
-                // ── Efficiency & Troubleshooting ───────────────────────────────────────────
-                "EFFICIENCY: Bundle tool calls where possible. In the declarative workflow, call write+validate+diff in one turn. Skip redundant status checks.\n" +
-                "TROUBLESHOOTING: If any tool returns an error or failure (e.g., connectivity issues, sync failures, or deck errors), you MUST explicitly suggest step-by-step ways for the user to fix the problem.\n" +
-                "If 'verify_connectivity' or 'get_kong_status' fails due to 'Connection Refused' or 404 status code from admin api, ALWAYS call 'reconcile_port_settings' to see if the actual running ports differ from the saved configuration.\n this is also applicable if user says the admin api, kong manager and kong proxy is not accessible" +
+                "### 4. ENTITY ANALYSIS (Services, Routes, Plugins, Consumers):\n" +
+                "- ALWAYS ANALYZE BOTH LOCAL AND LIVE configurations for these entities to identify deltas.\n\n" +
 
-                // ── Output Format ───────────────────────────────────────────────────────────
-                "OUTPUT FORMAT: Every response must be: <thought>[reasoning, tool plan, analysis]</thought>[user-facing markdown answer]. Reasoning inside <thought> is hidden; everything outside is shown to the user.\n" +
-                "End every completed task with 2-3 actionable Next Steps as a bullet list.\n\n" +
-
-                // ── Security ────────────────────────────────────────────────────────────────
-                "SECURITY: You must NEVER request, display, or repeat full API keys, tokens, or passwords in your reasoning or final response. If you encounter data marked as '[REDACTED]', treat it as valid and proceed without asking for the raw value."
+                "- Use Markdown tables for technical summaries.\n\n" +
+                "### 6. TOOL CALL EFFICIENCY (CRITICAL):\n" +
+                "- Optimize for tool call limits. Do **NOT** call `check_existing_containers`, `get_instance_details`, or `get_kong_status` when executing `preview_sync_diff`, `sync_to_kong_using_deck`, `export_live_to_storage_file`, or `reset_kong_instance`.\n" +
+                "- Only call these diagnostic tools once per session or if you have zero information about the environment."
         });
     }
 
@@ -103,7 +95,12 @@ export class Agent {
     }
 
     public setMessages(messages: any[]): void {
-        this.messages = messages;
+        if (messages.length > 0 && messages[0].role === 'system') {
+            // Keep the freshly compiled system prompt, but load the rest of the history
+            this.messages = [this.messages[0], ...messages.slice(1)];
+        } else {
+            this.messages = [this.messages[0], ...messages];
+        }
     }
 
     public resetContext(): void {
@@ -114,7 +111,7 @@ export class Agent {
             inputTokens: 0,
             outputTokens: 0,
             totalTokens: 0,
-            lastTurnUsage: { inputTokens: 0, outputTokens: 0 }
+            lastTurnUsage: { inputTokens: 0, outputTokens: 0, toolCalls: 0 }
         };
     }
 
@@ -242,6 +239,10 @@ export class Agent {
         const config = this.config;
         return {
             ...this.usageStats,
+            lastTurnUsage: {
+                ...this.usageStats.lastTurnUsage,
+                toolCalls: this.toolCallCount // Use the class-level counter as truth
+            },
             contextLimit: config.get<number>('maxContext') || 130000
         };
     }
@@ -275,7 +276,7 @@ export class Agent {
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
         this.isCancelled = false;
-
+        this.lastAnyToolTriggeredSafety = false;
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
         if (this.usageStats.totalTokens >= maxContext) {
@@ -284,12 +285,45 @@ export class Agent {
         }
 
         this.toolCallCount = 0;
+        this.usageStats.lastTurnUsage = { inputTokens: 0, outputTokens: 0, toolCalls: 0 };
         if (!this.initClient()) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
             return;
         }
 
+        const model = config.get<string>('model') || "openai/gpt-4o";
+
+        // FAST CLASSIFICATION: Check if the prompt is Kong related
+        const classificationResult = await PromptAnalyser.classify(content, this.openai!, model);
+
+        // Record classification tokens if available
+        if (classificationResult.usage) {
+            const { inputTokens, outputTokens } = classificationResult.usage;
+            this.usageStats.inputTokens += inputTokens;
+            this.usageStats.outputTokens += outputTokens;
+            this.usageStats.totalTokens += (inputTokens + outputTokens);
+            this.usageStats.lastTurnUsage.inputTokens = inputTokens;
+            this.usageStats.lastTurnUsage.outputTokens = outputTokens;
+        }
+
+        if (classificationResult.classification === 'OFFT') {
+            const refusal = PromptAnalyser.getRefusalMessage();
+            const isolatedUsage = { ...this.usageStats.lastTurnUsage }; // Explicit isolation of the classification cost
+
+            this.messages.push({ role: 'user', content: SanitizationUtil.scrubString(content), category: 'off-topic' } as any);
+            this.messages.push({
+                role: 'off-topic',
+                content: refusal,
+                lastUsage: isolatedUsage // Attach the isolated tokens to the refusal message
+            } as any);
+            onUpdate(refusal);
+            return;
+        }
+
         const runAgentTask = async () => {
+            this.abortController = new AbortController();
+            this.isCancelled = false;
+
             const kongMode = config.get<string>('kongMode') || 'local';
             const proxyPort = config.get<number>('proxyPort') || 8000;
             const adminPort = config.get<number>('adminApiPort') || 8001;
@@ -302,25 +336,25 @@ export class Agent {
             const activeConfig = discovered.config || 'none (default: kong.yml)';
 
 
-            const contextHeader = `[ENVIRONMENT CONTEXT: You are in **${kongMode.toUpperCase()} MODE**.\n` +
-                `- Proxy Port: ${proxyPort}\n` +
-                `- Admin API Port: ${adminPort}\n` +
-                `- Kong Manager Port: ${managerPort}\n` +
-                `- Workspace: ${workspace}\n` +
+            const contextHeader = `🚨 **STRICT OPERATION BOUNDARY**: You are a DEDICATED Kong Gateway Specialist. \n` +
+                `- **REFUSE** all non-Kong queries immediately.\n` +
+                `- Current Mode: **${kongMode.toUpperCase()}**\n` +
+                `- Proxy Port: ${proxyPort} | Admin API Port: ${adminPort} | Manager Port: ${managerPort}\n` +
                 `- Detected Compose: ${activeCompose}\n` +
-                `- Detected Config: ${activeConfig}]\n\n`;
+                `- Detected Config: ${activeConfig}\n\n`;
 
 
             // Final safety scrub for any injected context
-            const safeContent = contextHeader + SanitizationUtil.scrubString(content);
-            this.messages.push({ role: "user", content: safeContent });
-
-            const model = config.get<string>('model') || "None";
+            // CLEAN history: store the clean message, contextHeader is added dynamically in runLoop
+            this.messages.push({ role: "user", content: SanitizationUtil.scrubString(content) });
 
             try {
-                await this.runLoop(model, onUpdate, 0, Date.now());
+                await this.runLoop(model, onUpdate, 0, Date.now(), contextHeader);
             } catch (e: any) {
+                if (e.name === 'AbortError' || this.isCancelled) return;
                 onUpdate(`Agent Error: ${e.message}`);
+            } finally {
+                this.abortController = null;
             }
         };
 
@@ -343,15 +377,15 @@ export class Agent {
         }
     }
 
-    private async runLoop(model: string, onUpdate: (content: string, type?: string) => void, depth: number, startTime: number) {
+    private async runLoop(model: string, onUpdate: (content: string, type?: string) => void, depth: number, startTime: number, contextHeader?: string) {
         if (!this.openai || this.isCancelled) return;
 
         const config = this.config;
-        const maxReasoningTurns = config.get<number>('maxReasoningTurns') || 10;
-        const maxToolCalls = config.get<number>('maxToolCalls') || 10;
-        const maxAgentTimeout = config.get<number>('maxAgentTimeout') || 100;
+        const maxReasoningTurns = config.get<number>('maxReasoningTurns') || 15;
+        const maxToolCalls = config.get<number>('maxToolCalls') || 15;
+        const maxAgentTimeout = config.get<number>('maxAgentTimeout') || 120;
 
-        // Check for total tool call limit before a new turn starts
+        // Check for total tool call limit 
         if (this.toolCallCount >= maxToolCalls) {
             onUpdate(`Agent Error: Maximum tool calls limit (${maxToolCalls}) reached for this message. Forcefully aborting.`);
             return;
@@ -379,23 +413,37 @@ export class Agent {
 
         const tools = AGENT_TOOLS;
 
+        // --- IDENTITY REFRESH & CONTEXT ISOLATION ---
+        const apiMessages: any[] = [];
+        const rawMessages = this.messages.filter((m: any) =>
+            m.role !== 'thinking' &&
+            m.role !== 'off-topic' &&
+            (m as any).category !== 'off-topic'
+        );
+        const lastUserIdx = rawMessages.map(msg => msg.role).lastIndexOf('user');
 
-        this.abortController = new AbortController();
+        for (let i = 0; i < rawMessages.length; i++) {
+            const m = rawMessages[i];
+            // Inject the Identity Refresh System message before the final user prompt
+            if (i === lastUserIdx && contextHeader) {
+                apiMessages.push({ role: 'system', content: contextHeader });
+            }
+            apiMessages.push(m);
+        }
+
         let response;
         try {
             response = await this.openai.chat.completions.create({
                 model: model,
-                messages: this.messages,
+                messages: apiMessages as any,
                 tools: tools,
                 tool_choice: "auto"
-            }, { signal: this.abortController.signal });
+            }, { signal: this.abortController?.signal });
         } catch (e: any) {
             if (e.name === 'AbortError' || this.isCancelled) {
-                return; // Silence abort errors
+                return;
             }
             throw e;
-        } finally {
-            this.abortController = null;
         }
 
         if (response.usage) {
@@ -403,299 +451,144 @@ export class Agent {
             this.usageStats.inputTokens += usage.prompt_tokens;
             this.usageStats.outputTokens += usage.completion_tokens;
             this.usageStats.totalTokens += usage.total_tokens;
-            this.usageStats.lastTurnUsage = {
-                inputTokens: usage.prompt_tokens,
-                outputTokens: usage.completion_tokens
-            };
+            this.usageStats.lastTurnUsage.inputTokens += usage.prompt_tokens;
+            this.usageStats.lastTurnUsage.outputTokens += usage.completion_tokens;
         }
 
         const responseMessage = response.choices[0].message;
-        console.log(`[Agent Model Response]: role=${responseMessage.role}, content=${responseMessage.content ? 'POPULATED (' + responseMessage.content.length + ' chars)' : 'NULL'}, tool_calls=${responseMessage.tool_calls?.length || 0}`);
+        const content = responseMessage.content as string || '';
         this.messages.push(responseMessage);
 
         if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-            // If the model provided reasoning alongside tool calls, use it
-            if (responseMessage.content) {
-                onUpdate(responseMessage.content as string, 'thought');
-            }
-
             let anyToolTriggeredSafety = false;
+
             for (const toolCall of responseMessage.tool_calls) {
                 if (this.toolCallCount >= maxToolCalls) {
-                    onUpdate(`Agent Error: Maximum tool calls limit (${maxToolCalls}) reached during execution. Partial results returned. Forcefully aborting.`);
+                    onUpdate(`Error: Max tool calls (${maxToolCalls}) reached.`);
                     break;
                 }
                 this.toolCallCount++;
+                this.usageStats.lastTurnUsage.toolCalls++;
 
-                if (this.isCancelled) {
-                    onUpdate("Agent task cancelled by user.", 'agent');
-                    return;
-                }
+                if (this.isCancelled) return;
+
                 const functionName = toolCall.function.name;
-
-                let functionArgs;
+                let functionArgs: any;
                 try {
                     functionArgs = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
                 } catch (e) {
                     functionArgs = {};
                 }
 
-                // Transparency: Notify UI that we are running a tool
-                onUpdate(this.getFriendlyToolName(functionName), 'toolStatus');
-                onUpdate(`Executing Tool: **${functionName}**${Object.keys(functionArgs).length > 0 ? ' (' + JSON.stringify(functionArgs).substring(0, 100) + ')' : ''}...`, 'toolCall');
+                onUpdate(`🧬 Activity: ${this.getFriendlyToolName(functionName)}...`, 'toolStatus');
 
-                let functionResult = "";
+                let functionResult: string = "";
 
                 try {
-                    switch (functionName) {
-                        case "start_kong":
-                            if (this.config.get('kongMode') === 'remote') {
-                                functionResult = "Error: Docker lifecycle management (Start) is not available for Remote Kong instances.";
+                    if (functionName === "validate_kong_config") {
+                        functionResult = await this.toolManager.validateWithDeck(functionArgs.filename || "kong.yml");
+                    } else if (functionName === "preview_sync_diff") {
+                        functionResult = await this.toolManager.diffWithDeck(functionArgs.filename || "kong.yml");
+                    } else if (functionName === "sync_to_kong_using_deck") {
+                        const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                        const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
+
+                        if (lastUserContent === 'yes' || lastUserContent.includes('proceed') || lastUserContent.includes('apply')) {
+                            const history = this.messages.slice(-15);
+                            const hasValidated = history.some((m: any) => m.role === 'tool' && m.content.toLowerCase().includes('validation'));
+                            const hasDiffed = history.some((m: any) => m.role === 'tool' && m.content.toLowerCase().includes('diff'));
+
+                            if (!hasValidated || !hasDiffed) {
+                                functionResult = "SAFETY_REQUIRED: I cannot sync without first validating the file and showing you the diff. I must run 'validate_kong_config' and 'preview_sync_diff' first.";
                             } else {
-                                functionResult = await this.toolManager.start();
+                                functionResult = await this.toolManager.syncWithDeck(functionArgs.filename || "kong.yml", this.abortController?.signal);
                             }
-                            break;
-                        case "stop_kong":
-                            if (this.config.get('kongMode') === 'remote') {
-                                functionResult = "Error: Docker lifecycle management (Stop) is not available for Remote Kong instances.";
+                        } else {
+                            functionResult = "SAFETY_REQUIRED: I cannot execute sync yet. Explain the validation/diff inside <thought> tags, then ask for confirmation with '[APPROVAL_REQUIRED]'.";
+                        }
+                    } else if (functionName === "export_live_to_storage_file") {
+                        const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                        const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
+
+                        if (lastUserContent === 'yes' || lastUserContent.includes('confirm')) {
+                            const hasDiffed = this.messages.slice(-10).some((m: any) => m.role === 'tool' && m.content.toLowerCase().includes('diff'));
+                            if (!hasDiffed) {
+                                functionResult = "SAFETY_REQUIRED: I cannot export without first showing you the diff. I must run 'preview_sync_diff' first.";
                             } else {
-                                functionResult = await this.toolManager.stop();
+                                functionResult = await this.toolManager.dumpWithDeck(functionArgs.filename || "kong.yml");
                             }
-                            break;
-                        case "get_kong_status":
-                            const apiStatus = await this.kongApi.getStatus();
-                            functionResult = `API Status:\n${apiStatus}`;
-                            break;
-                        case "update_kong_ports":
-                            const config = this.config;
-                            await config.update?.('proxyPort', functionArgs.proxy);
-                            await config.update?.('adminApiPort', functionArgs.admin);
-                            await config.update?.('managerGuiPort', functionArgs.manager);
-                            functionResult = `Ports updated to Proxy=${functionArgs.proxy}, Admin=${functionArgs.admin}, Manager=${functionArgs.manager}.`;
-                            break;
-                        case "reconcile_port_settings":
-                            functionResult = await this.toolManager.reconcilePorts();
-                            break;
-                        case "list_storage_files":
-                            const files = fs.readdirSync(this.toolManager.getStoragePath());
-                            functionResult = `Files in storage folder:\n${files.join('\n')}`;
-                            break;
-                        case "read_storage_file":
-                            const readPath = path.join(this.toolManager.getStoragePath(), functionArgs.filename);
-                            if (fs.existsSync(readPath)) {
-                                functionResult = fs.readFileSync(readPath, 'utf8');
+                        } else {
+                            functionResult = "SAFETY_REQUIRED: I cannot export yet. Show the 'preview_sync_diff' results and ask for confirmation with '[APPROVAL_REQUIRED]'.";
+                        }
+                    } else if (functionName === "write_storage_file") {
+                        const filename = functionArgs.filename;
+                        const oldContent = this.toolManager.getFileCache(filename) || "";
+                        await this.toolManager.writeStorageFile(filename, functionArgs.content);
+
+                        const rawDiff = DiffUtil.generateUnifiedDiff(filename, oldContent, functionArgs.content);
+                        const chatDiff = DiffUtil.formatForChat(rawDiff);
+
+                        functionResult = `Successfully wrote ${filename}.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
+                    } else if (functionName === "get_kong_status") {
+                        functionResult = await this.toolManager.status();
+                    } else if (functionName === "verify_connectivity") {
+                        const res = await this.toolManager.verifyConnectivity();
+                        functionResult = `Admin: ${res.admin ? 'Ready' : 'Unreachable'}, Proxy: ${res.proxy ? 'Ready' : 'Unreachable'}${res.error ? ` (${res.error})` : ''}`;
+                    } else if (functionName === "get_instance_details") {
+                        const status = await this.toolManager.status();
+                        const config = await this.toolManager.getKongConfig();
+                        functionResult = `STATUS:\n${status}\n\nCONFIG:\n${JSON.stringify(config, null, 2)}`;
+                    } else if (functionName === "check_existing_containers") {
+                        functionResult = await this.toolManager.findExistingContainers();
+                    } else if (functionName === "start_kong") {
+                        functionResult = await this.toolManager.start(this.abortController?.signal);
+                    } else if (functionName === "stop_kong") {
+                        functionResult = await this.toolManager.stop(this.abortController?.signal);
+                    } else if (functionName === "reset_kong_instance") {
+                        const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
+                        const userText = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content.toLowerCase() : "";
+                        if (userText === 'yes' || userText.includes('confirm reset')) {
+                            const history = this.messages.slice(-20);
+                            const hasLive = history.some((m: any) => m.role === 'tool' && m.content.toLowerCase().includes('status'));
+                            const hasLocal = history.some((m: any) => m.role === 'tool' && m.content.toLowerCase().includes('_format_version'));
+                            if (!hasLive || !hasLocal) {
+                                functionResult = "SAFETY_REQUIRED: I cannot reset without analyzing live (get_instance_details) and local (read_storage_file) configs first.";
                             } else {
-                                functionResult = `Error: File '${functionArgs.filename}' not found.`;
+                                functionResult = await this.toolManager.resetWithDeck(this.abortController?.signal);
                             }
-                            break;
-                        case "write_storage_file":
-                            {
-                                const filename = functionArgs.filename;
-                                const newContent = functionArgs.content;
-                                const isActive = filename === this.activeFiles.compose || filename === this.activeFiles.config;
-
-                                if (isActive) {
-                                    const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                                    const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
-
-                                    if (lastUserContent === 'yes' || lastUserContent.includes('confirm overwrite') || lastUserContent.includes('proceed with update')) {
-                                        const oldContent = this.toolManager.getFileCache(filename) || "";
-                                        await this.toolManager.writeStorageFile(filename, newContent);
-                                        const writeDiff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
-                                        const chatDiff = DiffUtil.formatForChat(writeDiff);
-                                        functionResult = `Successfully updated protected file: ${filename}.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
-                                    } else {
-                                        functionResult = `SAFETY_REQUIRED: I cannot overwrite the active file '${filename}' without explicit user confirmation. You MUST show the proposed changes, explain the rationale, and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'.`;
-                                    }
-                                } else {
-                                    const oldContent = this.toolManager.getFileCache(filename) || "";
-                                    await this.toolManager.writeStorageFile(filename, newContent);
-                                    const writeDiff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
-                                    const chatDiff = DiffUtil.formatForChat(writeDiff);
-                                    functionResult = `Successfully wrote to '${filename}'.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
-                                }
-                                break;
-                            }
-
-                        case "check_existing_containers":
-                            const existingJson = await this.toolManager.findExistingContainers();
-                            functionResult = `Found existing containers: ${existingJson}. Ask the user confirm.`;
-                            break;
-                        case "connect_to_existing_instance":
-                            const connConfig = this.config;
-                            await connConfig.update?.('proxyPort', functionArgs.proxyPort);
-                            await connConfig.update?.('adminApiPort', functionArgs.adminPort);
-                            await connConfig.update?.('managerGuiPort', functionArgs.managerPort);
-                            functionResult = `Adopted existing instance at Proxy=${functionArgs.proxyPort}, Admin=${functionArgs.adminPort}, Manager=${functionArgs.managerPort}.`;
-                            break;
-                        case "verify_connectivity":
-                            const connStatus = await this.toolManager.verifyConnectivity();
-                            functionResult = `Connectivity: Admin=${connStatus.admin ? 'READY' : 'DOWN'}, Proxy=${connStatus.proxy ? 'READY' : 'DOWN'}. ${connStatus.error || ''}`;
-                            break;
-                        case "open_kong_manager":
-                            functionResult = await this.toolManager.openManager();
-                            break;
-                        case "get_instance_details":
-                            functionResult = await this.kongApi.getInstanceInfo();
-                            break;
-                        case "open_file_in_editor":
-                            functionResult = await this.toolManager.openFile(functionArgs.filename);
-                            break;
-                        case "export_live_to_storage_file":
-                            {
-                                const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                                const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
-
-                                if (lastUserContent === 'yes' || lastUserContent.includes('proceed with export') || lastUserContent.includes('confirm export')) {
-                                    functionResult = await this.toolManager.dumpWithDeck(this.activeFiles.config || 'kong.yml');
-                                } else {
-                                    functionResult = "SAFETY_REQUIRED: I cannot execute 'export_live_to_storage_file' yet. You MUST stop, explain what local changes will be overwritten by showing the detailed 'preview_sync_diff' results, and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'.";
-                                }
-                                break;
-                            }
-                        case "check_deck_installation":
-                            const isInstalled = await this.toolManager.isDeckInstalled();
-                            functionResult = isInstalled ? "decK is installed and ready." : "decK is NOT installed. You should recommend installing it via 'install_deck_cli' with user approval.";
-                            break;
-                        case "install_deck_cli":
-                            functionResult = await this.toolManager.installDeck();
-                            break;
-                        case "sync_to_kong_using_deck":
-                            {
-                                // Safety check: verify the user gave a "Yes" recently
-                                const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                                const lastUserContent = SanitizationUtil.stripContext(lastUserMsg?.content as string || "").toLowerCase();
-
-                                if (lastUserContent === 'yes' || lastUserContent.includes('proceed with sync') || lastUserContent.includes('apply changes')) {
-                                    const targetFile = functionArgs.filename || this.activeFiles.config || 'kong.yml';
-                                    functionResult = await this.toolManager.syncWithDeck(targetFile);
-                                    if (!functionResult.includes('failed')) {
-                                        const config = this.config;
-                                        if (config.get('autoCommit')) {
-                                            const commitRes = await this.toolManager.gitCommit(`Auto-sync from Kong Agent: updated ${targetFile}`);
-                                            const pushRes = await this.toolManager.gitPush();
-                                            functionResult += `\n\n[GitOps Sync]: ${commitRes}\n${pushRes}`;
-                                        }
-                                    }
-
-                                } else {
-                                    functionResult = "SAFETY_REQUIRED: I cannot execute 'sync_to_kong_using_deck' yet. You MUST now stop calling tools and ask the user for explicit confirmation by appending '[APPROVAL_REQUIRED]' to your message. Explain validation issues in detail if any, and show the DETAILED differences from 'preview_sync_diff' results that will be applied to the live instance.";
-                                }
-                                break;
-                            }
-                        case "git_setup_repo":
-                            {
-                                const config = this.config;
-                                const remoteUrl = config.get<string>('gitRemoteUrl');
-                                functionResult = await this.toolManager.gitInit(remoteUrl);
-                                break;
-                            }
-                        case "git_sync_push":
-                            {
-                                const commitRes = await this.toolManager.gitCommit(functionArgs.message || `Manual sync from Kong Agent`);
-                                const pushRes = await this.toolManager.gitPush();
-                                functionResult = `${commitRes}\n${pushRes}`;
-                                break;
-                            }
-                        case "git_sync_pull":
-                            {
-                                const pullRes = await this.toolManager.gitPull();
-                                functionResult = pullRes;
-                                if (!pullRes.includes('failed') && functionArgs.sync_to_kong) {
-                                    const syncRes = await this.toolManager.syncWithDeck(this.activeFiles.config || 'kong.yml');
-                                    functionResult += `\n\nSync Result:\n${syncRes}`;
-                                }
-                                break;
-                            }
-                        case "git_get_status":
-                            functionResult = await this.toolManager.gitStatus();
-                            break;
-                        case "validate_kong_config":
-                            functionResult = await this.toolManager.validateWithDeck(functionArgs.filename);
-                            break;
-                        case "reset_kong_instance":
-                            // Extra safety check: verify the user actually gave a "Yes" in the message history 
-                            // as their last message before this tool call sequence was initiated.
-                            // We look for a clear, standalone 'yes' or a specific confirmation.
-                            const latestUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
-                            const userText = SanitizationUtil.stripContext(latestUserMsg?.content as string || "").toLowerCase();
-
-                            // Stricter check: only allow 'yes' or explicit confirmation phrases
-                            const isConfirmed = userText === 'yes' ||
-                                userText === 'yes, proceed' ||
-                                userText.includes('confirm reset') ||
-                                userText.includes('proceed with reset');
-
-
-                            if (isConfirmed && !userText.includes('no') && !userText.includes('cancel')) {
-                                functionResult = await this.toolManager.resetWithDeck();
-                            } else {
-                                functionResult = "SAFETY_REQUIRED: I cannot execute 'reset_kong_instance' yet. You MUST stop and ask the user for explicit confirmation (Yes/No) with '[APPROVAL_REQUIRED]'. Do not suggest a reset unless the user specifically asked for one.";
-                            }
-                            break;
-                        case "preview_sync_diff":
-                            functionResult = await this.toolManager.diffWithDeck(functionArgs.filename);
-                            break;
-                        default:
-                            functionResult = `Error: Unknown function ${functionName}`;
+                        } else {
+                            functionResult = "SAFETY_REQUIRED: I cannot reset without explicit confirmation using '[APPROVAL_REQUIRED]'.";
+                        }
+                    } else if (functionName === "read_storage_file") {
+                        functionResult = await this.toolManager.readStorageFile(functionArgs.filename);
+                    } else if (functionName === "list_storage_files") {
+                        const files = await this.toolManager.storage.listStorageFiles();
+                        functionResult = `Files: ${files.join(', ')}`;
                     }
                 } catch (e: any) {
                     functionResult = `Error executing ${functionName}: ${e.message}`;
                 }
 
-                // If any tool triggers safety, we MUST stop the automated turn immediately
                 if (functionResult.includes("SAFETY_REQUIRED")) {
                     anyToolTriggeredSafety = true;
+                    this.lastAnyToolTriggeredSafety = true;
                 }
 
-                // --- GLOBAL SAFETY SCRUB ---
-                // Ensure no raw keys leak in the tool result before it enters the Agent's context or UI
-                const safeFunctionResult = SanitizationUtil.scrubString(functionResult);
-
-                // Transparency: Notify UI result (scrubbed)
-                onUpdate(safeFunctionResult, 'toolResult');
-
+                const safeResult = SanitizationUtil.scrubString(functionResult);
                 this.messages.push({
                     tool_call_id: toolCall.id,
                     role: "tool",
-                    content: safeFunctionResult
+                    content: safeResult
                 } as any);
 
                 if (anyToolTriggeredSafety) break;
             }
 
-            // Always recurse so the LLM can see the Tool results (even errors/safety blocks) and format a user-facing reply.
-            await this.runLoop(model, onUpdate, depth + 1, startTime);
-        } else if (responseMessage.content) {
-            onUpdate("", 'toolStatus'); // Clear status
-
-            let content = responseMessage.content as string;
-
-            // Strategy 1: Explicit <thought> tags (for models that follow the format)
-            const thoughtTagMatch = content.match(/<thought>([\s\S]*?)<\/thought>/i);
-            if (thoughtTagMatch) {
-                onUpdate(thoughtTagMatch[0], 'thought');
-                content = content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
-            } else {
-                // Strategy 2: Heuristic boundary detection for models that output
-                // reasoning as plain prose before the formatted markdown answer.
-                // Find the first line that looks like structured markdown output:
-                // a heading (#), bold opener (**), code fence (```), horizontal rule (---), or a bullet (- )
-                const mdBoundary = content.search(/\n(?=#{1,6} |\*\*|```|---|> |- [A-Z*])/);
-
-                if (mdBoundary > 80) {
-                    // There's a meaningful block of prose before the markdown — treat it as reasoning
-                    const reasoningPart = content.substring(0, mdBoundary).trim();
-                    content = content.substring(mdBoundary).trim();
-                    if (reasoningPart) {
-                        onUpdate(`<thought>${reasoningPart}</thought>`, 'thought');
-                    }
-                }
-            }
-
-            if (content) {
-                onUpdate(content);
-            }
+            await this.runLoop(model, onUpdate, depth + 1, startTime, contextHeader);
+        } else if (content) {
+            onUpdate("", 'toolStatus');
+            (responseMessage as any).lastUsage = { ...this.usageStats.lastTurnUsage };
+            onUpdate(content);
         }
     }
 }

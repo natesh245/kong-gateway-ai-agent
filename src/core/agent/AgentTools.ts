@@ -63,7 +63,7 @@ export const AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "write_storage_file",
-            description: "Writes content to a file in the storage directory.",
+            description: "Writes content to a file in the storage directory. MANDATORY: You must execute this tool IMMEDIATELY when the user asks to add, change, or delete a route/service. Write the file BEFORE asking for approval! The approval phase comes AFTER the file is physically written to disk.",
             parameters: {
                 type: "object",
                 properties: {
@@ -143,7 +143,7 @@ export const AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "export_live_to_storage_file",
-            description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. CAUTION: Requires explicit user approval AFTER showing them the preview_sync_diff to ensure they understand what local changes will be lost."
+            description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. MANDATORY: You MUST run 'preview_sync_diff' and show the results to the user BEFORE asking for approval to export."
         }
     },
     {
@@ -164,7 +164,7 @@ export const AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "sync_to_kong_using_deck",
-            description: "Uses the official decK CLI to synchronize a configuration file (e.g., kong.yml) to the live Kong instance.",
+            description: "Uses the official decK CLI to synchronize a configuration file (e.g., kong.yml) to the live Kong instance. MANDATORY: You MUST run 'validate_kong_config' and 'preview_sync_diff' and show the results to the user BEFORE asking for approval to sync.",
             parameters: {
                 type: "object",
                 properties: {
@@ -192,7 +192,7 @@ export const AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         type: "function",
         function: {
             name: "reset_kong_instance",
-            description: "Wipes all current configuration (Services, Routes, Plugins, etc.) from the live Kong instance. Use ONLY after explicit user confirmation."
+            description: "Wipes all current configuration (Services, Routes, Plugins, etc.) from the live Kong instance. MANDATORY: This is destructive. You MUST run 'get_instance_details' and 'read_storage_file', calculate the diff, and show the user exactly what will be removed before asking for approval."
         }
     },
     {
