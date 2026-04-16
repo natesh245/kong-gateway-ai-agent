@@ -29,26 +29,28 @@ const ToolInteraction: React.FC<{ interaction: any }> = ({ interaction }) => {
     const isSuccess = !isError && interaction.status === 'completed';
 
     return (
-        <div className={`tool-interaction ${interaction.status}`}>
-            <div className="tool-interaction-header" onClick={() => setIsExpanded(!isExpanded)}>
+        <div className={`tool-interaction ${interaction.status} ${isExpanded ? 'expanded' : ''}`}>
+            <div className="tool-interaction-header" onClick={() => setIsExpanded(!isExpanded)} title="Click to view arguments and result">
                 <i className={`codicon codicon-${isSuccess ? 'pass' : isError ? 'error' : 'sync'}`}></i>
-                <span className="tool-name">{interaction.name}</span>
-                <span className={`tool-status ${interaction.status}`}>
-                    {interaction.status === 'started' ? 'running...' : isSuccess ? 'success' : 'failed'}
-                </span>
+                <div className="tool-info">
+                    <span className="tool-name">{interaction.name || 'Executing Tool...'}</span>
+                    <span className={`tool-status-badge ${interaction.status}`}>
+                        {interaction.status === 'started' ? 'RUNNING' : isSuccess ? 'SUCCESS' : 'FAILED'}
+                    </span>
+                </div>
                 <i className={`codicon codicon-chevron-${isExpanded ? 'down' : 'right'}`} style={{ marginLeft: 'auto', fontSize: '10px' }}></i>
             </div>
             {isExpanded && (
                 <div className="tool-interaction-details">
-                    {interaction.args && (
+                    {interaction.args && Object.keys(interaction.args).length > 0 && (
                         <div className="tool-args">
-                            <strong>Arguments:</strong>
+                            <div className="tool-detail-label">Arguments</div>
                             <pre>{JSON.stringify(interaction.args, null, 2)}</pre>
                         </div>
                     )}
                     {interaction.result && (
                         <div className="tool-result">
-                            <strong>Result:</strong>
+                            <div className="tool-detail-label">Result</div>
                             <pre>{interaction.result}</pre>
                         </div>
                     )}
@@ -111,7 +113,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoni
                     <div className="reasoning-header" onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}>
                         <div className="reasoning-title">
                             <i className="codicon codicon-beaker"></i>
-                            {complete ? 'Reasoning' : 'Thinking...'}
+                            {(toolInteractions && toolInteractions.length > 0 && !displayReasoning) ? 'Diagnostic Activity' : (complete ? 'Reasoning' : 'Thinking...')}
                             {elapsedTime && (
                                 <span className="performance-stats">
                                     {elapsedTime}s | {toolCount} tool{toolCount !== 1 ? 's' : ''}
@@ -122,9 +124,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoni
                     </div>
                     {isReasoningExpanded && (
                         <div className="reasoning-content">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {displayReasoning}
-                            </ReactMarkdown>
+                            {displayReasoning && (
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {displayReasoning}
+                                </ReactMarkdown>
+                            )}
                             {!complete && !displayContent && (
                                 <span className="typing-cursor"></span>
                             )}

@@ -500,6 +500,7 @@ export class Agent {
 
             const contextHeader = `🚨 **STRICT OPERATION BOUNDARY**: You are a DEDICATED Kong Gateway Specialist. \n` +
                 `- **REFUSE** all non-Kong queries immediately.\n` +
+                `- **MANDATORY REASONING**: Before Every Response or Tool Call, you MUST think inside <thought>...</thought> tags. \n` +
                 `- Current Mode: **${kongMode.toUpperCase()}**\n` +
                 `- Proxy Port: ${proxyPort} | Admin API Port: ${adminPort} | Manager Port: ${managerPort}\n` +
                 `- Detected Compose: ${activeCompose}\n` +
@@ -564,6 +565,7 @@ export class Agent {
                 let streamBuffer = "";
                 let collectedToolCalls: any[] = [];
                 let collectedToolResults: any[] = [];
+                let toolNames = new Map<string, string>(); // Reliable tracking for tool names
 
                 for await (const [mode, chunk] of stream) {
                     if (this.isCancelled) break;
@@ -578,6 +580,22 @@ export class Agent {
                         // These are already handled in a structured way by the 'updates' mode.
                         if (type === "tool" || type === "human" || (token as any).tool_call_id || nodeType === "tools") {
                             continue;
+                        }
+
+                        // Capture tool names for later status updates
+                        if (type === "ai" && (token as any).tool_calls) {
+                            for (const tc of (token as any).tool_calls) {
+                                toolNames.set(tc.id, tc.name);
+                                
+                                onUpdate(JSON.stringify({
+                                    id: tc.id,
+                                    interaction: {
+                                        name: tc.name,
+                                        args: tc.args,
+                                        status: 'started'
+                                    }
+                                }), 'toolInteraction');
+                            }
                         }
 
                         // Identify the target container: ONLY AI messages go to the main chat.
@@ -610,30 +628,33 @@ export class Agent {
                                 }
                             }
                         }
-                        else if (token.content) {
-                            // Fallback for models that don't use contentBlocks
-                            // const tokenContent = typeof token.content === 'string' ? token.content : '';
-                            // if (tokenContent) {
-                            //     this.processStreamContent(tokenContent, onUpdate, {
-                            //         isInsideThought: () => isInsideThought,
-                            //         setInsideThought: (v: boolean) => { isInsideThought = v; },
-                            //         getBuffer: () => streamBuffer,
-                            //         setBuffer: (v: string) => { streamBuffer = v; },
-                            //         appendContent: (v: string) => { fullContent += v; },
-                            //         appendReasoning: (v: string) => { fullReasoning += v; },
-                            //         targetType // Pass the inferred type
-                            //     });
-                            // }
+                        else if (token.content && !token.contentBlocks) {
+                            // Fallback for models that don't use contentBlocks (Ensures NO double processing)
+                            const tokenContent = typeof token.content === 'string' ? token.content : '';
+                            if (tokenContent) {
+                                this.processStreamContent(tokenContent, onUpdate, {
+                                    isInsideThought: () => isInsideThought,
+                                    setInsideThought: (v: boolean) => { isInsideThought = v; },
+                                    getBuffer: () => streamBuffer,
+                                    setBuffer: (v: string) => { streamBuffer = v; },
+                                    appendContent: (v: string) => { fullContent += v; },
+                                    appendReasoning: (v: string) => { fullReasoning += v; },
+                                    targetType // Pass the inferred type
+                                });
+                            }
                         }
 
                         // Handle native reasoning metadata from additional_kwargs
-                        // const nativeReasoning = token.additional_kwargs?.reasoning_content ||
-                        //     token.additional_kwargs?.thought ||
-                        //     token.reasoning;
-                        // if (nativeReasoning) {
-                        //     fullReasoning += nativeReasoning;
-                        //     onUpdate(nativeReasoning, 'reasoning');
-                        // }
+                        const nativeReasoning = token.additional_kwargs?.reasoning_content ||
+                            token.additional_kwargs?.thought ||
+                            token.additional_kwargs?.reasoning ||
+                            (token as any).reasoning_content ||
+                            (token as any).thought ||
+                            (token as any).reasoning;
+                        if (nativeReasoning) {
+                            fullReasoning += nativeReasoning;
+                            onUpdate(nativeReasoning, 'reasoning');
+                        }
 
                         // Track usage from metadata
                         if (token.usage_metadata) {
@@ -685,6 +706,7 @@ export class Agent {
                                     onUpdate(JSON.stringify({
                                         id: msg.tool_call_id,
                                         interaction: {
+                                            name: toolNames.get(msg.tool_call_id),
                                             result: safeResult.substring(0, 5000),
                                             status: 'completed'
                                         }
@@ -701,16 +723,16 @@ export class Agent {
                 }
 
                 // FLUSH REMAINING BUFFER
-                // if (streamBuffer.length > 0) {
-                //     if (isInsideThought) {
-                //         fullReasoning += streamBuffer;
-                //         onUpdate(streamBuffer, 'reasoning');
-                //     } else {
-                //         fullContent += streamBuffer;
-                //         onUpdate(streamBuffer);
-                //     }
-                //     streamBuffer = "";
-                // }
+                if (streamBuffer.length > 0) {
+                    if (isInsideThought) {
+                        fullReasoning += streamBuffer;
+                        onUpdate(streamBuffer, 'reasoning');
+                    } else {
+                        fullContent += streamBuffer;
+                        onUpdate(streamBuffer, 'agent');
+                    }
+                    streamBuffer = "";
+                }
 
                 // Clear tool status
                 if (fullContent) {
@@ -810,14 +832,30 @@ export class Agent {
                     state.setInsideThought(true);
                     streamBuffer = streamBuffer.substring(thoughtStartIdx + '<thought>'.length);
                 } else {
-                    const safeLength = Math.max(0, streamBuffer.length - 10);
-                    const processable = streamBuffer.substring(0, safeLength);
-                    if (processable) {
-                        state.appendContent(processable);
-                        onUpdate(processable, state.targetType);
-                        streamBuffer = streamBuffer.substring(safeLength);
+                    // Only buffer if we see a potential starting tag (to avoid truncating normal speech)
+                    const potentialTagStart = streamBuffer.lastIndexOf('<');
+                    if (potentialTagStart !== -1 && potentialTagStart > streamBuffer.length - 10) {
+                        // Check if the next character looks like 't' (from 'thought')
+                        const nextChar = streamBuffer[potentialTagStart + 1];
+                        if (!nextChar || nextChar === 't') {
+                            const processable = streamBuffer.substring(0, potentialTagStart);
+                            if (processable) {
+                                state.appendContent(processable);
+                                onUpdate(processable, state.targetType);
+                                streamBuffer = streamBuffer.substring(potentialTagStart);
+                            }
+                            break;
+                        } else {
+                            // Not a thought tag, just a normal '<' (e.g. in a port range or math)
+                            state.appendContent(streamBuffer);
+                            onUpdate(streamBuffer, state.targetType);
+                            streamBuffer = "";
+                        }
+                    } else {
+                        state.appendContent(streamBuffer);
+                        onUpdate(streamBuffer, state.targetType);
+                        streamBuffer = "";
                     }
-                    break;
                 }
             } else {
                 const thoughtEndIdx = streamBuffer.indexOf('</thought>');
@@ -830,14 +868,20 @@ export class Agent {
                     state.setInsideThought(false);
                     streamBuffer = streamBuffer.substring(thoughtEndIdx + '</thought>'.length);
                 } else {
-                    const safeLength = Math.max(0, streamBuffer.length - 11);
-                    const processable = streamBuffer.substring(0, safeLength);
-                    if (processable) {
-                        state.appendReasoning(processable);
-                        onUpdate(processable, 'reasoning');
-                        streamBuffer = streamBuffer.substring(safeLength);
+                    const potentialTagEnd = streamBuffer.lastIndexOf('<');
+                    if (potentialTagEnd !== -1 && potentialTagEnd > streamBuffer.length - 11) {
+                        const processable = streamBuffer.substring(0, potentialTagEnd);
+                        if (processable) {
+                            state.appendReasoning(processable);
+                            onUpdate(processable, 'reasoning');
+                            streamBuffer = streamBuffer.substring(potentialTagEnd);
+                        }
+                        break;
+                    } else {
+                        state.appendReasoning(streamBuffer);
+                        onUpdate(streamBuffer, 'reasoning');
+                        streamBuffer = "";
                     }
-                    break;
                 }
             }
         }

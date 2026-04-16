@@ -74,7 +74,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     disabled
 }) => {
     const vscode = getVsCodeApi();
-    const [localConfig, setLocalConfig] = useState(config);
+    const [localConfig, setLocalConfig] = useState({ showThinking: true, ...config });
     const [hasChanges, setHasChanges] = useState(false);
     const [showModelDropdown, setShowModelDropdown] = useState(false);
     const [modelSearch, setModelSearch] = useState('');
@@ -175,6 +175,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     {row('Max Recursion Limit', <input type="number" value={localConfig.recursionLimit || 50} disabled={disabled} onChange={e => handleChange('recursionLimit', parseInt(e.target.value))} />)}
                     {row('Max Context', <input type="number" value={localConfig.maxContext || 130000} disabled={disabled} onChange={e => handleChange('maxContext', parseInt(e.target.value))} />)}
                     {row('Timeout (s)', <input type="number" value={localConfig.maxAgentTimeout || 100} disabled={disabled} onChange={e => handleChange('maxAgentTimeout', parseInt(e.target.value))} />)}
+                    
+                    <div className="settings-row">
+                        <label style={{ width: '80px' }}></label>
+                        <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flex: 1 }}>
+                            <input type="checkbox" checked={localConfig.showThinking !== false} onChange={e => handleChange('showThinking', e.target.checked)} disabled={disabled} />
+                            🧠 Show Thinking Logs
+                        </label>
+                    </div>
                 </Section>
 
                 {/* ── 2. KONG GATEWAY SETTINGS ── */}
