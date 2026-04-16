@@ -582,16 +582,31 @@ export class Agent {
                             continue;
                         }
 
-                        // Capture tool names for later status updates
-                        if (type === "ai" && (token as any).tool_calls) {
-                            for (const tc of (token as any).tool_calls) {
+                        // Capture tool names aggressively from both full tool_calls and streamed tool_call_chunks
+                        const toolCalls = (token as any).tool_calls || [];
+                        const toolCallChunks = (token as any).tool_call_chunks || [];
+
+                        for (const tc of toolCalls) {
+                            if (tc.name) {
                                 toolNames.set(tc.id, tc.name);
-                                
                                 onUpdate(JSON.stringify({
                                     id: tc.id,
                                     interaction: {
                                         name: tc.name,
                                         args: tc.args,
+                                        status: 'started'
+                                    }
+                                }), 'toolInteraction');
+                            }
+                        }
+
+                        for (const tcc of toolCallChunks) {
+                            if (tcc.name && tcc.id) {
+                                toolNames.set(tcc.id, tcc.name);
+                                onUpdate(JSON.stringify({
+                                    id: tcc.id,
+                                    interaction: {
+                                        name: tcc.name,
                                         status: 'started'
                                     }
                                 }), 'toolInteraction');

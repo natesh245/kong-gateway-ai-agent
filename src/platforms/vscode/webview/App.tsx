@@ -131,7 +131,12 @@ export const App: React.FC = () => {
                         // Update or add the interaction
                         const interactionIdx = interactions.findIndex(i => i.id === m.toolCallId);
                         if (interactionIdx !== -1) {
-                            interactions[interactionIdx] = { ...interactions[interactionIdx], ...m.interaction };
+                            // Harden: Never overwrite an existing name with undefined/empty
+                            const updatedInteraction = { ...interactions[interactionIdx], ...m.interaction };
+                            if (!m.interaction.name) {
+                                updatedInteraction.name = interactions[interactionIdx].name;
+                            }
+                            interactions[interactionIdx] = updatedInteraction;
                         } else {
                             interactions.push({ id: m.toolCallId, ...m.interaction });
                         }
