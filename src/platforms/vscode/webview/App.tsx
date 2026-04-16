@@ -69,6 +69,9 @@ export const App: React.FC = () => {
     // Lifecycle Tracking
     const [isInitialLoad, setIsInitialLoad] = useState(!savedState.config);
     const [isTyping, setIsTyping] = useState(false);
+    const isTypingRef = useRef(isTyping);
+    useEffect(() => { isTypingRef.current = isTyping; }, [isTyping]);
+
     const [statusText, setStatusText] = useState('');
     const [notification, setNotification] = useState<{ filename: string, changeType: string } | null>(null);
     const [toast, setToast] = useState<string | null>(null);
@@ -226,39 +229,44 @@ export const App: React.FC = () => {
                     if (m.detectedFiles) setDetectedFiles(m.detectedFiles);
                     
                     if (m.history && Array.isArray(m.history)) {
-                        const validRoles = ['user', 'agent', 'assistant', 'ui-diff'];
-                        
-                        setMessages(m.history
-                            .filter((msg: any) => {
-                                const role = msg?.role;
-                                const content = typeof msg.content === 'string' ? msg.content : '';
-                                
-                                if (!validRoles.includes(role)) return false;
-                                
-                                // Detect stringified JSON logs stored in content
-                                if (content.trim().startsWith('[') || content.trim().startsWith('{')) {
-                                    if (content.includes('"role":"') || 
-                                        content.includes('"toolCall"') || 
-                                        content.includes('"interaction":') ||
-                                        content.includes('"tool_call_id"')) {
-                                        return false;
+                        // CRITICAL: Protect active streaming sessions from being overwritten
+                        if (isTypingRef.current) {
+                            console.log('[UI] Skipping history sync: Agent is currently active.');
+                        } else {
+                            const validRoles = ['user', 'agent', 'assistant', 'ui-diff'];
+                            
+                            setMessages(m.history
+                                .filter((msg: any) => {
+                                    const role = msg?.role;
+                                    const content = typeof msg.content === 'string' ? msg.content : '';
+                                    
+                                    if (!validRoles.includes(role)) return false;
+                                    
+                                    // Detect stringified JSON logs stored in content
+                                    if (content.trim().startsWith('[') || content.trim().startsWith('{')) {
+                                        if (content.includes('"role":"') || 
+                                            content.includes('"toolCall"') || 
+                                            content.includes('"interaction":') ||
+                                            content.includes('"tool_call_id"')) {
+                                            return false;
+                                        }
                                     }
-                                }
 
-                                if (!content.trim()) return false;
-                                return true;
-                            })
-                            .map((msg: any) => ({
-                                role: msg.role === 'assistant' ? 'agent' : msg.role,
-                                content: msg.content,
-                                reasoning: msg.reasoning || "",
-                                toolInteractions: msg.toolInteractions || [],
-                                complete: true,
-                                startTime: msg.startTime || Date.now(),
-                                endTime: msg.endTime || Date.now(),
-                                lastUsage: msg.lastUsage
-                            }))
-                        );
+                                    if (!content.trim()) return false;
+                                    return true;
+                                })
+                                .map((msg: any) => ({
+                                    role: msg.role === 'assistant' ? 'agent' : msg.role,
+                                    content: msg.content,
+                                    reasoning: msg.reasoning || "",
+                                    toolInteractions: msg.toolInteractions || [],
+                                    complete: true,
+                                    startTime: msg.startTime || Date.now(),
+                                    endTime: msg.endTime || Date.now(),
+                                    lastUsage: msg.lastUsage
+                                }))
+                            );
+                        }
                     }
                     break;
 

@@ -72,7 +72,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 const filename = path.basename(uri.fsPath);
 
                 // Refresh the managed files list in the webview
-                await this._updateWebviewConfig();
+                // Refresh the managed files list in the webview (skipping full history sync)
+                await this._updateWebviewConfig(true);
 
                 // Notify user specifically about the change
                 this._view.webview.postMessage({
@@ -519,7 +520,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this.context.globalState.update('kongAgentChatHistory', limitedHistory);
     }
 
-    private async _updateWebviewConfig() {
+    private async _updateWebviewConfig(skipHistory: boolean = false) {
         if (this._view) {
             const history = this._agent.getMessages().map((msg: any) => ({
                 role: msg.role === 'assistant' ? 'agent' : msg.role,
@@ -558,7 +559,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 autoCommit: this.config.get('autoCommit') === true,
                 showThinking: this.config.get('showThinking') !== false,
                 usageStats: this._agent.getUsageStats(),
-                history: history
+                ...(skipHistory ? {} : { history: history })
             });
 
             // Phase 2: ASYNC HEAVY SYNC (non-blocking updates)
