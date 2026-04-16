@@ -746,3 +746,169 @@ details.settings-subsection:not([open]) .subsection-toggle {
     padding-bottom: 4px;
     border-bottom: 1px solid rgba(245, 26, 86, 0.15);
 }
+.typing-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background-color: var(--accent);
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* Reasoning / CoT Container */
+.reasoning-container {
+    margin-bottom: 12px;
+    background: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.reasoning-container.thinking {
+    border-color: var(--vscode-progressBar-background) !important;
+}
+
+.reasoning-header {
+    padding: 8px 12px;
+    background: var(--vscode-editor-lineHighlightBackground);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: filter 0.2s ease;
+}
+
+.reasoning-header:hover {
+    filter: brightness(1.1);
+}
+
+.reasoning-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--vscode-descriptionForeground);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+}
+
+.reasoning-title i {
+    font-size: 11px;
+    color: var(--vscode-symbolIcon-functionForeground);
+}
+
+.performance-stats {
+    margin-left: auto;
+    margin-right: 8px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 9.5px;
+    opacity: 0.5;
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+.reasoning-content {
+    padding: 10px 12px;
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* Tool Interaction Styles */
+.tool-interactions-list {
+    border-top: 1px solid var(--vscode-widget-border);
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.tool-interaction {
+    margin-bottom: 4px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.tool-interaction-header {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    gap: 8px;
+    cursor: pointer;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 10.5px;
+}
+
+.tool-interaction-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.tool-name {
+    font-weight: 600;
+    color: var(--vscode-symbolIcon-functionForeground);
+}
+
+.tool-status {
+    font-size: 9.5px;
+    opacity: 0.7;
+    margin-left: 4px;
+}
+
+.tool-status.started { color: var(--vscode-progressBar-background); }
+.tool-status.completed { color: var(--vscode-testing-iconPassed); }
+.tool-status.failed { color: var(--vscode-testing-iconFailed); }
+
+.tool-interaction-details {
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tool-args, .tool-result {
+    margin-bottom: 8px;
+}
+
+.tool-args strong, .tool-result strong {
+    display: block;
+    font-size: 9px;
+    margin-bottom: 4px;
+    opacity: 0.5;
+    text-transform: uppercase;
+}
+
+.tool-interaction-details pre {
+    margin: 0;
+    padding: 6px;
+    background: var(--vscode-editor-background);
+    border-radius: 3px;
+    font-size: 10px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--vscode-editor-foreground);
+    border: 1px solid var(--vscode-widget-border);
+}
+
+/* Thinking Pulse for Reasoning */
+.reasoning-container.thinking .reasoning-title i {
+    animation: thought-pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes thought-pulse {
+    0% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(1); opacity: 0.5; }
+}

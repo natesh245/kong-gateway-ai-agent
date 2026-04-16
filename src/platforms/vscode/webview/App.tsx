@@ -14,6 +14,8 @@ export interface Message {
     startTime?: number;
     endTime?: number;
     lastUsage?: any;
+    reasoning?: string;
+    toolInteractions?: any[];
     className?: string;
     cancelled?: boolean;
 }
@@ -78,6 +80,87 @@ export const App: React.FC = () => {
             if (!m || !m.type) return;
 
             switch (m.type) {
+                case 'streamMessage':
+                    setMessages(prev => {
+                        const existingIdx = prev.findIndex(msg => (msg as any).id === m.messageId);
+                        if (existingIdx !== -1) {
+                            const newMessages = [...prev];
+                            const current = newMessages[existingIdx];
+                            
+                            if (m.role === 'reasoning') {
+                                newMessages[existingIdx] = {
+                                    ...current,
+                                    reasoning: (current.reasoning || '') + (m.content || '')
+                                };
+                            } else {
+                                newMessages[existingIdx] = {
+                                    ...current,
+                                    content: current.content + (m.content || '')
+                                };
+                            }
+                            return newMessages;
+                        } else {
+                            return [...prev, {
+                                id: m.messageId,
+                                role: 'agent',
+                                content: m.role === 'reasoning' ? '' : (m.content || ''),
+                                reasoning: m.role === 'reasoning' ? (m.content || '') : '',
+                                complete: false,
+                                startTime: Date.now()
+                            } as any];
+                        }
+                    });
+                    setIsTyping(true);
+                    // Only clear status text if we are streaming actual content, 
+                    // not just reasoning, to avoid a 'blank' activity bar.
+                    if (m.role !== 'reasoning') {
+                        setStatusText(''); 
+                    }
+                    break;
+
+                case 'toolInteraction':
+                    // Dynamically update the current message with tool interaction details (during stream)
+                    setMessages(prev => {
+                        const existingIdx = prev.findIndex(msg => (msg as any).id === m.messageId);
+                        if (existingIdx === -1) return prev;
+                        
+                        const newMessages = [...prev];
+                        const current = newMessages[existingIdx];
+                        const interactions = [...(current.toolInteractions || [])];
+                        
+                        // Update or add the interaction
+                        const interactionIdx = interactions.findIndex(i => i.id === m.toolCallId);
+                        if (interactionIdx !== -1) {
+                            interactions[interactionIdx] = { ...interactions[interactionIdx], ...m.interaction };
+                        } else {
+                            interactions.push({ id: m.toolCallId, ...m.interaction });
+                        }
+                        
+                        newMessages[existingIdx] = { ...current, toolInteractions: interactions };
+                        return newMessages;
+                    });
+                    break;
+
+                case 'finalizeStreamedMessage':
+                    setMessages(prev => {
+                        const existingIdx = prev.findIndex(msg => (msg as any).id === m.messageId);
+                        if (existingIdx !== -1) {
+                            const newMessages = [...prev];
+                            // NO MORE STRIPPING: We want to preserve the full content for ChatMessage to parse
+                            newMessages[existingIdx] = {
+                                ...newMessages[existingIdx],
+                                complete: true,
+                                endTime: Date.now(),
+                                lastUsage: m.usage
+                            };
+                            return newMessages;
+                        }
+                        return prev;
+                    });
+                    setIsTyping(false);
+                    setStatusText('');
+                    break;
+
                 case 'addMessage':
                     const validRoles = ['user', 'agent', 'assistant', 'ui-diff'];
                     if (!validRoles.includes(m.role)) {
@@ -87,10 +170,11 @@ export const App: React.FC = () => {
 
                     if (m.role === 'user') {
                         setMessages(prev => [...prev, {
+                            id: Date.now().toString(),
                             role: 'user',
                             content: m.content || '',
                             className: m.className
-                        }]);
+                        } as any]);
                         return;
                     }
 
@@ -104,11 +188,13 @@ export const App: React.FC = () => {
 
                             if (cleanContent) {
                                 return [...prev, {
+                                    id: Date.now().toString(),
                                     role: 'agent',
                                     content: cleanContent,
                                     className: m.className,
-                                    lastUsage: m.lastUsage
-                                }];
+                                    lastUsage: m.lastUsage,
+                                    complete: true
+                                } as any];
                             }
                             return prev;
                         });
@@ -146,7 +232,10 @@ export const App: React.FC = () => {
                                 
                                 // Detect stringified JSON logs stored in content
                                 if (content.trim().startsWith('[') || content.trim().startsWith('{')) {
-                                    if (content.includes('"role":"') || content.includes('"toolCall"')) {
+                                    if (content.includes('"role":"') || 
+                                        content.includes('"toolCall"') || 
+                                        content.includes('"interaction":') ||
+                                        content.includes('"tool_call_id"')) {
                                         return false;
                                     }
                                 }
@@ -157,6 +246,8 @@ export const App: React.FC = () => {
                             .map((msg: any) => ({
                                 role: msg.role === 'assistant' ? 'agent' : msg.role,
                                 content: msg.content,
+                                reasoning: msg.reasoning || "",
+                                toolInteractions: msg.toolInteractions || [],
                                 complete: true,
                                 startTime: msg.startTime || Date.now(),
                                 endTime: msg.endTime || Date.now(),
@@ -263,6 +354,7 @@ export const App: React.FC = () => {
                     messages={messages} 
                     isTyping={isTyping}
                     statusText={statusText}
+                    showThinking={config.showThinking !== false}
                     onStop={handleCancel}
                     onAction={handleSendAction}
                 />

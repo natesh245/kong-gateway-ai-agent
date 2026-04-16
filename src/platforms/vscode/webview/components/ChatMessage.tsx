@@ -8,22 +8,75 @@ import { getVsCodeApi } from '../vscode-api';
 interface Message {
     role: string;
     content: string;
+    reasoning?: string;
     className?: string;
     lastUsage?: any;
     complete?: boolean;
     cancelled?: boolean;
     startTime?: number;
     endTime?: number;
+    showThinking?: boolean;
 }
 
 interface ChatMessageProps extends Message {
     onAction: (text: string) => void;
+    toolInteractions?: any[];
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, className, lastUsage, complete, cancelled, startTime, endTime, onAction }) => {
+const ToolInteraction: React.FC<{ interaction: any }> = ({ interaction }) => {
+    const [isExpanded, setIsExpanded] = React.useState(false);
+    const isError = interaction.result?.toLowerCase().includes('error');
+    const isSuccess = !isError && interaction.status === 'completed';
+
+    return (
+        <div className={`tool-interaction ${interaction.status}`}>
+            <div className="tool-interaction-header" onClick={() => setIsExpanded(!isExpanded)}>
+                <i className={`codicon codicon-${isSuccess ? 'pass' : isError ? 'error' : 'sync'}`}></i>
+                <span className="tool-name">{interaction.name}</span>
+                <span className={`tool-status ${interaction.status}`}>
+                    {interaction.status === 'started' ? 'running...' : isSuccess ? 'success' : 'failed'}
+                </span>
+                <i className={`codicon codicon-chevron-${isExpanded ? 'down' : 'right'}`} style={{ marginLeft: 'auto', fontSize: '10px' }}></i>
+            </div>
+            {isExpanded && (
+                <div className="tool-interaction-details">
+                    {interaction.args && (
+                        <div className="tool-args">
+                            <strong>Arguments:</strong>
+                            <pre>{JSON.stringify(interaction.args, null, 2)}</pre>
+                        </div>
+                    )}
+                    {interaction.result && (
+                        <div className="tool-result">
+                            <strong>Result:</strong>
+                            <pre>{interaction.result}</pre>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoning, toolInteractions, className, lastUsage, complete, cancelled, startTime, endTime, showThinking, onAction }) => {
     const vscode = getVsCodeApi();
+    const [isReasoningExpanded, setIsReasoningExpanded] = React.useState(true);
 
     let displayContent = content;
+    let displayReasoning = reasoning || "";
+
+    // Fallback: Extract from content if not explicitly separated
+    if (displayContent.includes('<thought>')) {
+        const parts = displayContent.split(/<thought>|<\/thought>/);
+        if (parts.length >= 2) {
+            // parts[0] = before, parts[1] = reasoning, parts[2] = after
+            displayReasoning = parts[1].trim();
+            // Collect everything else as main content
+            const before = parts[0] || "";
+            const after = parts.slice(2).join(" ") || "";
+            displayContent = (before + after).trim();
+        }
+    }
 
     // Logic to detect approval requirements
     let hasApproval = false;
@@ -43,12 +96,49 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, classNa
         }
     };
 
-    if (!displayContent.trim() && !hasApproval && role === 'agent') return null;
+    const elapsedTime = startTime && endTime ? ((endTime - startTime) / 1000).toFixed(1) : null;
+    const toolCount = toolInteractions?.length || lastUsage?.toolCalls || 0;
+
+    if (!displayContent.trim() && !displayReasoning.trim() && !hasApproval && role === 'agent') return null;
 
     const isSystemError = displayContent.toLowerCase().startsWith('error') || displayContent.toLowerCase().includes('failed:');
 
     return (
         <div className={`message ${role} ${className || ''} ${isSystemError ? 'error-message' : ''}`} onClick={handleActionClick}>
+            
+            {showThinking && (displayReasoning || (toolInteractions && toolInteractions.length > 0) || (!complete && role === 'agent')) && (
+                <div className={`reasoning-container ${!complete && role === 'agent' ? 'thinking' : ''}`}>
+                    <div className="reasoning-header" onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}>
+                        <div className="reasoning-title">
+                            <i className="codicon codicon-beaker"></i>
+                            {complete ? 'Reasoning' : 'Thinking...'}
+                            {elapsedTime && (
+                                <span className="performance-stats">
+                                    {elapsedTime}s | {toolCount} tool{toolCount !== 1 ? 's' : ''}
+                                </span>
+                            )}
+                        </div>
+                        <i className={`codicon codicon-chevron-${isReasoningExpanded ? 'down' : 'right'}`} style={{ marginLeft: 'auto', fontSize: '10px' }}></i>
+                    </div>
+                    {isReasoningExpanded && (
+                        <div className="reasoning-content">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {displayReasoning}
+                            </ReactMarkdown>
+                            {!complete && !displayContent && (
+                                <span className="typing-cursor"></span>
+                            )}
+                            {toolInteractions && toolInteractions.length > 0 && (
+                                <div className="tool-interactions-list">
+                                    {toolInteractions.map((ti, idx) => (
+                                        <ToolInteraction key={ti.id || idx} interaction={ti} />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -80,6 +170,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, classNa
             >
                 {displayContent}
             </ReactMarkdown>
+            
+            {!complete && role === 'agent' && (displayContent || !displayReasoning) && (
+                <span className="typing-cursor"></span>
+            )}
 
             {hasApproval && (
                 <div className="approval-container">

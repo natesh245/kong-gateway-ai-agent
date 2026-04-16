@@ -11,6 +11,9 @@ interface Message {
     cancelled?: boolean;
     startTime?: number;
     endTime?: number;
+    reasoning?: string;
+    toolInteractions?: any[];
+    id?: string;
 }
 
 interface ChatContainerProps {
@@ -19,6 +22,7 @@ interface ChatContainerProps {
     statusText: string;
     onStop: () => void;
     onAction: (text: string) => void;
+    showThinking?: boolean;
 }
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({ 
@@ -26,7 +30,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     isTyping, 
     statusText, 
     onStop,
-    onAction
+    onAction,
+    showThinking
 }) => {
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -45,6 +50,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 <ChatMessage 
                     key={i}
                     {...m}
+                    showThinking={showThinking}
                     onAction={onAction}
                 />
             ))}

@@ -70,7 +70,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._debounceTimer = setTimeout(async () => {
             if (this._view) {
                 const filename = path.basename(uri.fsPath);
-                
+
                 // Refresh the managed files list in the webview
                 await this._updateWebviewConfig();
 
@@ -98,7 +98,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-        
+
         // Push updates whenever the view becomes visible
         webviewView.onDidChangeVisibility(() => {
             if (webviewView.visible) {
@@ -114,29 +114,47 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'prompt':
                     {
+                        const messageId = Date.now().toString();
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: data.value });
                         // Immediate feedback
-                        webviewView.webview.postMessage({ type: 'toolStatus', status: '🧬 Activity: Analyzing request...' });
-                        
+                        webviewView.webview.postMessage({ type: 'toolStatus', status: 'Analyzing request...' });
+
                         await this._agent.processMessage(data.value, (content: string, type: string = 'agent') => {
                             if (type === 'toolStatus') {
-                                webviewView.webview.postMessage({ type: 'toolStatus', status: content });
+                                webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
+                            } else if (type === 'toolInteraction') {
+                                try {
+                                    const interactionData = JSON.parse(content);
+                                    webviewView.webview.postMessage({
+                                        type: 'toolInteraction',
+                                        messageId,
+                                        toolCallId: interactionData.id,
+                                        interaction: interactionData.interaction
+                                    });
+                                } catch (e) {
+                                    console.error('Failed to parse tool interaction data:', e);
+                                }
                             } else {
-                                // For the final message (agent type), include usage
-                                const usageTotal = this._agent.getUsageStats().lastTurnUsage;
-                                
-                                webviewView.webview.postMessage({ 
-                                    type: 'addMessage', 
-                                    role: type, 
-                                    content, 
-                                    lastUsage: usageTotal 
+                                // For streaming content, we use a specialized message type
+                                webviewView.webview.postMessage({
+                                    type: 'streamMessage',
+                                    messageId,
+                                    role: type,
+                                    content
                                 });
-                                // AUTO-SAVE history after each response
-                                this._saveHistory();
                             }
                             // Update session total in real-time
                             webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
                         });
+
+                        // Finalize the message with usage stats
+                        const usageTotal = this._agent.getUsageStats().lastTurnUsage;
+                        webviewView.webview.postMessage({
+                            type: 'finalizeStreamedMessage',
+                            messageId,
+                            usage: usageTotal
+                        });
+
                         await this._saveHistory();
                         break;
                     }
@@ -175,14 +193,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (data.geminiApiKey !== undefined) await this.config.update?.('geminiApiKey', data.geminiApiKey);
                         if (data.storagePath) await this.config.update?.('storagePath', data.storagePath);
                         if (data.kongMode) await this.config.update?.('kongMode', data.kongMode);
-                        
+
                         const updatedLocalPorts: Record<string, number> = {};
                         const containerPorts = await this.toolManager.docker.getPortsFromRunningContainers();
 
                         const checkAndSavePort = async (key: string, newValueStr: string) => {
                             const newPort = parseInt(newValueStr);
                             const currentPort = this.config.get<number>(key);
-                            
+
                             if (newPort !== currentPort) {
                                 // Whitelist: if this port is ALREADY the mapping used by Kong/Postgres for this specific service.
                                 const isOwnedByKong = containerPorts[key] === newPort;
@@ -201,7 +219,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (data.adminApiPort) await checkAndSavePort('adminApiPort', data.adminApiPort);
                         if (data.managerGuiPort) await checkAndSavePort('managerGuiPort', data.managerGuiPort);
                         if (data.databasePort) await checkAndSavePort('databasePort', data.databasePort);
-                        
+
                         // Sync updated ports to Docker Compose if in local mode
                         const currentMode = data.kongMode || this.config.get<string>('kongMode');
                         if (currentMode === 'local' && Object.keys(updatedLocalPorts).length > 0) {
@@ -216,16 +234,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         }
 
                         const toBool = (val: any) => val === true || val === 'true';
-                        
-                        if (data.maxReasoningTurns) await this.config.update?.('maxReasoningTurns', Number(data.maxReasoningTurns));
-                        if (data.maxToolCalls) await this.config.update?.('maxToolCalls', Number(data.maxToolCalls));
+
+                        if (data.modelCallLimit) await this.config.update?.('modelCallLimit', Number(data.modelCallLimit));
+                        if (data.toolCallLimit) await this.config.update?.('toolCallLimit', Number(data.toolCallLimit));
+                        if (data.recursionLimit) await this.config.update?.('recursionLimit', Number(data.recursionLimit));
                         if (data.maxContext) await this.config.update?.('maxContext', Number(data.maxContext));
                         if (data.maxAgentTimeout) await this.config.update?.('maxAgentTimeout', Number(data.maxAgentTimeout));
-                        
+
                         if (data.remoteAdminApiUrl) await this.config.update?.('remoteAdminApiUrl', data.remoteAdminApiUrl);
                         if (data.remoteProxyBaseUrl) await this.config.update?.('remoteProxyBaseUrl', data.remoteProxyBaseUrl);
                         if (data.remoteManagerGuiUrl) await this.config.update?.('remoteManagerGuiUrl', data.remoteManagerGuiUrl);
-                        
+
                         if (data.kongWorkspace) await this.config.update?.('kongWorkspace', data.kongWorkspace);
                         if (data.kongAdminToken !== undefined) await this.config.update?.('kongAdminToken', data.kongAdminToken);
                         if (data.skipTlsVerify !== undefined) await this.config.update?.('skipTlsVerify', toBool(data.skipTlsVerify));
@@ -243,8 +262,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             managerGuiPort: 'Manager GUI Port',
                             proxyPort: 'Proxy Port',
                             databasePort: 'Database Port',
-                            maxReasoningTurns: 'Max Reasoning',
-                            maxToolCalls: 'Max Tool Calls',
+                            modelCallLimit: 'Max Model Calls',
+                            toolCallLimit: 'Max Tool Calls',
+                            recursionLimit: 'Max Recursion Limit',
                             maxContext: 'Max Context',
                             maxAgentTimeout: 'Timeout (s)',
                             kongWorkspace: 'Workspace',
@@ -265,7 +285,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         for (const key of diffKeys) {
                             const oldValRaw = oldConfig[key];
                             const newValRaw = data[key];
-                            
+
                             // Only diff if the key is actually present in the incoming data
                             if (newValRaw === undefined) continue;
 
@@ -325,38 +345,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     {
                         const filename = data.filename;
                         // Immediate feedback
-                        webviewView.webview.postMessage({ type: 'toolStatus', status: `🧬 Activity: Analyzing diffs for ${filename}...` });
-                        
+                        webviewView.webview.postMessage({ type: 'toolStatus', status: ` Analyzing diffs for ${filename}...` });
+
                         const storagePath = this.toolManager.getStoragePath();
                         const fullPath = path.join(storagePath, filename);
-                        
+
                         if (fs.existsSync(fullPath)) {
                             const newContent = fs.readFileSync(fullPath, 'utf8');
-                            
+
                             // 1. Check for a Pre-Agent Write snapshot first
                             const snapshot = this.toolManager.storage.getPreWriteSnapshot(filename);
                             const oldContent = snapshot !== undefined ? snapshot : (this.toolManager.getFileCache(filename) || "");
-                            
+
                             // 2. Generate the diff
                             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(diff);
-                            
+
                             const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nPlease review it according to the DECLARATIVE WORKFLOW. **DO NOT CALL SYNC TOOLS**. Stop after showing the preview diff.`;
-                            
+
+                            const messageId = Date.now().toString();
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
                             this.toolManager.updateFileCache(filename, newContent);
 
                             await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
                                 if (type === 'toolStatus') {
-                                    webviewView.webview.postMessage({ type: 'toolStatus', status: content });
+                                    webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
                                 } else {
-                                    const usage = type === 'agent' ? this._agent.getUsageStats().lastTurnUsage : undefined;
-                                    webviewView.webview.postMessage({ type: 'addMessage', role: type, content, lastUsage: usage });
-                                    // AUTO-SAVE
-                                    this._saveHistory();
+                                    webviewView.webview.postMessage({
+                                        type: 'streamMessage',
+                                        messageId,
+                                        role: type,
+                                        content
+                                    });
                                 }
                                 // Update usage stats in real-time
                                 webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
+                            });
+
+                            const usageTotal = this._agent.getUsageStats().lastTurnUsage;
+                            webviewView.webview.postMessage({
+                                type: 'finalizeStreamedMessage',
+                                messageId,
+                                usage: usageTotal
                             });
                         }
                         break;
@@ -397,15 +427,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'resetInstance':
                     {
                         const prompt = "I have requested a full reset of the Kong instance configuration from the UI dashboard. Please explain the consequences and, if I confirm, perform the reset using decK.";
+                        const messageId = Date.now().toString();
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
                         await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
                             if (type === 'toolStatus') {
-                                webviewView.webview.postMessage({ type: 'toolStatus', status: content });
+                                webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
                             } else {
-                                webviewView.webview.postMessage({ type: 'addMessage', role: type, content });
+                                webviewView.webview.postMessage({
+                                    type: 'streamMessage',
+                                    messageId,
+                                    role: type,
+                                    content
+                                });
                             }
                             // Update usage stats in real-time
                             webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
+                        });
+
+                        const usageTotal = this._agent.getUsageStats().lastTurnUsage;
+                        webviewView.webview.postMessage({
+                            type: 'finalizeStreamedMessage',
+                            messageId,
+                            usage: usageTotal
                         });
                         break;
                     }
@@ -425,7 +468,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         await config.update('proxyPort', undefined, vscode.ConfigurationTarget.Global);
                         await config.update('adminApiPort', undefined, vscode.ConfigurationTarget.Global);
                         await config.update('managerGuiPort', undefined, vscode.ConfigurationTarget.Global);
-                        
+
                         await this.toolManager.stop();
                         await this._updateWebviewConfig();
                         vscode.window.showInformationMessage('Kong Gateway Agent configuration has been reset to defaults.');
@@ -478,8 +521,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     private async _updateWebviewConfig() {
         if (this._view) {
-            const history = this._agent.getMessages();
-            
+            const history = this._agent.getMessages().map((msg: any) => ({
+                role: msg.role === 'assistant' ? 'agent' : msg.role,
+                content: msg.content,
+                reasoning: msg.reasoning || '',
+                toolInteractions: msg.toolInteractions || [],
+                complete: true,
+                startTime: msg.startTime || Date.now(),
+                endTime: msg.endTime || Date.now(),
+                lastUsage: msg.lastUsage
+            }));
+
             // Phase 1: INSTANT SYNC (no blockers)
             this._view.webview.postMessage({
                 type: 'setConfig',
@@ -491,6 +543,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 adminApiPort: this.config.get('adminApiPort'),
                 managerGuiPort: this.config.get('managerGuiPort'),
                 databasePort: this.config.get('databasePort') || 5432,
+                modelCallLimit: this.config.get('modelCallLimit') || 10,
+                toolCallLimit: this.config.get('toolCallLimit') || 10,
+                recursionLimit: this.config.get('recursionLimit') || 50,
+                maxContext: this.config.get('maxContext') || 130000,
+                maxAgentTimeout: this.config.get('maxAgentTimeout') || 100,
                 remoteAdminApiUrl: this.config.get('remoteAdminApiUrl'),
                 remoteProxyBaseUrl: this.config.get('remoteProxyBaseUrl'),
                 remoteManagerGuiUrl: this.config.get('remoteManagerGuiUrl'),
@@ -512,7 +569,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         this.toolManager.listStorageFiles(),
                         this.toolManager.storage.findFilesByContent()
                     ]);
-                    
+
                     if (this._view) {
                         this._view.webview.postMessage({
                             type: 'setConfig',
@@ -532,13 +589,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private _getHtmlForWebview(webview: vscode.Webview) {
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'platforms', 'vscode', 'media', 'chat.css'));
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.js'));
-        
+        const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.css'));
+
         return `<!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <link rel="stylesheet" href="${styleUri}">
+                <link rel="stylesheet" href="${codiconsUri}">
             </head>
             <body>
                 <div id="root"></div>

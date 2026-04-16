@@ -170,8 +170,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     )}
 
                     <SubLabel>Agent Limits</SubLabel>
-                    {row('Max Reasoning', <input type="number" value={localConfig.maxReasoningTurns || 10} disabled={disabled} onChange={e => handleChange('maxReasoningTurns', parseInt(e.target.value))} />)}
-                    {row('Max Tool Calls', <input type="number" value={localConfig.maxToolCalls || 10} disabled={disabled} onChange={e => handleChange('maxToolCalls', parseInt(e.target.value))} />)}
+                    {row('Max Model Calls', <input type="number" value={localConfig.modelCallLimit || 10} disabled={disabled} onChange={e => handleChange('modelCallLimit', parseInt(e.target.value))} />)}
+                    {row('Max Tool Calls', <input type="number" value={localConfig.toolCallLimit || 10} disabled={disabled} onChange={e => handleChange('toolCallLimit', parseInt(e.target.value))} />)}
+                    {row('Max Recursion Limit', <input type="number" value={localConfig.recursionLimit || 50} disabled={disabled} onChange={e => handleChange('recursionLimit', parseInt(e.target.value))} />)}
                     {row('Max Context', <input type="number" value={localConfig.maxContext || 130000} disabled={disabled} onChange={e => handleChange('maxContext', parseInt(e.target.value))} />)}
                     {row('Timeout (s)', <input type="number" value={localConfig.maxAgentTimeout || 100} disabled={disabled} onChange={e => handleChange('maxAgentTimeout', parseInt(e.target.value))} />)}
                 </Section>

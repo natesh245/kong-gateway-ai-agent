@@ -1,51 +1,52 @@
-import OpenAI from "openai";
+import { ChatOpenAI } from "@langchain/openai";
+import { z } from "zod";
+
+const classificationSchema = z.object({
+  classification: z.enum(["GREET", "KONGR", "OFFT"]).describe("GREET for Greetings, KONGR for Technical Kong Related, OFFT for Off Topic")
+});
 
 export class PromptAnalyser {
   /**
-   * Analyzes if a user prompt is related to Kong Gateway or off-topic.
-   * Returns 'KONGR' for Kong Related or 'OFFT' for Off Topic, along with token usage.
+   * Analyzes if a user prompt is a greeting, a technical query, or off-topic.
+   * Returns 'GREET', 'KONGR', or 'OFFT', along with token usage.
    */
-  static async classify(prompt: string, openai: OpenAI, model: string): Promise<{ classification: 'KONGR' | 'OFFT', usage?: { inputTokens: number, outputTokens: number } }> {
+  static async classify(prompt: string, model: ChatOpenAI, signal?: AbortSignal): Promise<{ classification: 'GREET' | 'KONGR' | 'OFFT', usage?: { inputTokens: number, outputTokens: number } }> {
     try {
-      const response = await openai.chat.completions.create({
-        model: model,
-        messages: [
-          {
-            role: "system",
-            content: "You are a strict query classifier for a Kong Gateway specialist agent.\n\n" +
-                     "CATEGORIES:\n" +
-                     "- KONGR: Technical queries about Kong Gateway, Docker, decK, GitOps, API management, or local config files. ALSO INCLUDES workflow confirmations, affirmations, and denials (e.g., 'Yes', 'No', 'Proceed', 'Stop', 'Approve', 'Cancel').\n" +
-                     "- OFFT: Jokes, humor, poetry, general trivia, world events, or small talk. \n\n" +
-                     "CRITICAL RULE: Even if a joke or query mentions 'Kong', if the intent is humor or off-topic (e.g. 'tell me a kong joke'), it MUST be classified as OFFT.\n\n" +
-                     "EXAMPLES:\n" +
-                     "- User: 'How do I add a service?' -> KONGR\n" +
-                     "- User: 'Yes' -> KONGR\n" +
-                     "- User: 'Proceed' -> KONGR\n" +
-                     "- User: 'No, cancel' -> KONGR\n" +
-                     "- User: 'Tell me a joke.' -> OFFT\n" +
-                     "- User: 'Tell me a Kong joke.' -> OFFT\n" +
-                     "- User: 'Who is the president?' -> OFFT\n" +
-                     "- User: 'What is decK sync?' -> KONGR\n" +
-                     "- User: 'Write a poem about Kong.' -> OFFT\n\n" +
-                     "Output ONLY the code 'KONGR' or 'OFFT'."
-          },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0,
-        max_tokens: 5
-      });
-
-      const result = response.choices[0]?.message?.content?.trim().toUpperCase() || 'KONGR';
-      const classification = result.includes('OFFT') ? 'OFFT' : 'KONGR';
+      const structuredModel = model.withStructuredOutput(classificationSchema, { includeRaw: true });
       
-      const usage = response.usage ? {
-        inputTokens: response.usage.prompt_tokens,
-        outputTokens: response.usage.completion_tokens
-      } : undefined;
+      const systemPrompt = "You are a query classifier for a Kong Gateway specialist agent.\n\n" +
+                           "CATEGORIES:\n" +
+                           "- GREET: Common greetings (e.g. 'hi', 'hello', 'hello there', 'hey', 'good morning'), simple pleasantries ('how are you doing?'), and isolated affirmations/denials (e.g., 'Yes', 'No', 'Proceed', 'Stop', 'Approve', 'Cancel' when NOT followed by a command).\n" +
+                           "- KONGR: TECHNICAL queries about Kong Gateway, status checks, Docker, decK, GitOps, API management, or local config files. (e.g., 'is kong running?', 'add a service', 'show my routes').\n" +
+                           "- OFFT: Jokes, humor, poetry, general trivia, world events, or extensive small talk. \n\n" +
+                           "CRITICAL RULE: Technical questions MUST be KONGR even if they seem short. Greetings/Pleasantries are strictly GREET.\n\n" +
+                           "EXAMPLES:\n" +
+                           "- User: 'How do I add a service?' -> KONGR\n" +
+                           "- User: 'is kong running?' -> KONGR\n" +
+                           "- User: 'Hi' -> GREET\n" +
+                           "- User: 'Hello there' -> GREET\n" +
+                           "- User: 'Yes' -> GREET\n" +
+                           "- User: 'Tell me a joke.' -> OFFT\n" +
+                           "- User: 'What is decK sync?' -> KONGR\n";
 
-      return { classification, usage };
-    } catch (e) {
-      // Default to allowed if classification fails to ensure service continuity
+      const result = await structuredModel.invoke([
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt }
+      ], { signal }) as any;
+
+      const raw = result.raw;
+      const usage = raw?.usage_metadata || (raw as any)?.additional_kwargs?.tokenUsage;
+
+      return { 
+        classification: result.parsed.classification,
+        usage: usage ? {
+            inputTokens: usage.input_tokens || usage.promptTokens || 0,
+            outputTokens: usage.output_tokens || usage.completionTokens || 0
+        } : undefined
+      };
+    } catch (e: any) {
+      if (e.name === 'AbortError') throw e; 
+      // Default to allowed if classification fails for other reasons
       console.error("[PromptAnalyser] Classification failed:", e);
       return { classification: 'KONGR' };
     }
