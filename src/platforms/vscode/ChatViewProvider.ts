@@ -121,31 +121,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         webviewView.webview.postMessage({ type: 'toolStatus', status: 'Analyzing request...' });
 
                         await this._agent.processMessage(data.value, (content: string, type: string = 'agent') => {
-                            if (type === 'toolStatus') {
-                                webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
-                            } else if (type === 'toolInteraction') {
-                                try {
-                                    const interactionData = JSON.parse(content);
-                                    webviewView.webview.postMessage({
-                                        type: 'toolInteraction',
-                                        messageId,
-                                        toolCallId: interactionData.id,
-                                        interaction: interactionData.interaction
-                                    });
-                                } catch (e) {
-                                    console.error('Failed to parse tool interaction data:', e);
-                                }
-                            } else {
-                                // For streaming content, we use a specialized message type
-                                webviewView.webview.postMessage({
-                                    type: 'streamMessage',
-                                    messageId,
-                                    role: type,
-                                    content
-                                });
-                            }
-                            // Update session total in real-time
-                            webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
+                            this._dispatchAgentUpdate(webviewView, messageId, content, type);
                         });
 
                         // Finalize the message with usage stats
@@ -369,18 +345,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             this.toolManager.updateFileCache(filename, newContent);
 
                             await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
-                                if (type === 'toolStatus') {
-                                    webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
-                                } else {
-                                    webviewView.webview.postMessage({
-                                        type: 'streamMessage',
-                                        messageId,
-                                        role: type,
-                                        content
-                                    });
-                                }
-                                // Update usage stats in real-time
-                                webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
+                                this._dispatchAgentUpdate(webviewView, messageId, content, type);
                             });
 
                             const usageTotal = this._agent.getUsageStats().lastTurnUsage;
@@ -431,18 +396,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         const messageId = Date.now().toString();
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
                         await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
-                            if (type === 'toolStatus') {
-                                webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
-                            } else {
-                                webviewView.webview.postMessage({
-                                    type: 'streamMessage',
-                                    messageId,
-                                    role: type,
-                                    content
-                                });
-                            }
-                            // Update usage stats in real-time
-                            webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
+                            this._dispatchAgentUpdate(webviewView, messageId, content, type);
                         });
 
                         const usageTotal = this._agent.getUsageStats().lastTurnUsage;
@@ -586,6 +540,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+
+    private _dispatchAgentUpdate(webviewView: vscode.WebviewView, messageId: string, content: string, type: string) {
+        if (type === 'toolStatus') {
+            webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
+        } else if (type === 'toolInteraction') {
+            try {
+                const interactionData = JSON.parse(content);
+                webviewView.webview.postMessage({
+                    type: 'toolInteraction',
+                    messageId,
+                    toolCallId: interactionData.id,
+                    interaction: interactionData.interaction
+                });
+            } catch (e) {
+                console.error('Failed to parse tool interaction data:', e);
+            }
+        } else {
+            // For streaming content (agent text or reasoning), use streamMessage
+            webviewView.webview.postMessage({
+                type: 'streamMessage',
+                messageId,
+                role: type,
+                content
+            });
+        }
+        // Update session total in real-time
+        webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
+    }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'src', 'platforms', 'vscode', 'media', 'chat.css'));

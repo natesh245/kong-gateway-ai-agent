@@ -113,7 +113,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoni
                     <div className="reasoning-header" onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}>
                         <div className="reasoning-title">
                             <i className="codicon codicon-beaker"></i>
-                            {(toolInteractions && toolInteractions.length > 0 && !displayReasoning) ? 'Diagnostic Activity' : (complete ? 'Reasoning' : 'Thinking...')}
+                            {(!displayReasoning && toolInteractions && toolInteractions.length > 0) ? 'Diagnostic Activity' : (complete ? 'Reasoning' : 'Thinking...')}
                             {elapsedTime && (
                                 <span className="performance-stats">
                                     {elapsedTime}s | {toolCount} tool{toolCount !== 1 ? 's' : ''}

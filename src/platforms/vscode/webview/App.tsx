@@ -103,11 +103,16 @@ export const App: React.FC = () => {
                             }
                             return newMessages;
                         } else {
+                            // Defensive: Do not allow technical roles to leak into the chat content
+                            if (m.role === 'toolInteraction' || m.role === 'toolStatus') return prev;
+
                             return [...prev, {
                                 id: m.messageId,
                                 role: 'agent',
                                 content: m.role === 'reasoning' ? '' : (m.content || ''),
                                 reasoning: m.role === 'reasoning' ? (m.content || '') : '',
+                                toolInteractions: [],
+                                showThinking: true,
                                 complete: false,
                                 startTime: Date.now()
                             } as any];
@@ -260,6 +265,7 @@ export const App: React.FC = () => {
                                     content: msg.content,
                                     reasoning: msg.reasoning || "",
                                     toolInteractions: msg.toolInteractions || [],
+                                    showThinking: true,
                                     complete: true,
                                     startTime: msg.startTime || Date.now(),
                                     endTime: msg.endTime || Date.now(),

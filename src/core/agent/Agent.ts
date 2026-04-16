@@ -74,8 +74,8 @@ const SYSTEM_PROMPT =
 
     "- Use Markdown tables for technical summaries.\n\n" +
     "### 7. TOOL CALL EFFICIENCY (CRITICAL):\n" +
-    "- Optimize for tool call limits. Do **NOT** call `check_existing_containers`, `get_instance_details`, or `get_kong_status` when executing `preview_sync_diff`, `sync_to_kong_using_deck`, `export_live_to_storage_file`, or `reset_kong_instance`.\n" +
-    "- Only call these diagnostic tools once per session or if you have zero information about the environment.";
+    "- Only call these diagnostic tools once per session or if you have zero information about the environment.\n" +
+    "- **NO REPETITION**: If you have already called `validate_kong_config` or `preview_sync_diff` for the current configuration state, do NOT call them again in the same turn. Summarize the results and proceed or stop.";
 
 
 export class Agent {
@@ -488,6 +488,11 @@ export class Agent {
             this.abortController = new AbortController();
             this.isCancelled = false;
 
+            let fullContent = "";
+            let fullReasoning = "";
+            let collectedToolCalls: any[] = [];
+            let collectedToolResults: any[] = [];
+
             const kongMode = config.get<string>('kongMode') || 'local';
             const proxyPort = config.get<number>('proxyPort') || 8000;
             const adminPort = config.get<number>('adminApiPort') || 8001;
@@ -518,56 +523,51 @@ export class Agent {
             }
 
             try {
-                // Build the message array for the agent invocation.
-                // We inject context header as a SystemMessage just before the last user message.
-                const apiMessages: BaseMessage[] = [];
-                const rawMessages = this.messages.filter((m: any) =>
-                    (m as any).role !== 'thinking' &&
-                    (m as any).role !== 'off-topic' &&
-                    (m as any).category !== 'off-topic'
-                );
+                    // Prepare API history for the model
+                    const apiMessages: BaseMessage[] = [];
+                    const rawMessages = this.messages.filter((m: any) =>
+                        (m as any).role !== 'thinking' &&
+                        (m as any).role !== 'off-topic' &&
+                        (m as any).category !== 'off-topic'
+                    );
 
-                let lastUserIdx = -1;
-                for (let i = rawMessages.length - 1; i >= 0; i--) {
-                    if (rawMessages[i] instanceof HumanMessage) {
-                        lastUserIdx = i;
-                        break;
+                    let lastUserIdx = -1;
+                    for (let i = rawMessages.length - 1; i >= 0; i--) {
+                        if (rawMessages[i] instanceof HumanMessage) {
+                            lastUserIdx = i;
+                            break;
+                        }
                     }
-                }
 
-                for (let i = 0; i < rawMessages.length; i++) {
-                    const m = rawMessages[i];
-                    // Skip the original system prompt — createAgent injects it via systemPrompt param
-                    if (i === 0 && m instanceof SystemMessage) continue;
-                    if (i === lastUserIdx && contextHeader) {
-                        apiMessages.push(new SystemMessage(contextHeader));
+                    for (let i = 0; i < rawMessages.length; i++) {
+                        const m = rawMessages[i];
+                        // Skip the original system prompt — createAgent injects it via systemPrompt param
+                        if (i === 0 && m instanceof SystemMessage) continue;
+                        if (i === lastUserIdx && contextHeader) {
+                            apiMessages.push(new SystemMessage(contextHeader));
+                        }
+                        apiMessages.push(m);
                     }
-                    apiMessages.push(m);
-                }
 
-                const recursionLimit = config.get<number>('recursionLimit') || 50;
+                    const recursionLimit = config.get<number>('recursionLimit') || 50;
 
-                // Stream with both "messages" (token-level) and "updates" (step-level) modes
-                // recursionLimit is set high as a safety net — the real limits are enforced
-                // by modelCallLimitMiddleware and toolCallLimitMiddleware
-                const stream = await this.langchainAgent.stream(
-                    { messages: apiMessages },
-                    {
-                        streamMode: ["messages", "updates"] as any,
-                        signal: this.abortController?.signal,
-                        recursionLimit: recursionLimit,
-                    }
-                );
+                    // Stream with both "messages" (token-level) and "updates" (step-level) modes
+                    // recursionLimit is set high as a safety net — the real limits are enforced
+                    // by modelCallLimitMiddleware and toolCallLimitMiddleware
+                    const stream = await this.langchainAgent.stream(
+                        { messages: apiMessages },
+                        {
+                            streamMode: ["messages", "updates"] as any,
+                            signal: this.abortController?.signal,
+                            recursionLimit: recursionLimit,
+                        }
+                    );
 
-                let fullContent = "";
-                let fullReasoning = "";
-                let isInsideThought = false;
-                let streamBuffer = "";
-                let collectedToolCalls: any[] = [];
-                let collectedToolResults: any[] = [];
-                let toolNames = new Map<string, string>(); // Reliable tracking for tool names
+                    let isInsideThought = false;
+                    let streamBuffer = "";
+                    let toolNames = new Map<string, string>(); // Reliable tracking for tool names
 
-                for await (const [mode, chunk] of stream) {
+                    for await (const [mode, chunk] of stream) {
                     if (this.isCancelled) break;
 
                     if (mode === "messages") {
@@ -589,27 +589,12 @@ export class Agent {
                         for (const tc of toolCalls) {
                             if (tc.name) {
                                 toolNames.set(tc.id, tc.name);
-                                onUpdate(JSON.stringify({
-                                    id: tc.id,
-                                    interaction: {
-                                        name: tc.name,
-                                        args: tc.args,
-                                        status: 'started'
-                                    }
-                                }), 'toolInteraction');
                             }
                         }
 
                         for (const tcc of toolCallChunks) {
                             if (tcc.name && tcc.id) {
                                 toolNames.set(tcc.id, tcc.name);
-                                onUpdate(JSON.stringify({
-                                    id: tcc.id,
-                                    interaction: {
-                                        name: tcc.name,
-                                        status: 'started'
-                                    }
-                                }), 'toolInteraction');
                             }
                         }
 
@@ -787,8 +772,28 @@ export class Agent {
             } catch (e: any) {
                 if (e.name === 'AbortError' || this.isCancelled) return;
                 // Handle LangGraph recursion limit error gracefully
-                if (e.message?.includes('Recursion') || e.name === 'GraphRecursionError') {
-                    onUpdate(`⚠️ **Agent Limit Reached**: The agent exceeded the maximum number of reasoning steps. Please try a simpler request or clear the chat to start fresh.`);
+                if (e.message?.includes('Recursion') || e.name === 'GraphRecursionError' || e.message?.includes('call limit reached')) {
+                    const limitMsg = `⚠️ **Agent Limit Reached**: The agent exceeded the maximum number of reasoning steps or model calls for this turn. This usually happens during complex configuration reviews. Please try a simpler request or clear the chat to start fresh.`;
+                    
+                    // CRITICAL: Persist partial results before exiting! 
+                    // This ensures the agent 'remembers' work done in this turn for the next user message.
+                    if (collectedToolCalls.length > 0) {
+                        const partialAiMsg = new AIMessage({
+                            content: fullContent || "Reasoning interrupted by safety limit...",
+                            tool_calls: collectedToolCalls,
+                            additional_kwargs: { reasoning: fullReasoning }
+                        });
+                        this.messages.push(partialAiMsg);
+
+                        for (const tr of collectedToolResults) {
+                            this.messages.push(new ToolMessage({
+                                tool_call_id: tr.id,
+                                content: tr.content
+                            }));
+                        }
+                    }
+
+                    onUpdate(limitMsg);
                     return;
                 }
                 onUpdate(`Agent Error: ${e.message}`);
