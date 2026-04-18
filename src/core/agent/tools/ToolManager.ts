@@ -167,7 +167,12 @@ export class ToolManager {
    */
   public async syncWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
-    if (lastUserContent === 'yes' || lastUserContent.includes('proceed') || lastUserContent.includes('apply')) {
+    const isApproved = lastUserContent === 'yes' || 
+                       lastUserContent.includes('proceed') || 
+                       lastUserContent.includes('confirm sync') || 
+                       lastUserContent.includes('apply');
+
+    if (isApproved) {
       const hasValidated = ctx.recentHistoryHas('valid') || ctx.recentHistoryHas('success');
       const hasDiffed = ctx.recentHistoryHas('diff') || ctx.recentHistoryHas('no differences');
 
@@ -176,7 +181,7 @@ export class ToolManager {
       }
       return await this.syncWithDeck(filename, ctx.abortSignal);
     }
-    return "SAFETY_REQUIRED: I cannot execute sync yet. Explain the validation/diff inside <thought> tags, then ask for confirmation with '[APPROVAL_REQUIRED]'.";
+    return "SAFETY_REQUIRED: I cannot execute sync yet. Please review the validation/diff above and confirm by saying 'yes' or 'confirm sync'. Use '[APPROVAL_REQUIRED]'.";
   }
 
   /**
@@ -216,14 +221,17 @@ export class ToolManager {
    */
   public async exportWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
-    if (lastUserContent === 'yes' || lastUserContent.includes('confirm')) {
+    const isApproved = lastUserContent.includes('confirm export') || 
+                       (lastUserContent === 'yes' && ctx.recentHistoryHasToolCall('preview_export_diff', 2));
+
+    if (isApproved) {
       const hasDiffed = ctx.recentHistoryHasToolCall('preview_export_diff');
       if (!hasDiffed) {
         return "SAFETY_REQUIRED: I cannot export without first showing you the diff. I must run 'preview_export_diff' first.";
       }
       return await this.dumpWithDeck(filename, ctx.abortSignal);
     }
-    return "SAFETY_REQUIRED: I cannot export yet. Show the 'preview_export_diff' results and ask for confirmation with '[APPROVAL_REQUIRED]'.";
+    return "SAFETY_REQUIRED: I cannot export without your explicit confirmation. Please review the 'preview_export_diff' results and say 'confirm export' or 'yes'. Use '[APPROVAL_REQUIRED]'.";
   }
 
   /**

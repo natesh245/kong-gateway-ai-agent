@@ -29,11 +29,20 @@ export function buildAgentTools(ctx: ToolContext) {
     // --- Helpers for safety gate checks ---
     function getLastUserContent(): string {
         const messages = ctx.getMessages();
-        const lastUser = [...messages].reverse().find(m => m instanceof HumanMessage);
+        // Only consider the absolute most recent HumanMessage
+        const lastHumanIndex = [...messages].reverse().findIndex(m => m instanceof HumanMessage);
+
+        if (lastHumanIndex === -1 || lastHumanIndex > 2) {
+            // If the last human interaction is too far back (more than 2 messages ago), 
+            // it's likely "consumed" or stale.
+            return "";
+        }
+
+        const lastUser = [...messages].reverse()[lastHumanIndex];
         return SanitizationUtil.stripContext(lastUser?.content as string || "").toLowerCase();
     }
 
-    function recentHistoryHas(keyword: string, lookback = 30): boolean {
+    function recentHistoryHas(keyword: string, lookback = 15): boolean {
         const messages = ctx.getMessages();
         const history = messages.slice(-lookback);
         return history.some((m: any) =>
@@ -43,7 +52,7 @@ export function buildAgentTools(ctx: ToolContext) {
         );
     }
 
-    function recentHistoryHasToolCall(toolName: string, lookback = 30): boolean {
+    function recentHistoryHasToolCall(toolName: string, lookback = 15): boolean {
         const messages = ctx.getMessages();
         const history = messages.slice(-lookback);
         return history.some((m: any) =>
@@ -89,7 +98,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "get_kong_status",
-                description: "LOCAL KONG MODE ONLY. Runs 'docker-compose ps' to check if the Kong and Postgres containers are running and healthy. NEVER call this tool when operating in REMOTE KONG MODE. Use 'verify_connectivity' for Admin API health checks.",
+                description: "LOCAL KONG MODE ONLY. Checks if Kong Docker containers are running. NEVER call this tool when operating in REMOTE KONG MODE. DO NOT call this tool before a preview or sync if you have recently verified connectivity.",
                 schema: z.object({}),
             }
         ),
@@ -143,7 +152,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "verify_connectivity",
-                description: "Pings the Kong Admin API and Proxy to verify they are reachable and ready. Works in both LOCAL and REMOTE modes.",
+                description: "Pings the Kong Admin API and Proxy to verify they are reachable. Works in both LOCAL and REMOTE modes. DO NOT call this tool before a preview or sync as those tools perform their own connectivity checks.",
                 schema: z.object({}),
             }
         ),
@@ -165,7 +174,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "get_instance_details",
-                description: "Fetches technical details like Kong version, database engine, and runtime configuration. Works in both LOCAL (includes Docker status) and REMOTE modes.",
+                description: "Fetches technical details like Kong version, database engine, and runtime configuration. Works in both LOCAL and REMOTE modes. DO NOT call this tool before a preview or sync unless you have zero information about the environment.",
                 schema: z.object({}),
             }
         ),
@@ -254,7 +263,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "preview_sync_diff",
-                description: "Compares your local configuration file against the live Kong Gateway to show the exact differences (Adds, Deletes, Updates) that would occur if you synced. This is a read-only preview. NEVER automatically suggest or call 'sync_to_kong_using_deck' after this; you must wait for the user to decide to sync themselves.",
+                description: "Compares your local configuration file against the live Kong Gateway to show the exact differences. This is a read-only preview that internally verifies connectivity; do NOT call auxiliary diagnostic tools (Scan/Status/Connect) before / after this. Do not sync or export the changes after this without user approval. You can suggest to sync changes as the next step",
                 schema: z.object({
                     filename: z.string(),
                 }),
@@ -282,7 +291,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "preview_export_diff",
-                description: "Compares the LIVE Kong Gateway configuration against your local file (e.g., kong.yml) to show how the local file will be updated. This is a read-only preview of a 'pull' operation. MANDATORY: You MUST run this and show the user the diff before asking for approval to export. NEVER automatically suggest or call 'export_live_to_storage_file' after this; wait for the user to decide.",
+                description: "Compares the LIVE Kong Gateway configuration against your local file to show how it will be updated. This is a read-only preview that internally verifies connectivity; do NOT call auxiliary diagnostic tools (Scan/Status/Connect) before / after this.Do not sync or export the changes after this without user approval. You can suggest to export config as next step",
                 schema: z.object({
                     filename: z.string().optional().default("kong.yml"),
                 }),
