@@ -509,6 +509,7 @@ export class Agent {
             const contextHeader = `🚨 **STRICT OPERATION BOUNDARY**: You are a DEDICATED Kong Gateway Specialist. \n` +
                 `- **REFUSE** all non-Kong queries immediately.\n` +
                 `- **MANDATORY REASONING**: Before Every Response or Tool Call, you MUST think inside <thought>...</thought> tags. \n` +
+                `- **TRUST AUTO-DISCOVERY**: These files represent the absolute source of truth. NEVER call list_storage_files while these are present.\n` +
                 `- Current Mode: **${kongMode.toUpperCase()}**\n` +
                 `- Proxy Port: ${proxyPort} | Admin API Port: ${adminPort} | Manager Port: ${managerPort}\n` +
                 `- Detected Compose: ${activeCompose}\n` +
@@ -528,8 +529,14 @@ export class Agent {
             try {
                 // Prepare API history for the model
                 const apiMessages: BaseMessage[] = [];
+                
+                // UNIFY Global Prompt + Dynamic Context into a single authoritative instruction
+                const unifiedSystemPrompt = `${SYSTEM_PROMPT}\n\n${contextHeader}`;
+                apiMessages.push(new SystemMessage(unifiedSystemPrompt));
+
                 const rawMessages = this.messages.filter((m: any) =>
                     (m as any).role !== 'thinking' &&
+                    !(m instanceof SystemMessage) && // We handle system prompt explicitly above
                     (m as any).role !== 'off-topic' &&
                     (m as any).category !== 'off-topic'
                 );
@@ -543,13 +550,7 @@ export class Agent {
                 }
 
                 for (let i = 0; i < rawMessages.length; i++) {
-                    const m = rawMessages[i];
-                    // Skip the original system prompt — createAgent injects it via systemPrompt param
-                    if (i === 0 && m instanceof SystemMessage) continue;
-                    if (i === lastUserIdx && contextHeader) {
-                        apiMessages.push(new SystemMessage(contextHeader));
-                    }
-                    apiMessages.push(m);
+                    apiMessages.push(rawMessages[i]);
                 }
 
                 const recursionLimit = config.get<number>('recursionLimit') || 50;

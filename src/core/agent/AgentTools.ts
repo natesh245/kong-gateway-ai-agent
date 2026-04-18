@@ -98,7 +98,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "get_kong_status",
-                description: "LOCAL KONG MODE ONLY. Checks if Kong Docker containers are running. NEVER call this tool when operating in REMOTE KONG MODE. DO NOT call this tool before a preview or sync if you have recently verified connectivity.",
+                description: "LOCAL KONG MODE ONLY. Checks if Kong Docker containers are running. NEVER call this tool when operating in REMOTE KONG MODE. DO NOT call this tool before a preview or sync if you have recently verified connectivity. NEVER call this tool as a concluding 'heartbeat' check.",
                 schema: z.object({}),
             }
         ),
@@ -198,7 +198,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "list_storage_files",
-                description: "Lists all files (YAML, JSON, Docker Compose, etc.) in the Agent's local storage directory. Use this to browse the environment and identify which configuration files are available for editing or sync.",
+                description: "Lists all files (YAML, JSON, Docker Compose, etc.) in the Agent's local storage directory. Use this to orient yourself at the START of a turn. NEVER call this tool as the concluding action of a turn if you already know the file names from earlier turns.",
                 schema: z.object({}),
             }
         ),
