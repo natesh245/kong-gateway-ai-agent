@@ -138,6 +138,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
                 case 'updateConfig':
                     {
+                        const toBool = (val: any) => val === true || val === 'true';
+                        
                         // 1. Capture Old Config for Diffing
                         const oldConfig: Record<string, any> = {
                             provider: this.config.get('provider'),
@@ -161,13 +163,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             kongWorkspace: this.config.get('kongWorkspace'),
                             showThinking: this.config.get('showThinking'),
                             openRouterApiKey: this.config.get('openRouterApiKey'),
-                            geminiApiKey: this.config.get('geminiApiKey')
+                            geminiApiKey: this.config.get('geminiApiKey'),
+                            langChainTracing: this.config.get('langChainTracing'),
+                            langSmithApiKey: this.config.get('langSmithApiKey'),
+                            langSmithProject: this.config.get('langSmithProject'),
+                            langSmithEndpoint: this.config.get('langSmithEndpoint')
                         };
 
                         if (data.provider) await this.config.update?.('provider', data.provider);
                         if (data.model) await this.config.update?.('model', data.model);
                         if (data.openRouterApiKey !== undefined) await this.config.update?.('openRouterApiKey', data.openRouterApiKey);
                         if (data.geminiApiKey !== undefined) await this.config.update?.('geminiApiKey', data.geminiApiKey);
+                        if (data.langChainTracing !== undefined) await this.config.update?.('langChainTracing', toBool(data.langChainTracing));
+                        if (data.langSmithApiKey !== undefined) await this.config.update?.('langSmithApiKey', data.langSmithApiKey);
+                        if (data.langSmithProject !== undefined) await this.config.update?.('langSmithProject', data.langSmithProject);
+                        if (data.langSmithEndpoint !== undefined) await this.config.update?.('langSmithEndpoint', data.langSmithEndpoint);
                         if (data.storagePath) await this.config.update?.('storagePath', data.storagePath);
                         if (data.kongMode) await this.config.update?.('kongMode', data.kongMode);
 
@@ -210,7 +220,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             }
                         }
 
-                        const toBool = (val: any) => val === true || val === 'true';
+
 
                         if (data.modelCallLimit) await this.config.update?.('modelCallLimit', Number(data.modelCallLimit));
                         if (data.toolCallLimit) await this.config.update?.('toolCallLimit', Number(data.toolCallLimit));
@@ -254,7 +264,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             remoteProxyBaseUrl: 'Remote Proxy URL',
                             remoteManagerGuiUrl: 'Remote Manager URL',
                             openRouterApiKey: 'OpenRouter API Key',
-                            geminiApiKey: 'Gemini API Key'
+                            geminiApiKey: 'Gemini API Key',
+                            langChainTracing: 'Enable Tracing',
+                            langSmithApiKey: 'LangSmith API Key',
+                            langSmithProject: 'LangSmith Project',
+                            langSmithEndpoint: 'LangSmith Endpoint'
                         };
 
                         const changes: string[] = [];
@@ -512,6 +526,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 gitRemoteUrl: this.config.get('gitRemoteUrl') || '',
                 autoCommit: this.config.get('autoCommit') === true,
                 showThinking: this.config.get('showThinking') !== false,
+                langChainTracing: this.config.get('langChainTracing') === true,
+                langSmithApiKey: this.config.get('langSmithApiKey') || '',
+                langSmithProject: this.config.get('langSmithProject') || 'kong-gateway-agent',
+                langSmithEndpoint: this.config.get('langSmithEndpoint') || 'https://api.smith.langchain.com',
                 usageStats: this._agent.getUsageStats(),
                 ...(skipHistory ? {} : { history: history })
             });

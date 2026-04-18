@@ -185,6 +185,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     </div>
                 </Section>
 
+                {/* ── 1.5 OBSERVABILITY ── */}
+                <Section title="Observability" icon="🔭">
+                    <div className="settings-row">
+                        <label style={{ width: '80px' }}></label>
+                        <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flex: 1 }}>
+                            <input type="checkbox" checked={localConfig.langChainTracing === true} onChange={e => handleChange('langChainTracing', e.target.checked)} disabled={disabled} />
+                            🚀 Enable LangSmith Tracing
+                        </label>
+                    </div>
+                    {row('Smith API Key',
+                        <input disabled={disabled || !localConfig.langChainTracing} type="password" value={localConfig.langSmithApiKey || ''}
+                            placeholder={localConfig.langChainTracing ? "Paste API Key..." : "Tracing Disabled"}
+                            onChange={e => handleChange('langSmithApiKey', e.target.value)} />
+                    )}
+                    {row('Project Name',
+                        <input disabled={disabled || !localConfig.langChainTracing} type="text" value={localConfig.langSmithProject || 'kong-gateway-agent'}
+                            onChange={e => handleChange('langSmithProject', e.target.value)} />
+                    )}
+                    {row('Endpoint',
+                        <input disabled={disabled || !localConfig.langChainTracing} type="text" value={localConfig.langSmithEndpoint || 'https://api.smith.langchain.com'}
+                            onChange={e => handleChange('langSmithEndpoint', e.target.value)} />
+                    )}
+                </Section>
+
                 {/* ── 2. KONG GATEWAY SETTINGS ── */}
                 <Section title="Kong Gateway" icon="🦍">
                     {row('Mode',

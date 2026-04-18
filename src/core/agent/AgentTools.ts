@@ -243,14 +243,69 @@ export function buildAgentTools(ctx: ToolContext) {
             }
         ),
 
-        // --- decK CLI ---
+        // --- decK CLI / APIOps Transformations ---
+        tool(
+            async ({ input, output }) => {
+                return await toolManager.openapi2kong(input, output, ctx.abortSignal);
+            },
+            {
+                name: "openapi_to_kong",
+                description: "APIOPS: TRANSFORMATION. Converts an OpenAPI Specification (OAS/Swagger) file into a decK declarative configuration file. Use this at the start of a 'Design-First' workflow. You must provide the input filename and a name for the generated output file (e.g., kong.yml).",
+                schema: z.object({
+                    input: z.string().describe("The OAS file to convert"),
+                    output: z.string().describe("The name of the generated Kong config file"),
+                }),
+            }
+        ),
+
+        tool(
+            async ({ filename }) => {
+                return await toolManager.lint(filename, ctx.abortSignal);
+            },
+            {
+                name: "lint_kong_config",
+                description: "APIOPS: GOVERNANCE. Lints a local Kong configuration file against best practices and governance rules. Returns a report of any recommendations or rule violations. Use this before validation or sync to ensure high configuration quality.",
+                schema: z.object({
+                    filename: z.string().describe("The configuration file to lint"),
+                }),
+            }
+        ),
+
+        tool(
+            async ({ filenames, output }) => {
+                return await toolManager.merge(filenames, output, ctx.abortSignal);
+            },
+            {
+                name: "merge_kong_configs",
+                description: "APIOPS: BUILD. Merges multiple Kong configuration files into a single unified state file. Use this to combine modular configurations or merge global settings with team-specific configs.",
+                schema: z.object({
+                    filenames: z.array(z.string()).describe("List of files to merge"),
+                    output: z.string().describe("The name of the merged output file"),
+                }),
+            }
+        ),
+
+        tool(
+            async ({ filename, patchFile }) => {
+                return await toolManager.patch(filename, patchFile, ctx.abortSignal);
+            },
+            {
+                name: "patch_kong_config",
+                description: "APIOPS: BUILD. Applies a patch file to an existing Kong configuration file. Use this for environment-specific adjustments or programmatic mass-updates to existing state files.",
+                schema: z.object({
+                    filename: z.string().describe("The configuration file to patch"),
+                    patchFile: z.string().describe("The patch file containing the changes"),
+                }),
+            }
+        ),
+
         tool(
             async ({ filename }) => {
                 return await toolManager.validateWithDeck(filename || "kong.yml");
             },
             {
                 name: "validate_kong_config",
-                description: "Uses decK to validate the schema and syntax of a local Kong configuration file (e.g., kong.yml). It returns a detailed report of any structural errors, missing fields, or invalid plugin configurations found. NEVER automatically suggest or call 'preview_sync_diff' or 'sync_to_kong_using_deck' after this; wait for user input.",
+                description: "APIOPS: VALIDATE. Uses decK to validate the schema and syntax of a local Kong configuration file. This provides a deep structural check to ensure the file is ready for a gateway sync. MANDATORY: Run this before 'preview_sync_diff'.",
                 schema: z.object({
                     filename: z.string(),
                 }),

@@ -37,6 +37,7 @@ export class Agent {
     private isCancelled: boolean = false;
     private abortController: AbortController | null = null;
     private toolCallCount = 0;
+    private uniqueToolCallIds: Set<string> = new Set(); // NEW: Deduplicate tool calls per turn
     private lastAnyToolTriggeredSafety = false;
     private usageStats = {
         inputTokens: 0,
@@ -201,31 +202,80 @@ export class Agent {
         const provider = config.get<string>('provider') || 'openrouter';
         const modelName = config.get<string>('model') || "openai/gpt-4o";
 
-        let baseURL = "https://openrouter.ai/api/v1";
-        let apiKey = config.get<string>('openRouterApiKey');
+        // Native Observability Injection (replaces .env)
+        if (config.get<boolean>('langChainTracing')) {
+            const apiKey = config.get<string>('langSmithApiKey');
+            const project = config.get<string>('langSmithProject') || "kong-gateway-agent";
+            const endpoint = config.get<string>('langSmithEndpoint') || "https://api.smith.langchain.com";
+
+            // Support both prefixes for maximum compatibility
+            process.env.LANGCHAIN_TRACING_V2 = "true";
+            process.env.LANGSMITH_TRACING = "true";
+            
+            process.env.LANGCHAIN_API_KEY = apiKey;
+            process.env.LANGSMITH_API_KEY = apiKey;
+            
+            process.env.LANGCHAIN_PROJECT = project;
+            process.env.LANGSMITH_PROJECT = project;
+            
+            process.env.LANGCHAIN_ENDPOINT = endpoint;
+            process.env.LANGSMITH_ENDPOINT = endpoint;
+        }
 
         if (provider === 'gemini') {
-            baseURL = "https://generativelanguage.googleapis.com/v1beta/openai/";
-            apiKey = config.get<string>('geminiApiKey');
-        }
-
-        if (!apiKey) {
-            this.platform.showErrorMessage(`Kong Agent: ${provider.toUpperCase()} API key is missing.`);
-            return false;
-        }
-
-        this.model = new ChatOpenAI({
-            modelName: modelName,
-            temperature: 0,
-            apiKey: apiKey,
-            configuration: {
-                baseURL: baseURL,
-                defaultHeaders: provider === 'openrouter' ? {
-                    "HTTP-Referer": this.platform.getAppReferer(),
-                    "X-Title": this.platform.getAppName()
-                } : {}
+            const apiKey = config.get<string>('geminiApiKey');
+            if (!apiKey) {
+                this.platform.showErrorMessage("Kong Agent: Gemini API key is missing.");
+                return false;
             }
-        });
+            try {
+                const { ChatGoogleGenerativeAI } = require("@langchain/google-genai");
+                this.model = new ChatGoogleGenerativeAI({
+                    modelName: modelName,
+                    apiKey: apiKey,
+                    temperature: 0,
+                    maxOutputTokens: 4096,
+                }) as any;
+            } catch (e) {
+                this.platform.showErrorMessage("Kong Agent: @langchain/google-genai package is not yet installed. Please run 'npm install @langchain/google-genai'.");
+                return false;
+            }
+        } else if (provider === 'openrouter') {
+            const apiKey = config.get<string>('openRouterApiKey');
+            if (!apiKey) {
+                this.platform.showErrorMessage("Kong Agent: OpenRouter API key is missing.");
+                return false;
+            }
+            try {
+                const { ChatOpenRouter } = require("@langchain/openrouter");
+                this.model = new ChatOpenRouter({
+                    modelName: modelName,
+                    apiKey: apiKey,
+                    temperature: 0,
+                    configuration: {
+                        baseURL: "https://openrouter.ai/api/v1",
+                        defaultHeaders: {
+                            "HTTP-Referer": this.platform.getAppReferer(),
+                            "X-Title": this.platform.getAppName()
+                        }
+                    }
+                }) as any;
+            } catch (e) {
+                // Fallback to legacy ChatOpenAI if ChatOpenRouter isn't ready
+                this.model = new ChatOpenAI({
+                    modelName: modelName,
+                    apiKey: apiKey,
+                    temperature: 0,
+                    configuration: {
+                        baseURL: "https://openrouter.ai/api/v1",
+                        defaultHeaders: {
+                            "HTTP-Referer": this.platform.getAppReferer(),
+                            "X-Title": this.platform.getAppName()
+                        }
+                    }
+                });
+            }
+        }
 
         return true;
     }
@@ -236,9 +286,9 @@ export class Agent {
     private buildAgent(): void {
         if (!this.model) return;
 
-        const modelCallLimit = this.config.get<number>('modelCallLimit') || 10;
-        const toolCallLimit = this.config.get<number>('toolCallLimit') || 10;
-        const recursionLimit = this.config.get<number>('recursionLimit') || 50;
+        const modelCallLimit = this.config.get<number>('modelCallLimit') || 5;
+        const toolCallLimit = this.config.get<number>('toolCallLimit') || 5;
+        const recursionLimit = this.config.get<number>('recursionLimit') || 15;
 
         const toolCtx: ToolContext = {
             toolManager: this.toolManager,
@@ -260,13 +310,11 @@ export class Agent {
                 }),
                 toolCallLimitMiddleware({
                     runLimit: toolCallLimit,
-                    exitBehavior: 'continue',
+                    exitBehavior: 'end',
                 }),
             ],
         });
 
-        // Set recursionLimit at the agent level — stream-level config alone
-        // may not be honored by all graph implementations
         this.langchainAgent = rawAgent.withConfig({ recursionLimit: recursionLimit });
     }
 
@@ -371,6 +419,7 @@ export class Agent {
         }
 
         this.toolCallCount = 0;
+        this.uniqueToolCallIds.clear();
         this.usageStats.lastTurnUsage = { inputTokens: 0, outputTokens: 0, toolCalls: 0 };
         if (!this.initClient() || !this.model) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
@@ -524,32 +573,32 @@ export class Agent {
                 for await (const [mode, chunk] of stream) {
                     if (this.isCancelled) break;
 
+                    // --- LIVE WATCHDOG: Mid-stream termination for context ---
+                    const currentTotal = this.usageStats.totalTokens;
+                    if (currentTotal >= maxContext) {
+                        onUpdate("\n\n⚠️ **Context Watchdog Triggered**: Context limit reached during reasoning. Aborting to prevent instability.");
+                        this.cancel();
+                        break;
+                    }
+
+                    // (Tool call check moved inside the updates loop for immediate deduplicated counting)
+
                     if (mode === "messages") {
                         // Token-level streaming: [message_chunk, metadata]
                         const [token, metadata] = chunk as [any, any];
                         const type = (token as any)._getType?.() || (token as any).type;
                         const nodeType = metadata?.langgraph_node;
 
-                        // Legacy Filter: Block raw Tool and Human chunks from the token stream.
-                        // These are already handled in a structured way by the 'updates' mode.
-                        if (type === "tool" || type === "human" || (token as any).tool_call_id || nodeType === "tools") {
-                            continue;
-                        }
-
                         // Capture tool names aggressively from both full tool_calls and streamed tool_call_chunks
                         const toolCalls = (token as any).tool_calls || [];
                         const toolCallChunks = (token as any).tool_call_chunks || [];
 
                         for (const tc of toolCalls) {
-                            if (tc.name) {
-                                toolNames.set(tc.id, tc.name);
-                            }
+                            if (tc.name) toolNames.set(tc.id, tc.name);
                         }
 
                         for (const tcc of toolCallChunks) {
-                            if (tcc.name && tcc.id) {
-                                toolNames.set(tcc.id, tcc.name);
-                            }
+                            if (tcc.name && tcc.id) toolNames.set(tcc.id, tcc.name);
                         }
 
                         // Identify the target container: ONLY AI messages go to the main chat.
@@ -577,7 +626,7 @@ export class Agent {
                                         setBuffer: (v: string) => { streamBuffer = v; },
                                         appendContent: (v: string) => { fullContent += v; },
                                         appendReasoning: (v: string) => { fullReasoning += v; },
-                                        targetType // Pass the inferred type
+                                        targetType
                                     });
                                 }
                             }
@@ -593,21 +642,27 @@ export class Agent {
                                     setBuffer: (v: string) => { streamBuffer = v; },
                                     appendContent: (v: string) => { fullContent += v; },
                                     appendReasoning: (v: string) => { fullReasoning += v; },
-                                    targetType // Pass the inferred type
+                                    targetType
                                 });
                             }
                         }
 
-                        // Handle native reasoning metadata from additional_kwargs
+                        // Support for specialized reasoning chunks (OpenRouter / Gemini)
                         const nativeReasoning = token.additional_kwargs?.reasoning_content ||
                             token.additional_kwargs?.thought ||
                             token.additional_kwargs?.reasoning ||
                             (token as any).reasoning_content ||
                             (token as any).thought ||
                             (token as any).reasoning;
+
                         if (nativeReasoning) {
                             fullReasoning += nativeReasoning;
                             onUpdate(nativeReasoning, 'reasoning');
+                        }
+
+                        // Legacy Filter: Block raw Tool and Human chunks from the token stream.
+                        if (type === "tool" || type === "human" || (token as any).tool_call_id || nodeType === "tools") {
+                            continue;
                         }
 
                         // Track usage from metadata
@@ -630,8 +685,20 @@ export class Agent {
                                 // AI message with tool calls
                                 if (msg.tool_calls && msg.tool_calls.length > 0) {
                                     for (const tc of msg.tool_calls) {
-                                        this.toolCallCount++;
-                                        this.usageStats.lastTurnUsage.toolCalls++;
+                                        // ONLY count and check if this is a NEW tool call ID
+                                        if (tc.id && !this.uniqueToolCallIds.has(tc.id)) {
+                                            this.uniqueToolCallIds.add(tc.id);
+                                            this.toolCallCount++;
+                                            this.usageStats.lastTurnUsage.toolCalls++;
+
+                                            // IMMEDIATE WATCHDOG: Kill mid-step if count is breached
+                                            if (this.toolCallCount > (config.get<number>('toolCallLimit') || 10)) {
+                                                onUpdate(`\n\n⚠️ **Churn Watchdog Triggered**: Excessive tool calls detected (${this.toolCallCount}). Aborting turn to prevent token waste.`);
+                                                this.cancel();
+                                                return; // Exit the entire processing task
+                                            }
+                                        }
+
                                         collectedToolCalls.push(tc);
 
                                         onUpdate(`${this.getFriendlyToolName(tc.name)}...`, 'toolStatus');

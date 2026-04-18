@@ -160,6 +160,26 @@
           "type": "boolean",
           "default": false,
           "description": "Skip TLS certificate verification when connecting to the Kong Admin API."
+        },
+        "kongAgent.langChainTracing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable LangChain/LangSmith tracing for observability."
+        },
+        "kongAgent.langSmithApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your LangSmith API Key for observability."
+        },
+        "kongAgent.langSmithProject": {
+          "type": "string",
+          "default": "kong-gateway-agent",
+          "description": "The name of the LangSmith project for tracing."
+        },
+        "kongAgent.langSmithEndpoint": {
+          "type": "string",
+          "default": "https://api.smith.langchain.com",
+          "description": "The LangSmith API endpoint (URL)."
         }
       }
     }
@@ -188,18 +208,20 @@
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "@vscode/test-electron": "^2.3.9",
-    "esbuild": "^0.20.0",
+    "esbuild": "^0.28.0",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "glob": "^10.3.10",
-    "mocha": "^10.3.0",
+    "mocha": "^7.2.0",
     "prettier": "^3.2.5",
     "typescript": "^5.3.3"
   },
   "dependencies": {
     "@langchain/community": "^1.1.27",
     "@langchain/core": "^1.1.39",
+    "@langchain/google-genai": "^2.1.27",
     "@langchain/openai": "^1.4.2",
+    "@langchain/openrouter": "^0.2.2",
     "@types/diff": "^7.0.2",
     "axios": "^1.6.7",
     "diff": "^8.0.4",

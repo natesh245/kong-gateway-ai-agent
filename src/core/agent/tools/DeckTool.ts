@@ -309,4 +309,94 @@ export class DeckTool {
       return `decK diff failed: ${e.stderr || e.message}`;
     }
   }
+
+  // --- APIOps / Offline Transformation Commands ---
+
+  public async openapi2kong(input: string, output: string, signal?: AbortSignal): Promise<string> {
+    try {
+      const storagePath = this.storage.getStoragePath();
+      const inPath = path.join(storagePath, input);
+      const outPath = path.join(storagePath, output);
+      const isHostInstalled = await this.isDeckInstalled(signal);
+
+      if (isHostInstalled) {
+        const command = `deck file openapi2kong -s "${inPath}" -o "${outPath}"`;
+        const { stdout } = await execAsync(command, { signal });
+        return stdout || `Successfully converted ${input} to ${output}.`;
+      } else {
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck file openapi2kong -s "/storage/${input}" -o "/storage/${output}"`;
+        const { stdout } = await execAsync(dockerCommand, { signal });
+        return stdout || `Successfully converted ${input} to ${output} (Docker).`;
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
+      return `openapi2kong failed: ${e.stderr || e.message}`;
+    }
+  }
+
+  public async lint(filename: string, signal?: AbortSignal): Promise<string> {
+    try {
+      const storagePath = this.storage.getStoragePath();
+      const filePath = path.join(storagePath, filename);
+      const isHostInstalled = await this.isDeckInstalled(signal);
+
+      if (isHostInstalled) {
+        const command = `deck file lint -s "${filePath}"`;
+        const { stdout } = await execAsync(command, { signal });
+        return stdout || "Configuration passed linting.";
+      } else {
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck file lint -s "/storage/${filename}"`;
+        const { stdout } = await execAsync(dockerCommand, { signal });
+        return stdout || "Configuration passed linting (Docker).";
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
+      return `Linting failed: ${e.stderr || e.message}`;
+    }
+  }
+
+  public async merge(filenames: string[], output: string, signal?: AbortSignal): Promise<string> {
+    try {
+      const storagePath = this.storage.getStoragePath();
+      const inputs = filenames.map(f => `"${path.join(storagePath, f)}"`).join(' ');
+      const outPath = path.join(storagePath, output);
+      const isHostInstalled = await this.isDeckInstalled(signal);
+
+      if (isHostInstalled) {
+        const command = `deck file merge ${inputs} -o "${outPath}"`;
+        const { stdout } = await execAsync(command, { signal });
+        return stdout || `Successfully merged files into ${output}.`;
+      } else {
+        const dockerInputs = filenames.map(f => `"/storage/${f}"`).join(' ');
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck file merge ${dockerInputs} -o "/storage/${output}"`;
+        const { stdout } = await execAsync(dockerCommand, { signal });
+        return stdout || `Successfully merged files into ${output} (Docker).`;
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
+      return `Merge failed: ${e.stderr || e.message}`;
+    }
+  }
+
+  public async patch(filename: string, patchFile: string, signal?: AbortSignal): Promise<string> {
+    try {
+      const storagePath = this.storage.getStoragePath();
+      const statePath = path.join(storagePath, filename);
+      const pPath = path.join(storagePath, patchFile);
+      const isHostInstalled = await this.isDeckInstalled(signal);
+
+      if (isHostInstalled) {
+        const command = `deck file patch -s "${statePath}" -p "${pPath}"`;
+        const { stdout } = await execAsync(command, { signal });
+        return stdout || `Successfully patched ${filename}.`;
+      } else {
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck file patch -s "/storage/${filename}" -p "/storage/${patchFile}"`;
+        const { stdout } = await execAsync(dockerCommand, { signal });
+        return stdout || `Successfully patched ${filename} (Docker).`;
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
+      return `Patch failed: ${e.stderr || e.message}`;
+    }
+  }
 }

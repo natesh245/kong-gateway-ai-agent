@@ -53,6 +53,20 @@ export class ToolManager {
   public async resetWithDeck(signal?: AbortSignal): Promise<string> { return this.deck.resetWithDeck(signal); }
   public async diffWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.diffWithDeck(filename, signal); }
 
+  // APIOps Transformation Delegates
+  public async openapi2kong(input: string, output: string, signal?: AbortSignal): Promise<string> {
+    return this.deck.openapi2kong(input, output, signal);
+  }
+  public async lint(filename: string, signal?: AbortSignal): Promise<string> {
+    return this.deck.lint(filename, signal);
+  }
+  public async merge(filenames: string[], output: string, signal?: AbortSignal): Promise<string> {
+    return this.deck.merge(filenames, output, signal);
+  }
+  public async patch(filename: string, patchFile: string, signal?: AbortSignal): Promise<string> {
+    return this.deck.patch(filename, patchFile, signal);
+  }
+
   public async initializeCache() { return this.storage.initializeCache(); }
   public updateFileCache(filename: string, content: string) { return this.storage.updateFileCache(filename, content); }
   public getFileCache(filename: string): string | undefined { return this.storage.getFileCache(filename); }
