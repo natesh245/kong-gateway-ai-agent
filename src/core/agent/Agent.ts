@@ -158,18 +158,21 @@ export class Agent {
                         function: { name: tc.name, arguments: JSON.stringify(tc.args) }
                     }));
 
-                    // Collate the tool results
-                    for (let j = i + 1; j < this.messages.length; j++) {
+                    // Collate the tool results — stop once all tool_call IDs for THIS turn are matched
+                    const remainingIds = new Set(m.tool_calls.map(tc => tc.id));
+                    for (let j = i + 1; j < this.messages.length && remainingIds.size > 0; j++) {
                         const nextMsg = this.messages[j];
                         if (nextMsg instanceof ToolMessage) {
                             const matchingCall = m.tool_calls.find(tc => tc.id === nextMsg.tool_call_id);
-                            if (matchingCall) {
+                            if (matchingCall && remainingIds.has(nextMsg.tool_call_id)) {
                                 res.toolInteractions.push({
                                     id: nextMsg.tool_call_id,
                                     name: matchingCall.name,
                                     args: matchingCall.args,
-                                    result: nextMsg.content
+                                    result: nextMsg.content,
+                                    status: 'completed'
                                 });
+                                remainingIds.delete(nextMsg.tool_call_id);
                             }
                         } else if (nextMsg instanceof AIMessage || nextMsg instanceof HumanMessage) {
                             // Stop if we hit a new turn
