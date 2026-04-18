@@ -55,7 +55,7 @@ const SYSTEM_PROMPT =
     "- **Reviewing Config**: 1. LLM Analysis -> 2. `validate_kong_config` -> 3. `preview_sync_diff` (NEVER sync).\n" +
     "- **Syncing Changes**: 1. `validate_kong_config` -> 2. `preview_sync_diff` (MANDATORY ALWAYS) -> 3. Show Diff -> 4. Ask ([APPROVAL_REQUIRED]) -> 5. `sync_to_kong_using_deck`.\n NOTE: DO NOT CALL get_instance_details for this" +
     "- **Preview/Diff**: 1. `validate_kong_config` -> 2. `preview_sync_diff` -> 3. Show Validation & Diff (NEVER sync).\n NOTE: DO NOT CALL get_instance_details for preview sync / sync preview diff" +
-    "- **Exporting Config**: 1. `preview_sync_diff` (MANDATORY ALWAYS) -> 2. Show Diff -> 3. Ask ([APPROVAL_REQUIRED]) -> 4. If approved, YOU MUST EXECUTE THE TOOL `export_live_to_storage_file`. Do NOT hallucinate success text without actually executing the tool.\n" +
+    "- **Exporting Config**: 1. `preview_export_diff` (MANDATORY ALWAYS) -> 2. Show Diff -> 3. Ask ([APPROVAL_REQUIRED]) -> 4. If approved, YOU MUST EXECUTE THE TOOL `export_live_to_storage_file`. Do NOT hallucinate success text without actually executing the tool.\n" +
     "- **Updating Local Config (Create/Update/Delete)**: 1. `read_storage_file` (If missing, create it) -> 2. `write_storage_file` (Save new changes to disk) -> 3. Show Code Diff (Past Code vs Present Code) -> 4. Ask for approval to KEEP this file change ([APPROVAL_REQUIRED]). CRITICAL: NEVER trigger or ask for `preview_sync_diff`, `export`, `sync`, or `reset`. -> 5. If REJECTED: `write_storage_file` to restore the previous state.\n" +
     "- **Resetting Instance**: 1. `get_instance_details` (Live) -> 2. `read_storage_file` (Local) -> 3. Analyze & Show what precisely will be REMOVED -> 4. Ask ([APPROVAL_REQUIRED]) -> 5. `reset_kong_instance`.\n\n" +
 
@@ -523,51 +523,51 @@ export class Agent {
             }
 
             try {
-                    // Prepare API history for the model
-                    const apiMessages: BaseMessage[] = [];
-                    const rawMessages = this.messages.filter((m: any) =>
-                        (m as any).role !== 'thinking' &&
-                        (m as any).role !== 'off-topic' &&
-                        (m as any).category !== 'off-topic'
-                    );
+                // Prepare API history for the model
+                const apiMessages: BaseMessage[] = [];
+                const rawMessages = this.messages.filter((m: any) =>
+                    (m as any).role !== 'thinking' &&
+                    (m as any).role !== 'off-topic' &&
+                    (m as any).category !== 'off-topic'
+                );
 
-                    let lastUserIdx = -1;
-                    for (let i = rawMessages.length - 1; i >= 0; i--) {
-                        if (rawMessages[i] instanceof HumanMessage) {
-                            lastUserIdx = i;
-                            break;
-                        }
+                let lastUserIdx = -1;
+                for (let i = rawMessages.length - 1; i >= 0; i--) {
+                    if (rawMessages[i] instanceof HumanMessage) {
+                        lastUserIdx = i;
+                        break;
                     }
+                }
 
-                    for (let i = 0; i < rawMessages.length; i++) {
-                        const m = rawMessages[i];
-                        // Skip the original system prompt — createAgent injects it via systemPrompt param
-                        if (i === 0 && m instanceof SystemMessage) continue;
-                        if (i === lastUserIdx && contextHeader) {
-                            apiMessages.push(new SystemMessage(contextHeader));
-                        }
-                        apiMessages.push(m);
+                for (let i = 0; i < rawMessages.length; i++) {
+                    const m = rawMessages[i];
+                    // Skip the original system prompt — createAgent injects it via systemPrompt param
+                    if (i === 0 && m instanceof SystemMessage) continue;
+                    if (i === lastUserIdx && contextHeader) {
+                        apiMessages.push(new SystemMessage(contextHeader));
                     }
+                    apiMessages.push(m);
+                }
 
-                    const recursionLimit = config.get<number>('recursionLimit') || 50;
+                const recursionLimit = config.get<number>('recursionLimit') || 50;
 
-                    // Stream with both "messages" (token-level) and "updates" (step-level) modes
-                    // recursionLimit is set high as a safety net — the real limits are enforced
-                    // by modelCallLimitMiddleware and toolCallLimitMiddleware
-                    const stream = await this.langchainAgent.stream(
-                        { messages: apiMessages },
-                        {
-                            streamMode: ["messages", "updates"] as any,
-                            signal: this.abortController?.signal,
-                            recursionLimit: recursionLimit,
-                        }
-                    );
+                // Stream with both "messages" (token-level) and "updates" (step-level) modes
+                // recursionLimit is set high as a safety net — the real limits are enforced
+                // by modelCallLimitMiddleware and toolCallLimitMiddleware
+                const stream = await this.langchainAgent.stream(
+                    { messages: apiMessages },
+                    {
+                        streamMode: ["messages", "updates"] as any,
+                        signal: this.abortController?.signal,
+                        recursionLimit: recursionLimit,
+                    }
+                );
 
-                    let isInsideThought = false;
-                    let streamBuffer = "";
-                    let toolNames = new Map<string, string>(); // Reliable tracking for tool names
+                let isInsideThought = false;
+                let streamBuffer = "";
+                let toolNames = new Map<string, string>(); // Reliable tracking for tool names
 
-                    for await (const [mode, chunk] of stream) {
+                for await (const [mode, chunk] of stream) {
                     if (this.isCancelled) break;
 
                     if (mode === "messages") {
@@ -691,7 +691,7 @@ export class Agent {
                                         }), 'toolInteraction');
                                     }
                                 }
-                                
+
                                 if (step === "tools" || msg.tool_call_id) {
                                     // Tool result message
                                     const safeResult = SanitizationUtil.scrubString(
@@ -776,7 +776,7 @@ export class Agent {
                 // Handle LangGraph recursion limit error gracefully
                 if (e.message?.includes('Recursion') || e.name === 'GraphRecursionError' || e.message?.includes('call limit reached')) {
                     const limitMsg = `⚠️ **Agent Limit Reached**: The agent exceeded the maximum number of reasoning steps or model calls for this turn. This usually happens during complex configuration reviews. Please try a simpler request or clear the chat to start fresh.`;
-                    
+
                     // CRITICAL: Persist partial results before exiting! 
                     // This ensures the agent 'remembers' work done in this turn for the next user message.
                     if (collectedToolCalls.length > 0) {
