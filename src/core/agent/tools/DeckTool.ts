@@ -187,7 +187,7 @@ export class DeckTool {
         }
       } else {
         const args = await this.getDeckArgs(false);
-        const dockerCommand = `docker run --rm kong/deck gateway dump ${args.join(' ')}`;
+        const dockerCommand = `docker run --rm kong/deck gateway dump -o - ${args.join(' ')}`;
         try {
           const { stdout } = await execAsync(dockerCommand, { signal });
           if (stdout && stdout.trim().length > 0) {
@@ -198,7 +198,7 @@ export class DeckTool {
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
-            const fallbackDocker = `docker run --rm kong/deck dump ${args.join(' ')}`;
+            const fallbackDocker = `docker run --rm kong/deck dump -o - ${args.join(' ')}`;
             const { stdout } = await execAsync(fallbackDocker, { signal });
             if (stdout && stdout.trim().length > 0) {
               this.storage.writeStorageFile(filename, stdout);

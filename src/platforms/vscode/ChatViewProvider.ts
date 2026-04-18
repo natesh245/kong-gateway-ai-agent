@@ -338,7 +338,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(diff);
 
-                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nPlease review it according to the DECLARATIVE WORKFLOW. **DO NOT CALL SYNC TOOLS**. Stop after showing the preview diff.`;
+                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nCRITICAL INSTRUCTION: The file is ALREADY saved to disk. **DO NOT call \`write_storage_file\`**. Please review it according to the DECLARATIVE WORKFLOW. **DO NOT CALL SYNC TOOLS**. Stop after showing the preview diff.`;
 
                             const messageId = Date.now().toString();
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });

@@ -44,6 +44,15 @@ export function buildAgentTools(ctx: ToolContext) {
         );
     }
 
+    function recentHistoryHasToolCall(toolName: string, lookback = 30): boolean {
+        const messages = ctx.getMessages();
+        const history = messages.slice(-lookback);
+        return history.some((m: any) =>
+            (m instanceof ToolMessage && m.name === toolName) ||
+            (m.tool_calls && m.tool_calls.some((tc: any) => tc.name === toolName))
+        );
+    }
+
     return [
         // --- Docker / Instance ---
         tool(
@@ -286,7 +295,7 @@ export function buildAgentTools(ctx: ToolContext) {
             async ({ filename }) => {
                 const lastUserContent = getLastUserContent();
                 if (lastUserContent === 'yes' || lastUserContent.includes('confirm')) {
-                    const hasDiffed = recentHistoryHas('diff') || recentHistoryHas('no differences');
+                    const hasDiffed = recentHistoryHasToolCall('preview_sync_diff') || recentHistoryHas('no differences');
                     if (!hasDiffed) {
                         return "SAFETY_REQUIRED: I cannot export without first showing you the diff. I must run 'preview_sync_diff' first.";
                     }

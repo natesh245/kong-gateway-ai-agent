@@ -55,7 +55,7 @@ const SYSTEM_PROMPT =
     "- **Reviewing Config**: 1. LLM Analysis -> 2. `validate_kong_config` -> 3. `preview_sync_diff` (NEVER sync).\n" +
     "- **Syncing Changes**: 1. `validate_kong_config` -> 2. `preview_sync_diff` (MANDATORY ALWAYS) -> 3. Show Diff -> 4. Ask ([APPROVAL_REQUIRED]) -> 5. `sync_to_kong_using_deck`.\n NOTE: DO NOT CALL get_instance_details for this" +
     "- **Preview/Diff**: 1. `validate_kong_config` -> 2. `preview_sync_diff` -> 3. Show Validation & Diff (NEVER sync).\n NOTE: DO NOT CALL get_instance_details for preview sync / sync preview diff" +
-    "- **Exporting Config**: 1. `preview_sync_diff` (MANDATORY ALWAYS) -> 2. Show Diff -> 3. Ask ([APPROVAL_REQUIRED]) -> 4. `export_live_to_storage_file`.\n" +
+    "- **Exporting Config**: 1. `preview_sync_diff` (MANDATORY ALWAYS) -> 2. Show Diff -> 3. Ask ([APPROVAL_REQUIRED]) -> 4. If approved, YOU MUST EXECUTE THE TOOL `export_live_to_storage_file`. Do NOT hallucinate success text without actually executing the tool.\n" +
     "- **Updating Local Config (Create/Update/Delete)**: 1. `read_storage_file` (If missing, create it) -> 2. `write_storage_file` (Save new changes to disk) -> 3. Show Code Diff (Past Code vs Present Code) -> 4. Ask for approval to KEEP this file change ([APPROVAL_REQUIRED]). CRITICAL: NEVER trigger or ask for `preview_sync_diff`, `export`, `sync`, or `reset`. -> 5. If REJECTED: `write_storage_file` to restore the previous state.\n" +
     "- **Resetting Instance**: 1. `get_instance_details` (Live) -> 2. `read_storage_file` (Local) -> 3. Analyze & Show what precisely will be REMOVED -> 4. Ask ([APPROVAL_REQUIRED]) -> 5. `reset_kong_instance`.\n\n" +
 
@@ -673,26 +673,26 @@ export class Agent {
                             if (!stepContent?.messages) continue;
 
                             for (const msg of stepContent.messages) {
-                                if (step === "model" || step === "agent") {
-                                    // AI message with tool calls
-                                    if (msg.tool_calls && msg.tool_calls.length > 0) {
-                                        for (const tc of msg.tool_calls) {
-                                            this.toolCallCount++;
-                                            this.usageStats.lastTurnUsage.toolCalls++;
-                                            collectedToolCalls.push(tc);
+                                // AI message with tool calls
+                                if (msg.tool_calls && msg.tool_calls.length > 0) {
+                                    for (const tc of msg.tool_calls) {
+                                        this.toolCallCount++;
+                                        this.usageStats.lastTurnUsage.toolCalls++;
+                                        collectedToolCalls.push(tc);
 
-                                            onUpdate(`${this.getFriendlyToolName(tc.name)}...`, 'toolStatus');
-                                            onUpdate(JSON.stringify({
-                                                id: tc.id,
-                                                interaction: {
-                                                    name: tc.name,
-                                                    args: tc.args,
-                                                    status: 'started'
-                                                }
-                                            }), 'toolInteraction');
-                                        }
+                                        onUpdate(`${this.getFriendlyToolName(tc.name)}...`, 'toolStatus');
+                                        onUpdate(JSON.stringify({
+                                            id: tc.id,
+                                            interaction: {
+                                                name: tc.name,
+                                                args: tc.args,
+                                                status: 'started'
+                                            }
+                                        }), 'toolInteraction');
                                     }
-                                } else if (step === "tools") {
+                                }
+                                
+                                if (step === "tools" || msg.tool_call_id) {
                                     // Tool result message
                                     const safeResult = SanitizationUtil.scrubString(
                                         typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
@@ -700,6 +700,7 @@ export class Agent {
 
                                     collectedToolResults.push({
                                         id: msg.tool_call_id,
+                                        name: toolNames.get(msg.tool_call_id),
                                         content: safeResult
                                     });
 
@@ -761,6 +762,7 @@ export class Agent {
                         this.messages.push(new ToolMessage({
                             content: tr.content,
                             tool_call_id: tr.id,
+                            name: tr.name || "",
                         }));
                     }
 
