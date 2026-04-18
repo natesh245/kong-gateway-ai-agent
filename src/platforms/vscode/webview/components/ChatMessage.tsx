@@ -192,7 +192,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoni
 
             {lastUsage && (role === 'agent' || role === 'assistant') && (
                 <span className="message-usage-badge" title="Turn activity & token cost">
-                    <span className="usage-item">{lastUsage?.toolCalls || 0} TC</span>
+                    <span className="usage-item">{toolCount} TC</span>
                     <span className="usage-divider">|</span>
                     <span className="usage-item"> {lastUsage?.inputTokens || 0} IN</span>
                     <span className="usage-divider">|</span>
