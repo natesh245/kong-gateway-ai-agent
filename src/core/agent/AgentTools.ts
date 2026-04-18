@@ -290,22 +290,66 @@ export function buildAgentTools(ctx: ToolContext) {
             }
         ),
 
+        // SAFETY-GATED: preview_export_diff
+        tool(
+            async ({ filename }) => {
+                const targetFile = filename || "kong.yml";
+                const tempFilename = `.temp_export_${Date.now()}.yml`;
+                
+                try {
+                    // Try to dump the live config
+                    await toolManager.dumpWithDeck(tempFilename, ctx.abortSignal);
+                    const remoteContent = await toolManager.readStorageFile(tempFilename).catch(() => "");
+                    const localContent = await toolManager.readStorageFile(targetFile).catch(() => "");
+
+                    // For an export, the live state (remoteContent) becomes the NEW state of the local file.
+                    // The old state of the local file is localContent.
+                    const rawDiff = DiffUtil.generateUnifiedDiff(targetFile, localContent, remoteContent);
+                    const chatDiff = DiffUtil.formatForChat(rawDiff);
+                    
+                    // Clean up temp file silently
+                    const storagePath = toolManager.getStoragePath();
+                    try {
+                        const fs = require('fs');
+                        fs.unlinkSync(require('path').join(storagePath, tempFilename));
+                    } catch (e) {}
+
+                    if (!chatDiff.trim() || rawDiff.trim() === 'No differences.') {
+                        return `Local file ${targetFile} is already completely in sync with the live configuration. Nothing to export.`;
+                    }
+                    
+                    return `PREVIEW EXPORT RESULTS:\n\n` +
+                           `The following diff shows what will happen to your LOCAL file (${targetFile}) if you approve this export:\n` +
+                           `\`\`\`diff\n${chatDiff}\n\`\`\``;
+                } catch (e: any) {
+                    return `Failed to generate export preview: ${e.message}`;
+                }
+            },
+            {
+                name: "preview_export_diff",
+                description: "Compares the live Kong Gateway configuration against your local configuration file to show exactly what will be written to the local file upon export. REQUIRED before asking for export approval.",
+                schema: z.object({
+                    filename: z.string().optional().default("kong.yml"),
+                }),
+            }
+        ),
+
         // SAFETY-GATED: export_live_to_storage_file
         tool(
             async ({ filename }) => {
                 const lastUserContent = getLastUserContent();
                 if (lastUserContent === 'yes' || lastUserContent.includes('confirm')) {
-                    const hasDiffed = recentHistoryHasToolCall('preview_sync_diff') || recentHistoryHas('no differences');
+                    const hasDiffed = recentHistoryHasToolCall('preview_export_diff');
                     if (!hasDiffed) {
-                        return "SAFETY_REQUIRED: I cannot export without first showing you the diff. I must run 'preview_sync_diff' first.";
+                        return "SAFETY_REQUIRED: I cannot export without first showing you the diff. I must run 'preview_export_diff' first.";
                     }
                     return await toolManager.dumpWithDeck(filename || "kong.yml");
                 }
-                return "SAFETY_REQUIRED: I cannot export yet. Show the 'preview_sync_diff' results and ask for confirmation with '[APPROVAL_REQUIRED]'.";
+                return "SAFETY_REQUIRED: I cannot export yet. Show the 'preview_export_diff' results and ask for confirmation with '[APPROVAL_REQUIRED]'.";
             },
             {
                 name: "export_live_to_storage_file",
-                description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. MANDATORY: You MUST run 'preview_sync_diff' and show the results to the user BEFORE asking for approval to export.",
+                description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. MANDATORY: You MUST run 'preview_export_diff' and show the results to the user BEFORE asking for approval to export.",
                 schema: z.object({
                     filename: z.string().optional().default("kong.yml"),
                 }),
