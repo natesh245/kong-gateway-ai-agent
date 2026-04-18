@@ -16,7 +16,8 @@ export const SYSTEM_PROMPT =
     "4. **TRUST Auto-Discovery**: If the System Prompt or Dynamic Context header identifies a \"Detected Compose\" or \"Detected Config\", treat these as the absolute source of truth for the workspace. NEVER call `list_storage_files` just to verify their existence.\n" +
     "5. **NO REPETITION**: Never call the same tool multiple times in a single turn.\n" +
     "6. **PASSIVE STANCE**: Do not suggest or trigger unrequested follow-up actions (e.g., do not suggest an 'Export' after a 'Sync' is finished).\n" +
-    "7. **Surgical Goal**: Use the MINIMUM number of tool calls to satisfy the request. If you can answer with 1 tool instead of 3, you MUST do so.\n\n" +
+    "7. **NO Unrequested Restarts**: NEVER call `start_kong`, `stop_kong`, or `reset_kong_instance` to \"fix\" a connectivity or diagnostic error. If a tool fails, report the error. You are strictly forbidden from attempting to \"repair\" the gateway without explicit user command.\n" +
+    "8. **Surgical Goal**: Use the MINIMUM number of tool calls to satisfy the request. If you can answer with 1 tool instead of 3, you MUST do so.\n\n" +
     "### Intent Categories & Surgical Ceilings:\n" +
     "- **SCAN**: `get_kong_status`, `verify_connectivity`, `get_instance_details`, `list_storage_files`. Ceiling: 4 tools.\n" +
     "- **BUILD**: `openapi_to_kong`, `lint_kong_config`, `merge_kong_configs`, `patch_kong_config`, `write_storage_file`. Ceiling: 2 tools.\n" +

@@ -570,6 +570,8 @@ export class Agent {
                 let isInsideThought = false;
                 let streamBuffer = "";
                 let toolNames = new Map<string, string>(); // Reliable tracking for tool names
+                let lastSequencedToolName: string | null = null;
+                let sequentialToolCount = 0;
 
                 for await (const [mode, chunk] of stream) {
                     if (this.isCancelled) break;
@@ -689,6 +691,21 @@ export class Agent {
                                         // ONLY count and check if this is a NEW tool call ID
                                         if (tc.id && !this.uniqueToolCallIds.has(tc.id)) {
                                             this.uniqueToolCallIds.add(tc.id);
+                                            
+                                            // SEQUENTIAL WATCHDOG: Detect infinite tool loops
+                                            if (tc.name === lastSequencedToolName) {
+                                                sequentialToolCount++;
+                                            } else {
+                                                lastSequencedToolName = tc.name;
+                                                sequentialToolCount = 1;
+                                            }
+
+                                            if (sequentialToolCount > 3) {
+                                                onUpdate(`\n\n🚨 **Loop Watchdog Triggered**: The model is repeating the '${tc.name}' tool excessively. Terminating turn to prevent resource waste.`);
+                                                this.cancel();
+                                                return;
+                                            }
+
                                             this.toolCallCount++;
                                             this.usageStats.lastTurnUsage.toolCalls++;
 
