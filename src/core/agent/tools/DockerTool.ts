@@ -143,24 +143,45 @@ export class DockerTool {
     }
   }
 
+  private getAdminUrl(): string {
+    const mode = this.config.get<string>('kongMode') || 'local';
+    if (mode === 'remote') {
+      return this.config.get<string>('remoteAdminApiUrl') || 'http://localhost:8001';
+    }
+    const adminPort = this.config.get<number>('adminApiPort') || 8001;
+    return `http://localhost:${adminPort}`;
+  }
+
+  private getManagerUrl(): string {
+    const mode = this.config.get<string>('kongMode') || 'local';
+    if (mode === 'remote') {
+      const remoteManager = this.config.get<string>('remoteManagerGuiUrl');
+      const remoteAdmin = this.config.get<string>('remoteAdminApiUrl');
+      return remoteManager || (remoteAdmin ? remoteAdmin.replace(/:(\d+)\/?$/, ':8002') : 'http://localhost:8002');
+    }
+    const managerPort = this.config.get<number>('managerGuiPort') || 8002;
+    return `http://localhost:${managerPort}`;
+  }
+
   public async verifyConnectivity(): Promise<{ admin: boolean, proxy: boolean, error?: string }> {
-      let proxyPort = this.config.get<number>('proxyPort') || 8000;
-      let adminPort = this.config.get<number>('adminApiPort') || 8001;
+    const proxyPort = this.config.get<number>('proxyPort') || 8000;
+    const adminUrl = this.getAdminUrl();
+    const proxyUrl = this.config.get<string>('remoteProxyUrl') || `http://localhost:${proxyPort}`;
 
     const results = { admin: false, proxy: false, error: "" };
     try {
       try {
-        const adminResp = await axios.get(`http://localhost:${adminPort}/`, { timeout: 2000 });
+        const adminResp = await axios.get(`${adminUrl.replace(/\/$/, '')}/`, { timeout: 2000 });
         results.admin = adminResp.status === 200;
       } catch (e: any) {
-        results.error += `Admin API unreachable: ${e.message}. `;
+        results.error += `Admin API unreachable at ${adminUrl}: ${e.message}. `;
       }
 
       try {
-        const proxyResp = await axios.get(`http://localhost:${proxyPort}/`, { timeout: 2000, validateStatus: () => true });
+        const proxyResp = await axios.get(`${proxyUrl.replace(/\/$/, '')}/`, { timeout: 2000, validateStatus: () => true });
         results.proxy = proxyResp.status !== 0;
       } catch (e: any) {
-        results.error += `Proxy unreachable: ${e.message}. `;
+        results.error += `Proxy unreachable at ${proxyUrl}: ${e.message}. `;
       }
       return results;
     } catch (e: any) {
@@ -169,19 +190,18 @@ export class DockerTool {
   }
 
   public async getKongConfig(): Promise<any> {
-    const adminPort = this.config.get<number>('adminApiPort') || 8001;
+    const adminUrl = this.getAdminUrl();
     try {
-      const resp = await axios.get(`http://localhost:${adminPort}/`, { timeout: 2000 });
+      const resp = await axios.get(`${adminUrl.replace(/\/$/, '')}/`, { timeout: 2000 });
       return resp.data;
     } catch (e: any) {
-      return { error: `Failed to fetch Kong config: ${e.message}` };
+      return { error: `Failed to fetch Kong config from ${adminUrl}: ${e.message}` };
     }
   }
 
   public async openManager(): Promise<string> {
     try {
-      const managerPort = this.config.get<number>('managerGuiPort') || 8002;
-      const url = `http://localhost:${managerPort}`;
+      const url = this.getManagerUrl();
       await this.platform.openExternal(url);
       return `Opened Kong Manager at ${url}`;
     } catch (e: any) {

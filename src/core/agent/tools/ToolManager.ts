@@ -1,8 +1,20 @@
 import { StorageTool } from './StorageTool';
 import { DockerTool } from './DockerTool';
 import { DeckTool } from './DeckTool';
-import { GitTool } from './GitTool';
 import { IConfig, IAppPlatform } from '../../interfaces/ICoreInterfaces';
+import { DiffUtil } from '../../utils/DiffUtil';
+import * as path from 'path';
+
+/**
+ * Interface for providing conversation context to tools
+ * (e.g., history checks, user approvals, abort signals).
+ */
+export interface ToolExecutionContext {
+  lastUserContent: () => string;
+  recentHistoryHas: (keyword: string, lookback?: number) => boolean;
+  recentHistoryHasToolCall: (toolName: string, lookback?: number) => boolean;
+  abortSignal?: AbortSignal;
+}
 
 /**
  * ToolManager
@@ -12,14 +24,11 @@ export class ToolManager {
   public storage: StorageTool;
   public docker: DockerTool;
   public deck: DeckTool;
-  public git: GitTool;
 
   constructor(private config: IConfig, private platform: IAppPlatform) {
     this.storage = new StorageTool(config, platform);
     this.docker = new DockerTool(this.storage, config, platform);
     this.deck = new DeckTool(this.storage, config, platform);
-
-    this.git = new GitTool(this.storage);
   }
 
   // Delegate Methods for backward compatibility or convenience
@@ -37,20 +46,12 @@ export class ToolManager {
   public get connectivity() { return this.docker; }
   public async getKongConfig(): Promise<any> { return this.docker.getKongConfig(); }
   
-  public async isDeckInstalled(signal?: AbortSignal): Promise<boolean> { return this.deck.isDeckInstalled(signal); }
-  public async installDeck(signal?: AbortSignal): Promise<string> { return this.deck.installDeck(signal); }
   public async getAdminUrl(isHost: boolean): Promise<string> { return this.deck.getAdminUrl(isHost); }
   public async syncWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.syncWithDeck(filename, signal); }
   public async validateWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.validateWithDeck(filename, signal); }
   public async dumpWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.dumpWithDeck(filename, signal); }
   public async resetWithDeck(signal?: AbortSignal): Promise<string> { return this.deck.resetWithDeck(signal); }
   public async diffWithDeck(filename: string, signal?: AbortSignal): Promise<string> { return this.deck.diffWithDeck(filename, signal); }
-
-  public async gitInit(remoteUrl?: string, signal?: AbortSignal): Promise<string> { return this.git.gitInit(remoteUrl, signal); }
-  public async gitCommit(message: string, signal?: AbortSignal): Promise<string> { return this.git.gitCommit(message, signal); }
-  public async gitPush(signal?: AbortSignal): Promise<string> { return this.git.gitPush(signal); }
-  public async gitPull(signal?: AbortSignal): Promise<string> { return this.git.gitPull(signal); }
-  public async gitStatus(signal?: AbortSignal): Promise<string> { return this.git.gitStatus(signal); }
 
   public async initializeCache() { return this.storage.initializeCache(); }
   public updateFileCache(filename: string, content: string) { return this.storage.updateFileCache(filename, content); }
@@ -94,4 +95,150 @@ export class ToolManager {
   }
 
   public async openManager() { return this.docker.openManager(); }
+
+  // --- Hardened Orchestration Methods ---
+
+  /**
+   * Hybrid tool that returns both Docker status and Kong gateway config.
+   */
+  public async getHybridInstanceDetails(): Promise<string> {
+    const mode = this.config.get<string>('kongMode') || 'local';
+    const status = mode === 'local' ? await this.status() : "Docker Status: N/A (Remote Mode)";
+    const kongConfig = await this.getKongConfig();
+
+    return `KONG MODE: ${mode.toUpperCase()}\n\n` +
+      `[DOCKER STATUS]\n${status}\n\n` +
+      `[ADMIN API CONFIG]\n${JSON.stringify(kongConfig, null, 2)}`;
+  }
+
+  /**
+   * Hybrid connectivity check with formatted output.
+   */
+  public async verifyConnectivityHardened(): Promise<string> {
+    const res = await this.verifyConnectivity();
+    return `Admin: ${res.admin ? 'Ready' : 'Unreachable'}, Proxy: ${res.proxy ? 'Ready' : 'Unreachable'}${res.error ? ` (${res.error})` : ''}`;
+  }
+
+  /**
+   * Updates Kong ports in the Agent's configuration.
+   */
+  public async updateKongPorts(proxy: number, admin: number, manager: number): Promise<string> {
+    await this.config.update?.('proxyPort', proxy);
+    await this.config.update?.('adminApiPort', admin);
+    await this.config.update?.('managerGuiPort', manager);
+    return "Successfully updated Kong ports in configuration.";
+  }
+
+  /**
+   * Safety-gated adoption of existing containers.
+   */
+  public async connectWithSafetyGate(ctx: ToolExecutionContext, proxyPort?: number, adminPort?: number, managerPort?: number): Promise<string> {
+    const lastUserContent = ctx.lastUserContent();
+    if (lastUserContent === 'yes' || lastUserContent.includes('confirm') || lastUserContent.includes('proceed')) {
+      const hasScanned = ctx.recentHistoryHasToolCall('check_existing_containers') ||
+        ctx.recentHistoryHasToolCall('reconcile_port_settings');
+
+      if (!hasScanned) {
+        return "SAFETY_REQUIRED: I cannot connect until I've scanned the environment. Please call 'check_existing_containers' first.";
+      }
+
+      if (proxyPort !== undefined) await this.config.update?.('proxyPort', proxyPort);
+      if (adminPort !== undefined) await this.config.update?.('adminApiPort', adminPort);
+      if (managerPort !== undefined) await this.config.update?.('managerGuiPort', managerPort);
+
+      return await this.docker.start(ctx.abortSignal);
+    }
+    return "SAFETY_REQUIRED: Adopting an existing instance requires explicit user confirmation. Explain the scan results first, then ask for confirmation with '[APPROVAL_REQUIRED]'.";
+  }
+
+  /**
+   * Writes a file and generates a diff for the user.
+   */
+  public async writeStorageFileWithDiff(filename: string, content: string): Promise<string> {
+    const oldContent = this.getFileCache(filename) || "";
+    await this.writeStorageFile(filename, content);
+    const rawDiff = DiffUtil.generateUnifiedDiff(filename, oldContent, content);
+    const chatDiff = DiffUtil.formatForChat(rawDiff);
+    return `Successfully wrote ${filename}.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
+  }
+
+  /**
+   * Safety-gated sync operation using decK.
+   */
+  public async syncWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
+    const lastUserContent = ctx.lastUserContent();
+    if (lastUserContent === 'yes' || lastUserContent.includes('proceed') || lastUserContent.includes('apply')) {
+      const hasValidated = ctx.recentHistoryHas('valid') || ctx.recentHistoryHas('success');
+      const hasDiffed = ctx.recentHistoryHas('diff') || ctx.recentHistoryHas('no differences');
+
+      if (!hasValidated || !hasDiffed) {
+        return "SAFETY_REQUIRED: I cannot sync without first validating the file and showing you the diff. I must run 'validate_kong_config' and 'preview_sync_diff' first.";
+      }
+      return await this.syncWithDeck(filename, ctx.abortSignal);
+    }
+    return "SAFETY_REQUIRED: I cannot execute sync yet. Explain the validation/diff inside <thought> tags, then ask for confirmation with '[APPROVAL_REQUIRED]'.";
+  }
+
+  /**
+   * Hybrid preview of live -> local export.
+   */
+  public async previewExportHardened(ctx: ToolExecutionContext, filename: string): Promise<string> {
+    const targetFile = filename || "kong.yml";
+    const tempFilename = `.temp_export_${Date.now()}.yml`;
+
+    try {
+      await this.dumpWithDeck(tempFilename, ctx.abortSignal);
+      const remoteContent = await this.readStorageFile(tempFilename).catch(() => "");
+      const localContent = await this.readStorageFile(targetFile).catch(() => "");
+
+      const rawDiff = DiffUtil.generateUnifiedDiff(targetFile, localContent, remoteContent);
+      const chatDiff = DiffUtil.formatForChat(rawDiff);
+
+      try {
+        const fs = require('fs');
+        fs.unlinkSync(path.join(this.getStoragePath(), tempFilename));
+      } catch (e) { }
+
+      if (!chatDiff.trim() || rawDiff.trim() === 'No differences.') {
+        return `Local file ${targetFile} is already completely in sync with the live configuration. Nothing to export.`;
+      }
+
+      return `PREVIEW EXPORT RESULTS:\n\n` +
+        `The following diff shows what will happen to your LOCAL file (${targetFile}) if you approve this export:\n` +
+        `\`\`\`diff\n${chatDiff}\n\`\`\``;
+    } catch (e: any) {
+      return `Failed to generate export preview: ${e.message}`;
+    }
+  }
+
+  /**
+   * Safety-gated export operation.
+   */
+  public async exportWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
+    const lastUserContent = ctx.lastUserContent();
+    if (lastUserContent === 'yes' || lastUserContent.includes('confirm')) {
+      const hasDiffed = ctx.recentHistoryHasToolCall('preview_export_diff');
+      if (!hasDiffed) {
+        return "SAFETY_REQUIRED: I cannot export without first showing you the diff. I must run 'preview_export_diff' first.";
+      }
+      return await this.dumpWithDeck(filename, ctx.abortSignal);
+    }
+    return "SAFETY_REQUIRED: I cannot export yet. Show the 'preview_export_diff' results and ask for confirmation with '[APPROVAL_REQUIRED]'.";
+  }
+
+  /**
+   * Safety-gated reset operation.
+   */
+  public async resetWithSafetyGate(ctx: ToolExecutionContext): Promise<string> {
+    const lastUserContent = ctx.lastUserContent();
+    if (lastUserContent === 'yes' || lastUserContent.includes('confirm reset')) {
+      const hasLive = ctx.recentHistoryHas('status', 20);
+      const hasLocal = ctx.recentHistoryHas('_format_version', 20);
+      if (!hasLive || !hasLocal) {
+        return "SAFETY_REQUIRED: I cannot reset without analyzing live (get_instance_details) and local (read_storage_file) configs first.";
+      }
+      return await this.resetWithDeck(ctx.abortSignal);
+    }
+    return "SAFETY_REQUIRED: I cannot reset without explicit confirmation using '[APPROVAL_REQUIRED]'.";
+  }
 }

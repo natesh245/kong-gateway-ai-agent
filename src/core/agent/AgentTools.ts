@@ -5,8 +5,7 @@ import {
     HumanMessage,
     ToolMessage,
 } from "@langchain/core/messages";
-import { ToolManager } from "./tools/ToolManager";
-import { DiffUtil } from "../utils/DiffUtil";
+import { ToolManager, ToolExecutionContext } from "./tools/ToolManager";
 import { SanitizationUtil } from "../utils/SanitizationUtil";
 import { IConfig } from "../interfaces/ICoreInterfaces";
 
@@ -25,7 +24,7 @@ export interface ToolContext {
  * Each tool wraps its corresponding ToolManager method + embeds safety gates.
  */
 export function buildAgentTools(ctx: ToolContext) {
-    const { toolManager, config } = ctx;
+    const { toolManager } = ctx;
 
     // --- Helpers for safety gate checks ---
     function getLastUserContent(): string {
@@ -53,6 +52,13 @@ export function buildAgentTools(ctx: ToolContext) {
         );
     }
 
+    const execCtx: ToolExecutionContext = {
+        lastUserContent: getLastUserContent,
+        recentHistoryHas: recentHistoryHas,
+        recentHistoryHasToolCall: recentHistoryHasToolCall,
+        abortSignal: ctx.abortSignal
+    };
+
     return [
         // --- Docker / Instance ---
         tool(
@@ -61,7 +67,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "start_kong",
-                description: "Starts the local Kong Gateway using Docker Compose (Postgres-backed). Run this if the user asks to start Kong. Takes ~10s to boot.",
+                description: "LOCAL KONG MODE ONLY. Starts the local Kong Gateway using Docker Compose (Postgres-backed). Run this if the user asks to start Kong. Takes ~10s to boot. NEVER call this tool when operating in REMOTE KONG MODE.",
                 schema: z.object({}),
             }
         ),
@@ -72,7 +78,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "stop_kong",
-                description: "Stops the local Kong Gateway Docker Compose setup.",
+                description: "LOCAL KONG MODE ONLY. Stops the local Kong Gateway Docker Compose setup. NEVER call this tool when operating in REMOTE KONG MODE.",
                 schema: z.object({}),
             }
         ),
@@ -83,21 +89,18 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "get_kong_status",
-                description: "Fetches status info from Kong Admin API to test if it's reachable and running.",
+                description: "LOCAL KONG MODE ONLY. Runs 'docker-compose ps' to check if the Kong and Postgres containers are running and healthy. NEVER call this tool when operating in REMOTE KONG MODE. Use 'verify_connectivity' for Admin API health checks.",
                 schema: z.object({}),
             }
         ),
 
         tool(
             async ({ proxy, admin, manager }) => {
-                await config.update?.('proxyPort', proxy);
-                await config.update?.('adminApiPort', admin);
-                await config.update?.('managerGuiPort', manager);
-                return "Successfully updated Kong ports in configuration.";
+                return await toolManager.updateKongPorts(proxy, admin, manager);
             },
             {
                 name: "update_kong_ports",
-                description: "Updates the configured ports for Kong Proxy, Admin API, and Manager GUI. Use this if the user agrees to switch to suggested ports after a conflict.",
+                description: "LOCAL KONG MODE ONLY. Updates the Agent's local configuration for Kong Proxy, Admin API, and Manager GUI ports. Use this when resolving port conflicts or when the user manually changes local port mapping. NEVER call this tool when operating in REMOTE KONG MODE.",
                 schema: z.object({
                     proxy: z.number().describe("The new port for the Kong Proxy"),
                     admin: z.number().describe("The new port for the Kong Admin API"),
@@ -112,21 +115,19 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "check_existing_containers",
-                description: "Checks if any Docker containers related to Kong or Postgres are currently running.",
+                description: "LOCAL KONG MODE ONLY. Scans the local Docker host for any running containers related to 'kong' or 'postgres' and returns a JSON list. Use this to find existing instances to adopt. NEVER call this tool when operating in REMOTE KONG MODE.",
                 schema: z.object({}),
             }
         ),
 
+        // SAFETY-GATED: connect_to_existing_instance
         tool(
             async ({ proxyPort, adminPort, managerPort }) => {
-                await config.update?.('proxyPort', proxyPort);
-                await config.update?.('adminApiPort', adminPort);
-                await config.update?.('managerGuiPort', managerPort);
-                return "Successfully connected to existing Kong instance by updating configuration.";
+                return await toolManager.connectWithSafetyGate(execCtx, proxyPort, adminPort, managerPort);
             },
             {
                 name: "connect_to_existing_instance",
-                description: "Adopts an existing Kong instance by updating the Agent's local configuration.",
+                description: "LOCAL KONG MODE ONLY. Adopts an already-running Kong instance by updating the Agent's local configuration for all service ports. MANDATORY: You MUST run 'check_existing_containers' or 'reconcile_port_settings' and show the results to the user BEFORE asking for approval to connect. NEVER call this tool when operating in REMOTE KONG MODE.",
                 schema: z.object({
                     proxyPort: z.number(),
                     adminPort: z.number(),
@@ -142,7 +143,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "verify_connectivity",
-                description: "Pings the Kong Admin API and Proxy to verify they are reachable and ready.",
+                description: "Pings the Kong Admin API and Proxy to verify they are reachable and ready. Works in both LOCAL and REMOTE modes.",
                 schema: z.object({}),
             }
         ),
@@ -153,20 +154,18 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "open_kong_manager",
-                description: "Opens the Kong Manager GUI in the user's default browser.",
+                description: "Opens the Kong Manager GUI in the user's default browser. Works in both LOCAL and REMOTE modes (using the configured manager URL or localhost).",
                 schema: z.object({}),
             }
         ),
 
         tool(
             async () => {
-                const status = await toolManager.status();
-                const kongConfig = await toolManager.getKongConfig();
-                return `STATUS:\n${status}\n\nCONFIG:\n${JSON.stringify(kongConfig, null, 2)}`;
+                return await toolManager.getHybridInstanceDetails();
             },
             {
                 name: "get_instance_details",
-                description: "Fetches technical details like Kong version, database engine, and runtime configuration.",
+                description: "Fetches technical details like Kong version, database engine, and runtime configuration. Works in both LOCAL (includes Docker status) and REMOTE modes.",
                 schema: z.object({}),
             }
         ),
@@ -177,7 +176,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "reconcile_port_settings",
-                description: "Detects incorrect port settings by inspecting running containers and the docker-compose file, then updates the configuration to match reality. Use this when connection or health checks fail.",
+                description: "LOCAL KONG MODE ONLY. Detects incorrect port settings by inspecting local running containers and the docker-compose file, then updates the configuration to match reality. NEVER call this tool when operating in REMOTE KONG MODE.",
                 schema: z.object({}),
             }
         ),
@@ -190,7 +189,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "list_storage_files",
-                description: "Lists all files (yml, json, etc) in the current storage directory. Use this to verify which files exist before trying to read or open them.",
+                description: "Lists all files (YAML, JSON, Docker Compose, etc.) in the Agent's local storage directory. Use this to browse the environment and identify which configuration files are available for editing or sync.",
                 schema: z.object({}),
             }
         ),
@@ -201,7 +200,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "read_storage_file",
-                description: "Reads the content of a file in the storage directory for review or analysis.",
+                description: "Reads the content of a specific file from the local storage directory (e.g., kong.yml) for analysis, validation, or diffing.",
                 schema: z.object({
                     filename: z.string().describe("The name of the file to read"),
                 }),
@@ -210,15 +209,11 @@ export function buildAgentTools(ctx: ToolContext) {
 
         tool(
             async ({ filename, content }) => {
-                const oldContent = toolManager.getFileCache(filename) || "";
-                await toolManager.writeStorageFile(filename, content);
-                const rawDiff = DiffUtil.generateUnifiedDiff(filename, oldContent, content);
-                const chatDiff = DiffUtil.formatForChat(rawDiff);
-                return `Successfully wrote ${filename}.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
+                return await toolManager.writeStorageFileWithDiff(filename, content);
             },
             {
                 name: "write_storage_file",
-                description: "Writes content to a file in the storage directory. MANDATORY: You must execute this tool IMMEDIATELY when the user asks to add, change, or delete a route/service. Write the file BEFORE asking for approval! The approval phase comes AFTER the file is physically written to disk.",
+                description: "Writes full content to a file in the local storage directory. MANDATORY: Call this tool IMMEDIATELY when the user proposes a configuration change. Write the file BEFORE asking for approval so the user can review the diff first. NEVER automatically call 'preview_sync_diff' or 'sync_to_kong_using_deck' immediately after this. DO NOT ask the user if they want to preview or sync after writing; you must wait for the user to initiate the next action themselves.",
                 schema: z.object({
                     filename: z.string().describe("The name of the file to write to"),
                     content: z.string().describe("The full content to write to the file"),
@@ -232,7 +227,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "open_file_in_editor",
-                description: "Opens a specific file from the storage directory in the platform's editor for the user to see.",
+                description: "Opens a specific file (e.g., kong.yml) in the IDE's editor window for the user to view or manually edit. This is purely for UI visibility.",
                 schema: z.object({
                     filename: z.string(),
                 }),
@@ -246,7 +241,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "validate_kong_config",
-                description: "Uses decK to validate the schema and syntax of a Kong configuration file. Provide a detailed explanation of any validation issues found.",
+                description: "Uses decK to validate the schema and syntax of a local Kong configuration file (e.g., kong.yml). It returns a detailed report of any structural errors, missing fields, or invalid plugin configurations found. NEVER automatically suggest or call 'preview_sync_diff' or 'sync_to_kong_using_deck' after this; wait for user input.",
                 schema: z.object({
                     filename: z.string(),
                 }),
@@ -259,7 +254,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "preview_sync_diff",
-                description: "Compares the local configuration file against the live Kong Gateway to show exact differences. REQUIRED before asking for sync or export approval.",
+                description: "Compares your local configuration file against the live Kong Gateway to show the exact differences (Adds, Deletes, Updates) that would occur if you synced. This is a read-only preview. NEVER automatically suggest or call 'sync_to_kong_using_deck' after this; you must wait for the user to decide to sync themselves.",
                 schema: z.object({
                     filename: z.string(),
                 }),
@@ -269,21 +264,11 @@ export function buildAgentTools(ctx: ToolContext) {
         // SAFETY-GATED: sync_to_kong_using_deck
         tool(
             async ({ filename }) => {
-                const lastUserContent = getLastUserContent();
-                if (lastUserContent === 'yes' || lastUserContent.includes('proceed') || lastUserContent.includes('apply')) {
-                    const hasValidated = recentHistoryHas('valid') || recentHistoryHas('success');
-                    const hasDiffed = recentHistoryHas('diff') || recentHistoryHas('no differences');
-
-                    if (!hasValidated || !hasDiffed) {
-                        return "SAFETY_REQUIRED: I cannot sync without first validating the file and showing you the diff. I must run 'validate_kong_config' and 'preview_sync_diff' first.";
-                    }
-                    return await toolManager.syncWithDeck(filename || "kong.yml", ctx.abortSignal);
-                }
-                return "SAFETY_REQUIRED: I cannot execute sync yet. Explain the validation/diff inside <thought> tags, then ask for confirmation with '[APPROVAL_REQUIRED]'.";
+                return await toolManager.syncWithSafetyGate(execCtx, filename || "kong.yml");
             },
             {
                 name: "sync_to_kong_using_deck",
-                description: "Uses the official decK CLI to synchronize a configuration file (e.g., kong.yml) to the live Kong instance. MANDATORY: You MUST run 'validate_kong_config' and 'preview_sync_diff' and show the results to the user BEFORE asking for approval to sync.",
+                description: "Applies local configuration changes to the live Kong Gateway. MANDATORY: You MUST run 'validate_kong_config' and 'preview_sync_diff' first and show the results to the user. This tool requires explicit user approval via '[APPROVAL_REQUIRED]' after the diff has been reviewed. NEVER skip the validation or diffing steps.",
                 schema: z.object({
                     filename: z.string().describe("The configuration file to sync"),
                 }),
@@ -293,41 +278,11 @@ export function buildAgentTools(ctx: ToolContext) {
         // SAFETY-GATED: preview_export_diff
         tool(
             async ({ filename }) => {
-                const targetFile = filename || "kong.yml";
-                const tempFilename = `.temp_export_${Date.now()}.yml`;
-                
-                try {
-                    // Try to dump the live config
-                    await toolManager.dumpWithDeck(tempFilename, ctx.abortSignal);
-                    const remoteContent = await toolManager.readStorageFile(tempFilename).catch(() => "");
-                    const localContent = await toolManager.readStorageFile(targetFile).catch(() => "");
-
-                    // For an export, the live state (remoteContent) becomes the NEW state of the local file.
-                    // The old state of the local file is localContent.
-                    const rawDiff = DiffUtil.generateUnifiedDiff(targetFile, localContent, remoteContent);
-                    const chatDiff = DiffUtil.formatForChat(rawDiff);
-                    
-                    // Clean up temp file silently
-                    const storagePath = toolManager.getStoragePath();
-                    try {
-                        const fs = require('fs');
-                        fs.unlinkSync(require('path').join(storagePath, tempFilename));
-                    } catch (e) {}
-
-                    if (!chatDiff.trim() || rawDiff.trim() === 'No differences.') {
-                        return `Local file ${targetFile} is already completely in sync with the live configuration. Nothing to export.`;
-                    }
-                    
-                    return `PREVIEW EXPORT RESULTS:\n\n` +
-                           `The following diff shows what will happen to your LOCAL file (${targetFile}) if you approve this export:\n` +
-                           `\`\`\`diff\n${chatDiff}\n\`\`\``;
-                } catch (e: any) {
-                    return `Failed to generate export preview: ${e.message}`;
-                }
+                return await toolManager.previewExportHardened(execCtx, filename || "kong.yml");
             },
             {
                 name: "preview_export_diff",
-                description: "Compares the live Kong Gateway configuration against your local configuration file to show exactly what will be written to the local file upon export. REQUIRED before asking for export approval.",
+                description: "Compares the LIVE Kong Gateway configuration against your local file (e.g., kong.yml) to show how the local file will be updated. This is a read-only preview of a 'pull' operation. MANDATORY: You MUST run this and show the user the diff before asking for approval to export. NEVER automatically suggest or call 'export_live_to_storage_file' after this; wait for the user to decide.",
                 schema: z.object({
                     filename: z.string().optional().default("kong.yml"),
                 }),
@@ -337,19 +292,11 @@ export function buildAgentTools(ctx: ToolContext) {
         // SAFETY-GATED: export_live_to_storage_file
         tool(
             async ({ filename }) => {
-                const lastUserContent = getLastUserContent();
-                if (lastUserContent === 'yes' || lastUserContent.includes('confirm')) {
-                    const hasDiffed = recentHistoryHasToolCall('preview_export_diff');
-                    if (!hasDiffed) {
-                        return "SAFETY_REQUIRED: I cannot export without first showing you the diff. I must run 'preview_export_diff' first.";
-                    }
-                    return await toolManager.dumpWithDeck(filename || "kong.yml");
-                }
-                return "SAFETY_REQUIRED: I cannot export yet. Show the 'preview_export_diff' results and ask for confirmation with '[APPROVAL_REQUIRED]'.";
+                return await toolManager.exportWithSafetyGate(execCtx, filename || "kong.yml");
             },
             {
                 name: "export_live_to_storage_file",
-                description: "Downloads the current live Kong configuration (Services, Routes) and OVERWRITES 'kong.yml' in the storage directory. MANDATORY: You MUST run 'preview_export_diff' and show the results to the user BEFORE asking for approval to export.",
+                description: "Downloads the current live Kong configuration and OVERWRITES your local configuration file (e.g., kong.yml). MANDATORY: You MUST run 'preview_export_diff' first and show the results to the user. This tool requires explicit user approval via '[APPROVAL_REQUIRED]' after the preview has been reviewed. NEVER skip the preview step.",
                 schema: z.object({
                     filename: z.string().optional().default("kong.yml"),
                 }),
@@ -359,96 +306,14 @@ export function buildAgentTools(ctx: ToolContext) {
         // SAFETY-GATED: reset_kong_instance
         tool(
             async () => {
-                const lastUserContent = getLastUserContent();
-                if (lastUserContent === 'yes' || lastUserContent.includes('confirm reset')) {
-                    const hasLive = recentHistoryHas('status', 20);
-                    const hasLocal = recentHistoryHas('_format_version', 20);
-                    if (!hasLive || !hasLocal) {
-                        return "SAFETY_REQUIRED: I cannot reset without analyzing live (get_instance_details) and local (read_storage_file) configs first.";
-                    }
-                    return await toolManager.resetWithDeck(ctx.abortSignal);
-                }
-                return "SAFETY_REQUIRED: I cannot reset without explicit confirmation using '[APPROVAL_REQUIRED]'.";
+                return await toolManager.resetWithSafetyGate(execCtx);
             },
             {
                 name: "reset_kong_instance",
-                description: "Wipes all current configuration (Services, Routes, Plugins, etc.) from the live Kong instance. MANDATORY: This is destructive. You MUST run 'get_instance_details' and 'read_storage_file', calculate the diff, and show the user exactly what will be removed before asking for approval.",
+                description: "DESTRUCTIVE: Wipes ALL configuration (Services, Routes, Plugins, etc.) from the live Kong Gateway. MANDATORY: You MUST run 'get_instance_details' and show the user exactly what will be deleted before asking for approval via '[APPROVAL_REQUIRED]'. NEVER skip the diagnostic phase before a reset.",
                 schema: z.object({}),
             }
         ),
 
-        // --- decK installation ---
-        tool(
-            async () => {
-                return (await toolManager.isDeckInstalled()) ? "decK is installed." : "decK is not installed.";
-            },
-            {
-                name: "check_deck_installation",
-                description: "Verifies if the Kong decK CLI is installed on the host system.",
-                schema: z.object({}),
-            }
-        ),
-
-        tool(
-            async () => {
-                return await toolManager.installDeck();
-            },
-            {
-                name: "install_deck_cli",
-                description: "Installs the Kong decK CLI via Homebrew. Use this only after the user has approved installation.",
-                schema: z.object({}),
-            }
-        ),
-
-        // --- Git ---
-        tool(
-            async () => {
-                return await toolManager.gitInit();
-            },
-            {
-                name: "git_setup_repo",
-                description: "Initializes the storage folder as a Git repository and connects it to a remote URL.",
-                schema: z.object({}),
-            }
-        ),
-
-        tool(
-            async ({ message }) => {
-                const commitResult = await toolManager.gitCommit(message || "Update from Kong Agent");
-                await toolManager.gitPush();
-                return commitResult;
-            },
-            {
-                name: "git_sync_push",
-                description: "Manually commits and pushes all current changes in the storage folder to the remote Git repository.",
-                schema: z.object({
-                    message: z.string().describe("The commit message"),
-                }),
-            }
-        ),
-
-        tool(
-            async ({ sync_to_kong }) => {
-                return await toolManager.gitPull();
-            },
-            {
-                name: "git_sync_pull",
-                description: "Pulls the latest configuration from the remote Git repository.",
-                schema: z.object({
-                    sync_to_kong: z.boolean().describe("Whether to automatically sync the pulled 'kong.yml' to the live Kong Gateway."),
-                }),
-            }
-        ),
-
-        tool(
-            async () => {
-                return await toolManager.gitStatus();
-            },
-            {
-                name: "git_get_status",
-                description: "Checks the current status of the Git repository in the storage folder.",
-                schema: z.object({}),
-            }
-        ),
     ];
 }
