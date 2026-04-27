@@ -178,6 +178,19 @@ export function buildAgentTools(ctx: ToolContext) {
                 schema: z.object({}),
             }
         ),
+        
+        tool(
+            async ({ entity }) => {
+                return await toolManager.listEntities(entity);
+            },
+            {
+                name: "list_kong_entities",
+                description: "Fetches a list of specific entities (services, routes, plugins, consumers) from the live Kong Gateway Admin API. Use this to count or inspect existing configuration when it's not available in local storage files. CEILING: 4 calls per turn.",
+                schema: z.object({
+                    entity: z.enum(["services", "routes", "plugins", "consumers", "snis", "certificates"]).describe("The type of entity to list"),
+                }),
+            }
+        ),
 
         tool(
             async () => {

@@ -209,6 +209,29 @@ export class DockerTool {
     }
   }
 
+  public async listEntities(entity: string): Promise<string> {
+    const adminUrl = this.getAdminUrl();
+    try {
+      const url = `${adminUrl.replace(/\/$/, '')}/${entity}`;
+      const resp = await axios.get(url, { timeout: 5000 });
+      const data = resp.data.data || [];
+      
+      if (data.length === 0) {
+          return `No ${entity} found in the current Kong instance.`;
+      }
+
+      // Return a concise summary if there are many, otherwise full JSON
+      if (data.length > 20) {
+          const names = data.map((d: any) => d.name || d.id).join(', ');
+          return `Found ${data.length} ${entity}: ${names}`;
+      }
+      
+      return JSON.stringify(data, null, 2);
+    } catch (e: any) {
+      return `Error fetching ${entity} from Kong Admin API (${adminUrl}): ${e.message}`;
+    }
+  }
+
   public async getPortsFromRunningContainers(): Promise<Record<string, number>> {
       try {
           const { stdout } = await execAsync('docker ps --format "{{.Ports}}|{{.Image}}"');

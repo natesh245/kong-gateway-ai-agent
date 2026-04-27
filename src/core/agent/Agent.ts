@@ -419,7 +419,9 @@ export class Agent {
         }
 
         this.toolCallCount = 0;
-        this.uniqueToolCallIds.clear();
+        // NOTE: uniqueToolCallIds is NOT cleared here. 
+        // It persists for the conversation to prevent 'Echoing' hallucinations 
+        // where models re-propose previous turn tool calls with same IDs.
         this.usageStats.lastTurnUsage = { inputTokens: 0, outputTokens: 0, toolCalls: 0 };
         if (!this.initClient() || !this.model) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
@@ -572,7 +574,34 @@ export class Agent {
                 let streamBuffer = "";
                 let toolNames = new Map<string, string>(); // Reliable tracking for tool names
                 let lastSequencedToolName: string | null = null;
+                let lastSequencedToolArgs: string | null = null;
                 let sequentialToolCount = 0;
+
+                const persistState = () => {
+                    if (fullContent || collectedToolCalls.length > 0) {
+                        const assistantMsg = new AIMessage({
+                            content: fullContent,
+                            tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls.map(tc => ({
+                                id: tc.id,
+                                name: tc.name,
+                                args: tc.args,
+                            })) : undefined,
+                            additional_kwargs: {
+                                reasoning: fullReasoning,
+                                lastUsage: { ...this.usageStats.lastTurnUsage },
+                            }
+                        });
+                        this.messages.push(assistantMsg);
+
+                        for (const tr of collectedToolResults) {
+                            this.messages.push(new ToolMessage({
+                                content: tr.content,
+                                tool_call_id: tr.id,
+                                name: tr.name || "",
+                            }));
+                        }
+                    }
+                };
 
                 for await (const [mode, chunk] of stream) {
                     if (this.isCancelled) break;
@@ -581,8 +610,9 @@ export class Agent {
                     const currentTotal = this.usageStats.totalTokens;
                     if (currentTotal >= maxContext) {
                         onUpdate("\n\n⚠️ **Context Watchdog Triggered**: Context limit reached during reasoning. Aborting to prevent instability.");
+                        persistState();
                         this.cancel();
-                        break;
+                        return;
                     }
 
                     // (Tool call check moved inside the updates loop for immediate deduplicated counting)
@@ -694,15 +724,18 @@ export class Agent {
                                             this.uniqueToolCallIds.add(tc.id);
                                             
                                             // SEQUENTIAL WATCHDOG: Detect infinite tool loops
-                                            if (tc.name === lastSequencedToolName) {
+                                            const currentArgs = JSON.stringify(tc.args);
+                                            if (tc.name === lastSequencedToolName && currentArgs === lastSequencedToolArgs) {
                                                 sequentialToolCount++;
                                             } else {
                                                 lastSequencedToolName = tc.name;
+                                                lastSequencedToolArgs = currentArgs;
                                                 sequentialToolCount = 1;
                                             }
 
                                             if (sequentialToolCount > 3) {
                                                 onUpdate(`\n\n🚨 **Loop Watchdog Triggered**: The model is repeating the '${tc.name}' tool excessively. Terminating turn to prevent resource waste.`);
+                                                persistState();
                                                 this.cancel();
                                                 return;
                                             }
@@ -713,6 +746,7 @@ export class Agent {
                                             // IMMEDIATE WATCHDOG: Kill mid-step if count is breached
                                             if (this.toolCallCount > (config.get<number>('toolCallLimit') || 10)) {
                                                 onUpdate(`\n\n⚠️ **Churn Watchdog Triggered**: Excessive tool calls detected (${this.toolCallCount}). Aborting turn to prevent token waste.`);
+                                                persistState();
                                                 this.cancel();
                                                 return; // Exit the entire processing task
                                             }
@@ -760,6 +794,10 @@ export class Agent {
                                         // Check for SAFETY_REQUIRED pattern
                                         if (safeResult.includes("SAFETY_REQUIRED")) {
                                             this.lastAnyToolTriggeredSafety = true;
+                                            onUpdate(`\n\n🛡️ **Safety Gate Triggered**: A manual approval is required. Terminating turn...`);
+                                            persistState();
+                                            this.cancel();
+                                            return;
                                         }
                                     }
                                 }
@@ -786,35 +824,9 @@ export class Agent {
                 }
 
                 // Sync messages: add the final AI message and any tool messages to our history
-                // The agent's internal state has its own copy, but we maintain ours for serialization
-                if (fullContent || collectedToolCalls.length > 0) {
-                    const assistantMsg = new AIMessage({
-                        content: fullContent,
-                        tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls.map(tc => ({
-                            id: tc.id,
-                            name: tc.name,
-                            args: tc.args,
-                        })) : undefined,
-                        additional_kwargs: {
-                            reasoning: fullReasoning,
-                            lastUsage: { ...this.usageStats.lastTurnUsage },
-                        }
-                    });
-                    this.messages.push(assistantMsg);
-
-                    // Add tool result messages
-                    for (const tr of collectedToolResults) {
-                        this.messages.push(new ToolMessage({
-                            content: tr.content,
-                            tool_call_id: tr.id,
-                            name: tr.name || "",
-                        }));
-                    }
-
-                    // If there were tool calls followed by a final response, add that final response too
-                    // The stream naturally handles the multi-turn: model -> tools -> model -> ...
-                    // Our fullContent captures only the final text response from the last model step
-                }
+                persistState();
+                // The stream naturally handles the multi-turn: model -> tools -> model -> ...
+                // Our fullContent captures only the final text response from the last model step
 
             } catch (e: any) {
                 if (e.name === 'AbortError' || this.isCancelled) return;

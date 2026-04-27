@@ -110,6 +110,10 @@ export class ToolManager {
 
   public async openManager() { return this.docker.openManager(); }
 
+  public async listEntities(entity: string): Promise<string> {
+    return this.docker.listEntities(entity);
+  }
+
   // --- Hardened Orchestration Methods ---
 
   /**
