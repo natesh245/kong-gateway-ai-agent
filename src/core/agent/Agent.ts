@@ -495,6 +495,7 @@ export class Agent {
             let fullReasoning = "";
             let collectedToolCalls: any[] = [];
             let collectedToolResults: any[] = [];
+            const uniqueToolResultIds = new Set<string>(); // NEW: Deduplicate results per turn
 
             const kongMode = config.get<string>('kongMode') || 'local';
             const proxyPort = config.get<number>('proxyPort') || 8000;
@@ -715,19 +716,19 @@ export class Agent {
                                                 this.cancel();
                                                 return; // Exit the entire processing task
                                             }
+
+                                            collectedToolCalls.push(tc);
+
+                                            onUpdate(`${this.getFriendlyToolName(tc.name)}...`, 'toolStatus');
+                                            onUpdate(JSON.stringify({
+                                                id: tc.id,
+                                                interaction: {
+                                                    name: tc.name,
+                                                    args: tc.args,
+                                                    status: 'started'
+                                                }
+                                            }), 'toolInteraction');
                                         }
-
-                                        collectedToolCalls.push(tc);
-
-                                        onUpdate(`${this.getFriendlyToolName(tc.name)}...`, 'toolStatus');
-                                        onUpdate(JSON.stringify({
-                                            id: tc.id,
-                                            interaction: {
-                                                name: tc.name,
-                                                args: tc.args,
-                                                status: 'started'
-                                            }
-                                        }), 'toolInteraction');
                                     }
                                 }
 
@@ -737,24 +738,29 @@ export class Agent {
                                         typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
                                     );
 
-                                    collectedToolResults.push({
-                                        id: msg.tool_call_id,
-                                        name: toolNames.get(msg.tool_call_id),
-                                        content: safeResult
-                                    });
+                                    const toolId = msg.tool_call_id || (msg as any).id;
+                                    if (toolId && !uniqueToolResultIds.has(toolId)) {
+                                        uniqueToolResultIds.add(toolId);
 
-                                    onUpdate(JSON.stringify({
-                                        id: msg.tool_call_id,
-                                        interaction: {
-                                            name: toolNames.get(msg.tool_call_id),
-                                            result: safeResult.substring(0, 5000),
-                                            status: 'completed'
+                                        collectedToolResults.push({
+                                            id: toolId,
+                                            name: toolNames.get(toolId),
+                                            content: safeResult
+                                        });
+
+                                        onUpdate(JSON.stringify({
+                                            id: toolId,
+                                            interaction: {
+                                                name: toolNames.get(toolId),
+                                                result: safeResult.substring(0, 5000),
+                                                status: 'completed'
+                                            }
+                                        }), 'toolInteraction');
+
+                                        // Check for SAFETY_REQUIRED pattern
+                                        if (safeResult.includes("SAFETY_REQUIRED")) {
+                                            this.lastAnyToolTriggeredSafety = true;
                                         }
-                                    }), 'toolInteraction');
-
-                                    // Check for SAFETY_REQUIRED pattern
-                                    if (safeResult.includes("SAFETY_REQUIRED")) {
-                                        this.lastAnyToolTriggeredSafety = true;
                                     }
                                 }
                             }
