@@ -38,6 +38,7 @@ export class Agent {
     private abortController: AbortController | null = null;
     private toolCallCount = 0;
     private uniqueToolCallIds: Set<string> = new Set(); // NEW: Deduplicate tool calls per turn
+    private uniqueToolResultIds: Set<string> = new Set();
     private lastAnyToolTriggeredSafety = false;
     private usageStats = {
         inputTokens: 0,
@@ -497,7 +498,6 @@ export class Agent {
             let fullReasoning = "";
             let collectedToolCalls: any[] = [];
             let collectedToolResults: any[] = [];
-            const uniqueToolResultIds = new Set<string>(); // NEW: Deduplicate results per turn
 
             const kongMode = config.get<string>('kongMode') || 'local';
             const proxyPort = config.get<number>('proxyPort') || 8000;
@@ -773,8 +773,8 @@ export class Agent {
                                     );
 
                                     const toolId = msg.tool_call_id || (msg as any).id;
-                                    if (toolId && !uniqueToolResultIds.has(toolId)) {
-                                        uniqueToolResultIds.add(toolId);
+                                    if (toolId && !this.uniqueToolResultIds.has(toolId)) {
+                                        this.uniqueToolResultIds.add(toolId);
 
                                         collectedToolResults.push({
                                             id: toolId,
