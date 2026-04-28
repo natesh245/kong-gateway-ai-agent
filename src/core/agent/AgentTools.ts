@@ -25,6 +25,15 @@ export interface ToolContext {
  */
 export function buildAgentTools(ctx: ToolContext) {
     const { toolManager } = ctx;
+    const executedToolsThisTurn = new Set<string>();
+
+    function checkParsimony(toolName: string): string | null {
+        if (executedToolsThisTurn.has(toolName)) {
+            return `SYSTEM_WARNING: You have already executed '${toolName}' in this turn. Do not call it again. Please proceed to generate the markdown summary table for the user based on the previous result.`;
+        }
+        executedToolsThisTurn.add(toolName);
+        return null;
+    }
 
     // --- Helpers for safety gate checks ---
     function getLastUserContent(): string {
@@ -314,6 +323,8 @@ export function buildAgentTools(ctx: ToolContext) {
 
         tool(
             async ({ filename }) => {
+                const warning = checkParsimony("validate_kong_config");
+                if (warning) return warning;
                 return await toolManager.validateWithDeck(filename || "kong.yml");
             },
             {
@@ -327,6 +338,8 @@ export function buildAgentTools(ctx: ToolContext) {
 
         tool(
             async ({ filename }) => {
+                const warning = checkParsimony("preview_sync_diff");
+                if (warning) return warning;
                 return await toolManager.diffWithDeck(filename || "kong.yml");
             },
             {
@@ -341,6 +354,8 @@ export function buildAgentTools(ctx: ToolContext) {
         // SAFETY-GATED: sync_to_kong_using_deck
         tool(
             async ({ filename }) => {
+                const warning = checkParsimony("sync_to_kong_using_deck");
+                if (warning) return warning;
                 return await toolManager.syncWithSafetyGate(execCtx, filename || "kong.yml");
             },
             {
@@ -355,6 +370,8 @@ export function buildAgentTools(ctx: ToolContext) {
         // SAFETY-GATED: preview_export_diff
         tool(
             async ({ filename }) => {
+                const warning = checkParsimony("preview_export_diff");
+                if (warning) return warning;
                 return await toolManager.previewExportHardened(execCtx, filename || "kong.yml");
             },
             {
@@ -369,6 +386,8 @@ export function buildAgentTools(ctx: ToolContext) {
         // SAFETY-GATED: export_live_to_storage_file
         tool(
             async ({ filename }) => {
+                const warning = checkParsimony("export_live_to_storage_file");
+                if (warning) return warning;
                 return await toolManager.exportWithSafetyGate(execCtx, filename || "kong.yml");
             },
             {
@@ -383,6 +402,8 @@ export function buildAgentTools(ctx: ToolContext) {
         // SAFETY-GATED: reset_kong_instance
         tool(
             async () => {
+                const warning = checkParsimony("reset_kong_instance");
+                if (warning) return warning;
                 return await toolManager.resetWithSafetyGate(execCtx);
             },
             {

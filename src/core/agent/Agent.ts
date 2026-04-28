@@ -498,6 +498,7 @@ export class Agent {
             let fullReasoning = "";
             let collectedToolCalls: any[] = [];
             let collectedToolResults: any[] = [];
+            const executedToolNamesThisTurn = new Set<string>();
 
             const kongMode = config.get<string>('kongMode') || 'local';
             const proxyPort = config.get<number>('proxyPort') || 8000;
@@ -722,6 +723,7 @@ export class Agent {
                                         // ONLY count and check if this is a NEW tool call ID
                                         if (tc.id && !this.uniqueToolCallIds.has(tc.id)) {
                                             this.uniqueToolCallIds.add(tc.id);
+                                            executedToolNamesThisTurn.add(tc.name);
                                             
                                             // SEQUENTIAL WATCHDOG: Detect infinite tool loops
                                             const currentArgs = JSON.stringify(tc.args);
@@ -751,8 +753,6 @@ export class Agent {
                                                 return; // Exit the entire processing task
                                             }
 
-                                            collectedToolCalls.push(tc);
-
                                             onUpdate(`${this.getFriendlyToolName(tc.name)}...`, 'toolStatus');
                                             onUpdate(JSON.stringify({
                                                 id: tc.id,
@@ -762,6 +762,8 @@ export class Agent {
                                                     status: 'started'
                                                 }
                                             }), 'toolInteraction');
+                                            
+                                            collectedToolCalls.push(tc);
                                         }
                                     }
                                 }
@@ -782,23 +784,23 @@ export class Agent {
                                             content: safeResult
                                         });
 
-                                        onUpdate(JSON.stringify({
-                                            id: toolId,
-                                            interaction: {
-                                                name: toolNames.get(toolId),
-                                                result: safeResult.substring(0, 5000),
-                                                status: 'completed'
-                                            }
-                                        }), 'toolInteraction');
+                                            onUpdate(JSON.stringify({
+                                                id: toolId,
+                                                interaction: {
+                                                    name: toolNames.get(toolId),
+                                                    result: safeResult.substring(0, 5000),
+                                                    status: 'completed'
+                                                }
+                                            }), 'toolInteraction');
 
-                                        // Check for SAFETY_REQUIRED pattern
-                                        if (safeResult.includes("SAFETY_REQUIRED")) {
-                                            this.lastAnyToolTriggeredSafety = true;
-                                            onUpdate(`\n\n🛡️ **Safety Gate Triggered**: A manual approval is required. Terminating turn...`);
-                                            persistState();
-                                            this.cancel();
-                                            return;
-                                        }
+                                            // Check for SAFETY_REQUIRED pattern
+                                            if (safeResult.includes("SAFETY_REQUIRED")) {
+                                                this.lastAnyToolTriggeredSafety = true;
+                                                onUpdate(`\n\n🛡️ **Safety Gate Triggered**: A manual approval is required. Terminating turn...`);
+                                                persistState();
+                                                this.cancel();
+                                                return;
+                                            }
                                     }
                                 }
                             }

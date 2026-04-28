@@ -239,8 +239,10 @@ export class ToolManager {
    */
   public async exportWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
-    const isApproved = lastUserContent.includes('confirm export') || 
-                       (lastUserContent === 'yes' && ctx.recentHistoryHasToolCall('preview_export_diff', 2));
+    const isApproved = lastUserContent === 'yes' || 
+                       lastUserContent.includes('proceed') || 
+                       lastUserContent.includes('confirm export') || 
+                       lastUserContent.includes('apply');
 
     if (isApproved) {
       const hasDiffed = ctx.recentHistoryHasToolCall('preview_export_diff');
