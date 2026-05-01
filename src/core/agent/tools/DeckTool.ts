@@ -392,12 +392,12 @@ export class DeckTool {
     given: $.services[*].routes[*]
     severity: error
     then:
-      function: or
+      function: schema
       functionOptions:
-        - field: paths
-          function: truthy
-        - field: methods
-          function: truthy
+        schema:
+          anyOf:
+            - required: [paths]
+            - required: [methods]
 
   no-hardcoded-ids:
     description: "Avoid hardcoded 'id' fields. Let decK handle entity identities."
@@ -432,7 +432,8 @@ export class DeckTool {
       }
     } catch (e: any) {
       if (e.name === 'AbortError') throw e;
-      return `Linting failed: ${e.stderr || e.message}`;
+      const output = e.stdout ? `\n\nViolations found:\n${e.stdout}` : "";
+      return `Linting failed: ${e.stderr || e.message}${output}`;
     }
   }
 
