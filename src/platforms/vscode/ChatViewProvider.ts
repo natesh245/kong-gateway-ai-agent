@@ -361,7 +361,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(diff);
 
-                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nCRITICAL INSTRUCTION: The file is ALREADY saved to disk. **DO NOT call \`write_storage_file\`**. Please review it according to the DECLARATIVE WORKFLOW. **DO NOT CALL SYNC TOOLS**. Stop after showing the preview diff.`;
+                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nCRITICAL INSTRUCTION: The file is ALREADY saved to disk. **DO NOT call \`write_storage_file\`**. Please review it according to the DECLARATIVE WORKFLOW. Provide a detailed LLM summary of the changes, call \`lint_kong_config\` and \`validate_kong_config\` to verify it, and then call \`preview_sync_diff\`. **DO NOT CALL SYNC TOOLS**. Stop after presenting the review, validation, linting, and preview sync diff.`;
 
                             const messageId = Date.now().toString();
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
@@ -490,7 +490,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                                 
                                 // Automatically trigger the next workflow step for the agent
                                 setTimeout(() => {
-                                    this._handleUserMessage(`I have accepted the changes to ${data.filename}. Please validate the configuration and show me the sync preview.`);
+                                    this._handleUserMessage(`I have accepted the changes to ${data.filename}. Please perform an LLM review and provide a detailed summary of the changes, then use \`lint_kong_config\` and \`validate_kong_config\` to verify the configuration, and finally show me the sync preview.`);
                                 }, 500);
                             } catch (e: any) {
                                 this.platform.showErrorMessage(`Failed to apply changes: ${e.message}`);
@@ -537,7 +537,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             }
                             
                             setTimeout(() => {
-                                this._handleUserMessage(`I have accepted all staged changes. Please validate the configuration and show me the sync preview.`);
+                                this._handleUserMessage(`I have accepted all staged changes. Please perform an LLM review and provide a detailed summary of the changes, then use \`lint_kong_config\` and \`validate_kong_config\` to verify the configuration, and finally show me the sync preview.`);
                             }, 500);
                         } catch (e: any) {
                             this.platform.showErrorMessage(`Failed to apply changes: ${e.message}`);
