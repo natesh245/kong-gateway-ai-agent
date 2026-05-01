@@ -269,23 +269,15 @@ export class ToolManager {
    * Dumps the live state and feeds it to the LLM to generate a rich summary table.
    */
   public async previewResetInventory(signal?: AbortSignal): Promise<string> {
-    const tempFile = `.temp_reset_${Date.now()}.yml`;
     try {
-      // 1. Capture the live state
-      await this.dumpWithDeck(tempFile, signal);
-      const content = await this.readStorageFile(tempFile).catch(() => "");
+      // 1. Capture the live state directly to memory
+      const content = await this.deck.dumpToStdout(signal);
       
-      // 2. Cleanup
-      try {
-        const storagePath = this.getStoragePath();
-        if (storagePath) fs.unlinkSync(path.join(storagePath, tempFile));
-      } catch (e) {}
-
       if (!content.trim() || !content.includes('services:')) {
         return "The live Kong Gateway appears to be empty. There are no services or routes to delete.";
       }
 
-      // 3. Format the response for the LLM
+      // 2. Format the response for the LLM
       return "### ⚠️ RESET PREVIEW DATA\n\n" +
              "The following is the current LIVE configuration of the gateway. " +
              "Please analyze this YAML and present it to the user as a **clean Markdown table** summarizing the Services, Routes, and Plugins that will be deleted.\n\n" +

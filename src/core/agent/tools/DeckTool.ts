@@ -166,51 +166,55 @@ export class DeckTool {
 
   public async dumpWithDeck(filename: string, signal?: AbortSignal): Promise<string> {
     try {
-      const storagePath = this.storage.getStoragePath();
-      const filePath = path.join(storagePath, filename);
-      const isHostInstalled = await this.isDeckInstalled(signal);
-
-      if (isHostInstalled) {
-        const args = await this.getDeckArgs(true);
-        let command = `deck gateway dump -o "${filePath}" ${args.join(' ')}`;
-        try {
-          const { stdout } = await execAsync(command, { signal });
-          return stdout || `Exported configuration to ${filename} (Host CLI).`;
-        } catch (e: any) {
-          const errorMsg = e.stderr || e.message || "";
-          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
-            command = `deck dump -o "${filePath}" ${args.join(' ')}`;
-            const { stdout } = await execAsync(command, { signal });
-            return stdout || `Exported configuration to ${filename} (Host CLI fallback).`;
-          }
-          throw e;
-        }
-      } else {
-        const args = await this.getDeckArgs(false);
-        const dockerCommand = `docker run --rm kong/deck gateway dump -o - ${args.join(' ')}`;
-        try {
-          const { stdout } = await execAsync(dockerCommand, { signal });
-          if (stdout && stdout.trim().length > 0) {
-            this.storage.writeStorageFile(filename, stdout);
-            return `Exported configuration to ${filename} (Dockerized decK - Volume-less).`;
-          }
-          throw new Error("decK dump returned empty output.");
-        } catch (e: any) {
-          const errorMsg = e.stderr || e.message || "";
-          if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
-            const fallbackDocker = `docker run --rm kong/deck dump -o - ${args.join(' ')}`;
-            const { stdout } = await execAsync(fallbackDocker, { signal });
-            if (stdout && stdout.trim().length > 0) {
-              this.storage.writeStorageFile(filename, stdout);
-              return `Exported configuration to ${filename} (Dockerized fallback - Volume-less).`;
-            }
-          }
-          throw e;
-        }
-      }
+      const content = await this.dumpToStdout(signal);
+      await this.storage.writeStorageFile(filename, content);
+      return `Successfully exported configuration to ${filename}.`;
     } catch (e: any) {
       if (e.name === 'AbortError') throw e;
       return `decK dump failed: ${e.stderr || e.message}`;
+    }
+  }
+
+  /**
+   * Captures the live gateway configuration and returns it directly as a string.
+   */
+  public async dumpToStdout(signal?: AbortSignal): Promise<string> {
+    const isHostInstalled = await this.isDeckInstalled(signal);
+    const args = await this.getDeckArgs(isHostInstalled);
+
+    let command: string;
+    if (isHostInstalled) {
+      command = `deck gateway dump -o - ${args.join(' ')}`;
+    } else {
+      command = `docker run --rm kong/deck gateway dump -o - ${args.join(' ')}`;
+    }
+
+    try {
+      const { stdout } = await execAsync(command, { signal });
+      if (stdout && stdout.trim().length > 0) {
+        return stdout;
+      }
+      
+      // Fallback for older decK versions
+      const fallbackCommand = isHostInstalled 
+        ? `deck dump -o - ${args.join(' ')}`
+        : `docker run --rm kong/deck dump -o - ${args.join(' ')}`;
+      
+      const { stdout: fStdout } = await execAsync(fallbackCommand, { signal });
+      if (!fStdout || fStdout.trim().length === 0) {
+          throw new Error("decK dump returned empty output.");
+      }
+      return fStdout;
+    } catch (e: any) {
+      const errorMsg = e.stderr || e.message || "";
+      if (errorMsg.includes('unknown command')) {
+          const fallback = isHostInstalled 
+            ? `deck dump -o - ${args.join(' ')}`
+            : `docker run --rm kong/deck dump -o - ${args.join(' ')}`;
+          const { stdout } = await execAsync(fallback, { signal });
+          return stdout;
+      }
+      throw e;
     }
   }
 

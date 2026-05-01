@@ -636,14 +636,16 @@ export class Agent {
                     }
 
                     // 1. ALWAYS push Tool Results first. 
-                    // This ensures that any subsequent AIMessage in the same persistence cycle 
-                    // (like a response to those tools) follows the results in history.
                     if (collectedToolResults.length > 0) {
                         for (const tr of collectedToolResults) {
+                            // CRITICAL: Ensure tool_call_id is present to avoid 400 errors from providers
+                            if (!tr.id) continue;
+
                             this.messages.push(new ToolMessage({
                                 content: tr.content,
                                 tool_call_id: tr.id,
-                                name: tr.name || "",
+                                id: tr.id, // For maximum compatibility
+                                name: tr.name || "unknown_tool",
                             }));
                         }
                         collectedToolResults = [];
@@ -651,9 +653,12 @@ export class Agent {
 
                     // 2. Then push the AI message (reasoning, tool calls, or final response)
                     if (fullContent || collectedToolCalls.length > 0 || fullReasoning) {
+                        // Filter out any malformed tool calls that might have slipped through the stream
+                        const validToolCalls = collectedToolCalls.filter(tc => tc.id && tc.name);
+
                         const assistantMsg = new AIMessage({
                             content: fullContent,
-                            tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls.map(tc => ({
+                            tool_calls: validToolCalls.length > 0 ? validToolCalls.map(tc => ({
                                 id: tc.id,
                                 name: tc.name,
                                 args: tc.args,
