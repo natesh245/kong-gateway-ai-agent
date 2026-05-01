@@ -71,8 +71,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (this._view) {
                 const filename = path.basename(uri.fsPath);
                 
-                // Only track specific configuration files and ignore hidden/temp files (except staged files)
-                if (filename.startsWith('.') && !filename.startsWith('.staged_')) return;
+                // Only track specific configuration files and ignore hidden/internal files
+                if (filename.startsWith('.')) return;
                 const isValidExtension = filename.endsWith('.yml') || 
                                          filename.endsWith('.yaml') || 
                                          filename.endsWith('.json') || 

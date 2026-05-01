@@ -160,6 +160,9 @@ export class Agent {
                     cleanContent = "";
                 }
 
+                // If this message has tool calls, we must be careful. 
+                // Some providers (like Anthropic/Gemini) forbid AIMessages with tool_calls from having content that looks like a tool result.
+                // We ensure that if tool_calls are present, the content is preserved ONLY if it's not a duplicate of what will be in the ToolMessages.
                 const aiMsg = new AIMessage({
                     content: cleanContent,
                     additional_kwargs: {
@@ -182,7 +185,7 @@ export class Agent {
                         lcMessages.push(new ToolMessage({
                             id: interaction.id,
                             name: interaction.name || interaction.toolName || "",
-                            content: interaction.result || "",
+                            content: String(interaction.result || ""),
                             tool_call_id: interaction.id
                         }));
                     }
@@ -620,6 +623,21 @@ export class Agent {
                         fullContent = "";
                     }
 
+                    // 1. ALWAYS push Tool Results first. 
+                    // This ensures that any subsequent AIMessage in the same persistence cycle 
+                    // (like a response to those tools) follows the results in history.
+                    if (collectedToolResults.length > 0) {
+                        for (const tr of collectedToolResults) {
+                            this.messages.push(new ToolMessage({
+                                content: tr.content,
+                                tool_call_id: tr.id,
+                                name: tr.name || "",
+                            }));
+                        }
+                        collectedToolResults = [];
+                    }
+
+                    // 2. Then push the AI message (reasoning, tool calls, or final response)
                     if (fullContent || collectedToolCalls.length > 0 || fullReasoning) {
                         const assistantMsg = new AIMessage({
                             content: fullContent,
@@ -640,17 +658,6 @@ export class Agent {
                         fullContent = "";
                         fullReasoning = "";
                         collectedToolCalls = [];
-                    }
-
-                    if (collectedToolResults.length > 0) {
-                        for (const tr of collectedToolResults) {
-                            this.messages.push(new ToolMessage({
-                                content: tr.content,
-                                tool_call_id: tr.id,
-                                name: tr.name || "",
-                            }));
-                        }
-                        collectedToolResults = [];
                     }
                 };
 
