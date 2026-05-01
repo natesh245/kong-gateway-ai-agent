@@ -265,18 +265,57 @@ export class ToolManager {
   }
 
   /**
+   * Generates a detailed inventory of what will be deleted during a reset.
+   * Dumps the live state and feeds it to the LLM to generate a rich summary table.
+   */
+  public async previewResetInventory(signal?: AbortSignal): Promise<string> {
+    const tempFile = `.temp_reset_${Date.now()}.yml`;
+    try {
+      // 1. Capture the live state
+      await this.dumpWithDeck(tempFile, signal);
+      const content = await this.readStorageFile(tempFile).catch(() => "");
+      
+      // 2. Cleanup
+      try {
+        const storagePath = this.getStoragePath();
+        if (storagePath) fs.unlinkSync(path.join(storagePath, tempFile));
+      } catch (e) {}
+
+      if (!content.trim() || !content.includes('services:')) {
+        return "The live Kong Gateway appears to be empty. There are no services or routes to delete.";
+      }
+
+      // 3. Format the response for the LLM
+      return "### ⚠️ RESET PREVIEW DATA\n\n" +
+             "The following is the current LIVE configuration of the gateway. " +
+             "Please analyze this YAML and present it to the user as a **clean Markdown table** summarizing the Services, Routes, and Plugins that will be deleted.\n\n" +
+             "**LIVE CONFIGURATION:**\n" +
+             `\`\`\`yaml\n${content}\n\`\`\`\n\n` +
+             "--- \n" +
+             "**SAFETY REMINDER:** This is a DESTRUCTIVE operation. After showing the table, ask the user to confirm with 'yes' or 'confirm reset' if they want to proceed. Use '[APPROVAL_REQUIRED]'.";
+    } catch (e: any) {
+      return `Failed to generate reset inventory: ${e.message}`;
+    }
+  }
+
+  /**
    * Safety-gated reset operation.
    */
   public async resetWithSafetyGate(ctx: ToolExecutionContext): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
-    if (lastUserContent === 'yes' || lastUserContent.includes('confirm reset')) {
-      const hasLive = ctx.recentHistoryHasToolCall('get_instance_details', 20);
-      const hasLocal = ctx.recentHistoryHasToolCall('read_storage_file', 20) || ctx.recentHistoryHasToolCall('list_storage_files', 20);
-      if (!hasLive || !hasLocal) {
-        return "SAFETY_REQUIRED: I cannot reset without analyzing live (get_instance_details) and local (read_storage_file) configs first.";
+    const isApproved = /\byes\b/i.test(lastUserContent) || 
+                       lastUserContent.includes('confirm reset') || 
+                       lastUserContent.includes('proceed') || 
+                       lastUserContent.includes('approve');
+
+    if (isApproved) {
+      const hasInventory = ctx.recentHistoryHasToolCall('preview_reset_inventory', 50);
+      
+      if (!hasInventory) {
+        return "SAFETY_REQUIRED: I cannot reset without first showing you the inventory of what will be deleted. Please run 'preview_reset_inventory' first.";
       }
       return await this.resetWithDeck(ctx.abortSignal);
     }
-    return "SAFETY_REQUIRED: I cannot reset without explicit confirmation using '[APPROVAL_REQUIRED]'.";
+    return "SAFETY_REQUIRED: I cannot reset without explicit confirmation. Please review the 'preview_reset_inventory' results and say 'confirm reset' or 'yes'. Use '[APPROVAL_REQUIRED]'.";
   }
 }

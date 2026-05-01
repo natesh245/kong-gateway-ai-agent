@@ -209,11 +209,11 @@ export class DockerTool {
     }
   }
 
-  public async listEntities(entity: string): Promise<string> {
+  public async listEntities(entity: string, signal?: AbortSignal): Promise<string> {
     const adminUrl = this.getAdminUrl();
     try {
       const url = `${adminUrl.replace(/\/$/, '')}/${entity}`;
-      const resp = await axios.get(url, { timeout: 5000 });
+      const resp = await axios.get(url, { timeout: 5000, signal });
       const data = resp.data.data || [];
       
       if (data.length === 0) {

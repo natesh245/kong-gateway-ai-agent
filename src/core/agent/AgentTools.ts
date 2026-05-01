@@ -70,8 +70,14 @@ export function buildAgentTools(ctx: ToolContext) {
         }
 
         return history.some((m: any) =>
+            // 1. Check ToolMessage name (LangChain property)
+            (m.name === toolName) ||
+            // 2. Check AIMessage tool_calls (standard LangChain)
+            (m.tool_calls && m.tool_calls.some((tc: any) => (tc.name === toolName) || (tc.function && tc.function.name === toolName))) ||
+            // 3. Check our custom toolInteractions property (from globalState)
             (m.toolInteractions && m.toolInteractions.some((ti: any) => ti.name === toolName)) ||
-            (m.tool_calls && m.tool_calls.some((tc: any) => (tc.name === toolName) || (tc.function && tc.function.name === toolName)))
+            // 4. Check additional_kwargs for namespaced tool names (OpenRouter/Gemini quirk)
+            (m.additional_kwargs?.name === toolName)
         );
     }
 
@@ -416,7 +422,20 @@ export function buildAgentTools(ctx: ToolContext) {
             }
         ),
 
-        // SAFETY-GATED: reset_kong_instance
+        // --- DESTRUCTIVE / RESET ---
+        tool(
+            async () => {
+                const warning = checkParsimony("preview_reset_inventory");
+                if (warning) return warning;
+                return await toolManager.previewResetInventory(ctx.abortSignal);
+            },
+            {
+                name: "preview_reset_inventory",
+                description: "Scans the live Kong Gateway and returns a Markdown Table of all existing Services, Routes, Plugins, and Consumers that will be deleted during a reset. Run this BEFORE reset_kong_instance to show the user what exactly will be deleted.",
+                schema: z.object({}),
+            }
+        ),
+
         tool(
             async () => {
                 const warning = checkParsimony("reset_kong_instance");
@@ -425,7 +444,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "reset_kong_instance",
-                description: "DESTRUCTIVE: Wipes ALL configuration (Services, Routes, Plugins, etc.) from the live Kong Gateway. MANDATORY: You MUST run 'get_instance_details' and show the user exactly what will be deleted before asking for approval via '[APPROVAL_REQUIRED]'. NEVER skip the diagnostic phase before a reset.",
+                description: "DESTRUCTIVE: Wipes ALL configuration from the live Kong Gateway. MANDATORY: You MUST run 'preview_reset_inventory' first and show the table to the user before asking for approval via '[APPROVAL_REQUIRED]'. NEVER skip the inventory phase before a reset.",
                 schema: z.object({}),
             }
         ),
