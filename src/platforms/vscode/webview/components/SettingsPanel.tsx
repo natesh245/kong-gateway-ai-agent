@@ -177,8 +177,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     {row('Timeout (s)', <input type="number" value={localConfig.maxAgentTimeout || 100} disabled={disabled} onChange={e => handleChange('maxAgentTimeout', parseInt(e.target.value))} />)}
                     
                     <div className="settings-row">
-                        <label style={{ width: '80px' }}></label>
-                        <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flex: 1 }}>
+                        <label></label>
+                        <label className="checkbox-label">
                             <input type="checkbox" checked={localConfig.showThinking !== false} onChange={e => handleChange('showThinking', e.target.checked)} disabled={disabled} />
                             🧠 Show Thinking Logs
                         </label>
@@ -188,8 +188,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 {/* ── 1.5 OBSERVABILITY ── */}
                 <Section title="Observability" icon="🔭">
                     <div className="settings-row">
-                        <label style={{ width: '80px' }}></label>
-                        <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flex: 1 }}>
+                        <label></label>
+                        <label className="checkbox-label">
                             <input type="checkbox" checked={localConfig.langChainTracing === true} onChange={e => handleChange('langChainTracing', e.target.checked)} disabled={disabled} />
                             🚀 Enable LangSmith Tracing
                         </label>
@@ -237,8 +237,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     {row('Workspace', <input type="text" value={localConfig.kongWorkspace || 'default'} onChange={e => handleChange('kongWorkspace', e.target.value)} disabled={disabled} />)}
                     {row('Admin Token', <input type="password" value={localConfig.kongAdminToken || ''} onChange={e => handleChange('kongAdminToken', e.target.value)} disabled={disabled} />)}
                     <div className="settings-row">
-                        <label style={{ width: '80px' }}></label>
-                        <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flex: 1 }}>
+                        <label></label>
+                        <label className="checkbox-label">
                             <input type="checkbox" checked={localConfig.skipTlsVerify === true} onChange={e => handleChange('skipTlsVerify', e.target.checked)} disabled={disabled} />
                             🛡️ Skip TLS Verification
                         </label>

@@ -355,11 +355,13 @@ details[open] summary { margin-bottom: 12px; background: none; }
 .settings-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 .settings-panel::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 .settings-row { display: flex; align-items: center; gap: 10px; position: relative; }
-.settings-row label { width: 80px; color: var(--vscode-descriptionForeground); font-weight: 500; }
-.settings-row input, .settings-row select { 
+.settings-row > label:first-child { width: 80px; color: var(--vscode-descriptionForeground); font-weight: 500; flex-shrink: 0; }
+.settings-row input:not([type="checkbox"]), .settings-row select { 
     flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); 
     border: 1px solid var(--vscode-input-border); padding: 6px 10px; border-radius: 6px; outline: none;
 }
+.settings-row input[type="checkbox"] { flex: 0; width: auto; margin: 0; }
+.checkbox-label { cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 11px; flex: 1; }
 
 .ports-grid { 
     display: grid; grid-template-columns: 1fr 1fr; gap: 8px; 
