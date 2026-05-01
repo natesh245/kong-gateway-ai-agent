@@ -354,14 +354,64 @@ export class DeckTool {
         rulesetFile = 'ruleset.yaml';
         const defaultRulesetPath = path.join(storagePath, rulesetFile);
         const defaultContent = `rules:
+  service-name-required:
+    description: "Every service must have a unique name."
+    given: $.services[*]
+    severity: error
+    then:
+      field: name
+      function: truthy
+
   service-https-check:
-    description: "Ensure https usage in Kong GW Services (Default Rule)"
+    description: "Best practice: Use HTTPS for upstream services."
     given: $.services[*].protocol
     severity: warn
     then:
       function: pattern
       functionOptions:
         match: "^https$"
+
+  service-timeout-check:
+    description: "Best practice: Explicitly define timeouts for services."
+    given: $.services[*]
+    severity: warn
+    then:
+      field: connect_timeout
+      function: truthy
+
+  route-name-required:
+    description: "Every route should have a name for better observability."
+    given: $.services[*].routes[*]
+    severity: warn
+    then:
+      field: name
+      function: truthy
+
+  route-path-or-method-required:
+    description: "Routes must have at least one path or method defined."
+    given: $.services[*].routes[*]
+    severity: error
+    then:
+      function: or
+      functionOptions:
+        - field: paths
+          function: truthy
+        - field: methods
+          function: truthy
+
+  no-hardcoded-ids:
+    description: "Avoid hardcoded 'id' fields. Let decK handle entity identities."
+    given: "$..id"
+    severity: warn
+    then:
+      function: falsy
+
+  format-version-check:
+    description: "Ensure the configuration file defines _format_version."
+    given: $._format_version
+    severity: warn
+    then:
+      function: truthy
 `;
         const fs = require('fs');
         fs.writeFileSync(defaultRulesetPath, defaultContent, 'utf8');
