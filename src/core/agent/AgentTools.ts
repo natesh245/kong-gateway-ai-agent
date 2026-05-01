@@ -51,19 +51,24 @@ export function buildAgentTools(ctx: ToolContext) {
         return SanitizationUtil.stripContext(lastUser?.content as string || "").toLowerCase();
     }
 
-    function recentHistoryHas(keyword: string, lookback = 15): boolean {
+    function recentHistoryHas(keyword: string, lookback = 50): boolean {
         const messages = ctx.getMessages();
         const history = messages.slice(-lookback);
-        return history.some((m: any) =>
-            m instanceof ToolMessage &&
-            typeof m.content === 'string' &&
-            m.content.toLowerCase().includes(keyword)
-        );
+        return history.some((m: any) => {
+            const content = typeof m.content === 'string' ? m.content : "";
+            return content.toLowerCase().includes(keyword.toLowerCase());
+        });
     }
 
-    function recentHistoryHasToolCall(toolName: string, lookback = 15): boolean {
+    function recentHistoryHasToolCall(toolName: string, lookback = 50): boolean {
         const messages = ctx.getMessages();
         const history = messages.slice(-lookback);
+        
+        // Robustness: For sync/preview, also check if the result marker [SYNC_PREVIEW] exists in history
+        if (toolName === 'preview_sync_diff') {
+            if (recentHistoryHas('[SYNC_PREVIEW]', lookback)) return true;
+        }
+
         return history.some((m: any) =>
             (m.toolInteractions && m.toolInteractions.some((ti: any) => ti.name === toolName)) ||
             (m.tool_calls && m.tool_calls.some((tc: any) => (tc.name === toolName) || (tc.function && tc.function.name === toolName)))

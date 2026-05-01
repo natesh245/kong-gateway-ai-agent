@@ -268,17 +268,17 @@ export class DeckTool {
         try {
           const { stdout, stderr } = await execAsync(command, { signal });
           const rawResult = stdout || stderr;
-          return rawResult || "✅ No differences found — local config matches live Kong. Nothing to sync.";
+          return `[SYNC_PREVIEW]\n${rawResult || "✅ No differences found — local config matches live Kong. Nothing to sync."}`;
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             command = `deck diff -s "${filePath}" ${args.join(' ')}`;
             const { stdout, stderr } = await execAsync(command, { signal });
             const rawFallback = stdout || stderr;
-            return rawFallback || "✅ No differences found — local config matches live Kong. Nothing to sync.";
+            return `[SYNC_PREVIEW]\n${rawFallback || "✅ No differences found — local config matches live Kong. Nothing to sync."}`;
           }
           if (e.stdout || e.stderr) {
-            return e.stdout + e.stderr;
+            return `[SYNC_PREVIEW]\n${e.stdout}${e.stderr}`;
           }
           throw e;
         }
@@ -289,17 +289,17 @@ export class DeckTool {
         try {
           const { stdout, stderr } = await execAsync(dockerCommand, { signal });
           const raw = stdout || stderr;
-          return raw || "✅ No differences found — local config matches live Kong. Nothing to sync.";
+          return `[SYNC_PREVIEW]\n${raw || "✅ No differences found — local config matches live Kong. Nothing to sync."}`;
         } catch (e: any) {
           const errorMsg = e.stderr || e.message || "";
           if (errorMsg.includes('unknown command') || errorMsg.includes('command not found')) {
             const fallbackDocker = `docker run --rm -v "${storagePath}:/storage" kong/deck diff -s "${dockerFilePath}" ${args.join(' ')}`;
             const { stdout, stderr } = await execAsync(fallbackDocker, { signal });
             const rawDockerFallback = stdout || stderr;
-            return rawDockerFallback || "✅ No differences found — local config matches live Kong. Nothing to sync.";
+            return `[SYNC_PREVIEW]\n${rawDockerFallback || "✅ No differences found — local config matches live Kong. Nothing to sync."}`;
           }
           if (e.stdout || e.stderr) {
-            return e.stdout + e.stderr;
+            return `[SYNC_PREVIEW]\n${e.stdout}${e.stderr}`;
           }
           throw e;
         }
