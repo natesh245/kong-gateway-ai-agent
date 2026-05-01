@@ -294,13 +294,15 @@ export const App: React.FC = () => {
                                     } else {
                                         // Merge intermediate into current
                                         // The previous content (if any) was intermediate, so shift it to reasoning
-                                        if (currentTurnAgentMsg.content) {
-                                            currentTurnAgentMsg.reasoning = currentTurnAgentMsg.reasoning 
-                                                ? currentTurnAgentMsg.reasoning + "\n\n" + currentTurnAgentMsg.content 
-                                                : currentTurnAgentMsg.content;
+                                        if (msg.content) {
+                                            if (currentTurnAgentMsg.content) {
+                                                currentTurnAgentMsg.reasoning = currentTurnAgentMsg.reasoning 
+                                                    ? currentTurnAgentMsg.reasoning + "\n\n" + currentTurnAgentMsg.content 
+                                                    : currentTurnAgentMsg.content;
+                                            }
+                                            // Add the new content
+                                            currentTurnAgentMsg.content = msg.content;
                                         }
-                                        // Add the new content
-                                        currentTurnAgentMsg.content = msg.content;
 
                                         // Append reasoning
                                         if (msg.reasoning) {

@@ -198,7 +198,8 @@ export class ToolManager {
     const isApproved = /\byes\b/i.test(lastUserContent) || 
                        lastUserContent.includes('proceed') || 
                        lastUserContent.includes('confirm sync') || 
-                       lastUserContent.includes('apply');
+                       lastUserContent.includes('apply') ||
+                       /\bsync\b/i.test(lastUserContent);
 
     if (isApproved) {
       const hasDiffed = ctx.recentHistoryHasToolCall('preview_sync_diff');

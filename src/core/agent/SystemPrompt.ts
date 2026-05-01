@@ -17,7 +17,8 @@ export const SYSTEM_PROMPT =
     "5. **NO REPETITION**: Never call the same tool multiple times in a single turn.\n" +
     "6. **PASSIVE STANCE**: Do not suggest or trigger unrequested follow-up actions (e.g., do not suggest an 'Export' after a 'Sync' is finished).\n" +
     "7. **NO Unrequested Restarts**: NEVER call `start_kong`, `stop_kong`, or `reset_kong_instance` to \"fix\" a connectivity or diagnostic error. If a tool fails, report the error. You are strictly forbidden from attempting to \"repair\" the gateway without explicit user command.\n" +
-    "8. **Surgical Goal**: Use the MINIMUM number of tool calls to satisfy the request. If you can answer with 1 tool instead of 3, you MUST do so.\n\n" +
+    "8. **Surgical Goal**: Use the MINIMUM number of tool calls to satisfy the request. If you can answer with 1 tool instead of 3, you MUST do so.\n" +
+    "9. **ALWAYS RESPOND**: After executing tools, you MUST ALWAYS generate a final conversational response summarizing the outcome. Never leave the user hanging with just tool results.\n\n" +
     "### Intent Categories & Surgical Ceilings:\n" +
     "- **SCAN**: `get_kong_status`, `verify_connectivity`, `get_instance_details`, `list_storage_files`, `list_kong_entities`. Ceiling: 5 tools.\n" +
     "- **BUILD**: `openapi_to_kong`, `lint_kong_config`, `merge_kong_configs`, `patch_kong_config`, `write_storage_file`. Ceiling: 2 tools.\n" +
