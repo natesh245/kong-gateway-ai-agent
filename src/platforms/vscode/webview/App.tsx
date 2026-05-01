@@ -115,7 +115,7 @@ export const App: React.FC = () => {
                                 toolInteractions: [],
                                 showThinking: true,
                                 complete: false,
-                                startTime: Date.now()
+                                startTime: m.startTime || Date.now()
                             } as any];
                         }
                     });
@@ -376,18 +376,18 @@ export const App: React.FC = () => {
     const handleSendAction = useCallback((text: string) => {
         setIsTyping(true);
         setStatusText('Agent is analyzing request...');
-        vscode.postMessage({ type: 'prompt', value: text });
+        vscode.postMessage({ type: 'prompt', value: text, timestamp: Date.now() });
     }, [vscode]);
 
     const handleRequestReview = useCallback((filename: string) => {
         setIsTyping(true);
         setStatusText(`Agent is analyzing diffs for ${filename}...`);
-        vscode.postMessage({ type: 'requestReview', filename });
+        vscode.postMessage({ type: 'requestReview', filename, timestamp: Date.now() });
     }, [vscode]);
 
     const handleDiffAction = useCallback((action: 'accept' | 'reject', filename: string) => {
         if (action === 'accept') {
-            vscode.postMessage({ type: 'acceptDiff', filename });
+            vscode.postMessage({ type: 'acceptDiff', filename, timestamp: Date.now() });
         } else {
             vscode.postMessage({ type: 'rejectDiff', filename });
         }
@@ -452,7 +452,7 @@ export const App: React.FC = () => {
                             <span style={{ fontWeight: 'bold' }}>{config.stagedFiles.length} file{config.stagedFiles.length > 1 ? 's' : ''} staged for review</span>
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <button className="approval-btn yes" onClick={() => vscode.postMessage({ type: 'acceptAllDiffs' })}>✅ Accept All</button>
+                            <button className="approval-btn yes" onClick={() => vscode.postMessage({ type: 'acceptAllDiffs', timestamp: Date.now() })}>✅ Accept All</button>
                             <button className="approval-btn no" onClick={() => vscode.postMessage({ type: 'rejectAllDiffs' })}>❌ Reject All</button>
                         </div>
                     </div>

@@ -40,6 +40,8 @@ export class Agent {
     private uniqueToolCallIds: Set<string> = new Set(); // NEW: Deduplicate tool calls per turn
     private uniqueToolResultIds: Set<string> = new Set();
     private lastAnyToolTriggeredSafety = false;
+    private currentTurnStartTime: number | null = null;
+    private currentTurnEndTime: number | null = null;
     private usageStats = {
         inputTokens: 0,
         outputTokens: 0,
@@ -100,6 +102,8 @@ export class Agent {
                     content: cleanContent,
                     reasoning: (m.additional_kwargs as any)?.reasoning || (m.additional_kwargs as any)?.reasoning_content || (m as any).reasoning || "",
                     lastUsage: (m.additional_kwargs as any)?.lastUsage || null,
+                    startTime: (m.additional_kwargs as any)?.startTime || null,
+                    endTime: (m.additional_kwargs as any)?.endTime || null,
                     toolInteractions: []
                 };
 
@@ -160,7 +164,9 @@ export class Agent {
                     content: cleanContent,
                     additional_kwargs: {
                         reasoning: m.reasoning || "",
-                        lastUsage: m.lastUsage
+                        lastUsage: m.lastUsage,
+                        startTime: m.startTime,
+                        endTime: m.endTime
                     },
                     tool_calls: m.tool_calls?.map((tc: any) => ({
                         id: tc.id,
@@ -430,7 +436,9 @@ export class Agent {
         }
     }
 
-    public async processMessage(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
+    public async processMessage(content: string, onUpdate: (content: string, type?: string) => void, startTime?: number): Promise<void> {
+        this.currentTurnStartTime = startTime || Date.now();
+        this.currentTurnEndTime = null;
         this.isCancelled = false;
         this.lastAnyToolTriggeredSafety = false;
         const config = this.config;
@@ -620,6 +628,8 @@ export class Agent {
                             additional_kwargs: {
                                 reasoning: fullReasoning,
                                 lastUsage: { ...this.usageStats.lastTurnUsage },
+                                startTime: this.currentTurnStartTime,
+                                endTime: this.currentTurnEndTime
                             }
                         });
                         this.messages.push(assistantMsg);
@@ -834,6 +844,7 @@ export class Agent {
                                             if (safeResult.includes("SAFETY_REQUIRED")) {
                                                 this.lastAnyToolTriggeredSafety = true;
                                                 onUpdate(`\n\n🛡️ **Safety Gate Triggered**: A manual approval is required. Terminating turn...`);
+                                                this.currentTurnEndTime = Date.now();
                                                 persistState();
                                                 this.cancel();
                                                 return;
@@ -873,6 +884,8 @@ export class Agent {
                 if (fullContent) {
                     onUpdate("", 'toolStatus');
                 }
+
+                this.currentTurnEndTime = Date.now();
 
                 // Sync messages: add the final AI message and any tool messages to our history
                 persistState();

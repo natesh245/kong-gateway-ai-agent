@@ -128,10 +128,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: data.value });
                         // Immediate feedback
                         webviewView.webview.postMessage({ type: 'toolStatus', status: 'Analyzing request...' });
+                        
+                        // Initialize agent message immediately to accurately track total elapsed time including TTFT
+                        webviewView.webview.postMessage({ type: 'streamMessage', messageId, role: 'reasoning', content: '', startTime: data.timestamp });
 
                         await this._agent.processMessage(data.value, (content: string, type: string = 'agent') => {
                             this._dispatchAgentUpdate(webviewView, messageId, content, type);
-                        });
+                        }, data.timestamp);
 
                         // Finalize the message with usage stats
                         const usageTotal = this._agent.getUsageStats().lastTurnUsage;
@@ -367,9 +370,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
                             this.toolManager.updateFileCache(filename, newContent);
 
+                            // Initialize agent message immediately to accurately track total elapsed time including TTFT
+                            webviewView.webview.postMessage({ type: 'streamMessage', messageId, role: 'reasoning', content: '', startTime: data.timestamp });
+
                             await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
                                 this._dispatchAgentUpdate(webviewView, messageId, content, type);
-                            });
+                            }, data.timestamp);
 
                             const usageTotal = this._agent.getUsageStats().lastTurnUsage;
                             webviewView.webview.postMessage({
@@ -421,7 +427,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     }
                 case 'sendMessage':
                     {
-                        await this._handleUserMessage(data.text);
+                        await this._handleUserMessage(data.text, data.timestamp);
                         break;
                     }
                 case 'updateThinkingPref':
@@ -490,7 +496,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                                 
                                 // Automatically trigger the next workflow step for the agent
                                 setTimeout(() => {
-                                    this._handleUserMessage(`I have accepted the changes to ${data.filename}. Please perform an LLM review and provide a detailed summary of the changes, then use \`lint_kong_config\` and \`validate_kong_config\` to verify the configuration, and finally show me the sync preview.`);
+                                    this._handleUserMessage(`I have accepted the changes to ${data.filename}. Please perform an LLM review and provide a detailed summary of the changes, then use \`lint_kong_config\` and \`validate_kong_config\` to verify the configuration, and finally show me the sync preview.`, data.timestamp);
                                 }, 500);
                             } catch (e: any) {
                                 this.platform.showErrorMessage(`Failed to apply changes: ${e.message}`);
@@ -537,7 +543,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             }
                             
                             setTimeout(() => {
-                                this._handleUserMessage(`I have accepted all staged changes. Please perform an LLM review and provide a detailed summary of the changes, then use \`lint_kong_config\` and \`validate_kong_config\` to verify the configuration, and finally show me the sync preview.`);
+                                this._handleUserMessage(`I have accepted all staged changes. Please perform an LLM review and provide a detailed summary of the changes, then use \`lint_kong_config\` and \`validate_kong_config\` to verify the configuration, and finally show me the sync preview.`, data.timestamp);
                             }, 500);
                         } catch (e: any) {
                             this.platform.showErrorMessage(`Failed to apply changes: ${e.message}`);
@@ -684,16 +690,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
     }
 
-    private async _handleUserMessage(text: string) {
+    private async _handleUserMessage(text: string, timestamp?: number) {
         if (!this._view) return;
         const webviewView = this._view;
         const messageId = Date.now().toString();
         webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: text });
         webviewView.webview.postMessage({ type: 'toolStatus', status: 'Thinking...' });
 
+        // Initialize agent message immediately to accurately track total elapsed time including TTFT
+        webviewView.webview.postMessage({ type: 'streamMessage', messageId, role: 'reasoning', content: '', startTime: timestamp });
+
         await this._agent.processMessage(text, (content: string, type: string = 'agent') => {
             this._dispatchAgentUpdate(webviewView, messageId, content, type);
-        });
+        }, timestamp);
 
         const usageTotal = this._agent.getUsageStats().lastTurnUsage;
         webviewView.webview.postMessage({
