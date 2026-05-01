@@ -182,9 +182,12 @@ export class Agent {
                 // Re-create the ToolMessages so the Agent stays in sync with history
                 if (m.toolInteractions && Array.isArray(m.toolInteractions)) {
                     for (const interaction of m.toolInteractions) {
+                        // CRITICAL: Ensure tool_call_id is present to avoid 400 errors from providers
+                        if (!interaction.id) continue;
+                        
                         lcMessages.push(new ToolMessage({
                             id: interaction.id,
-                            name: interaction.name || interaction.toolName || "",
+                            name: interaction.name || interaction.toolName || "unknown_tool",
                             content: String(interaction.result || ""),
                             tool_call_id: interaction.id
                         }));
@@ -471,10 +474,17 @@ export class Agent {
 
         let classificationResult;
         try {
-            if (fastPassPhrases.includes(normalizedInput) || normalizedInput.length < 2) {
+            // Robust Fast-Pass: Detect automated lifecycle prompts and greetings
+            const isGreeting = fastPassPhrases.includes(normalizedInput) || normalizedInput.length < 2;
+            const isAutomatedReview = /accepted the changes to/i.test(content) || 
+                                     /review and provide a detailed summary/i.test(content) ||
+                                     /lint_kong_config/i.test(content) ||
+                                     /validate_kong_config/i.test(content);
+
+            if (isGreeting) {
                 classificationResult = { classification: 'GREET', reason: 'Greeting (Fast-Pass)' };
-            } else if (normalizedInput.includes("accepted the changes to") || normalizedInput.includes("review and provide a detailed summary")) {
-                classificationResult = { classification: 'KONGR', reason: 'Automated Review (Fast-Pass)' };
+            } else if (isAutomatedReview) {
+                classificationResult = { classification: 'KONGR', reason: 'Automated Lifecycle (Fast-Pass)' };
             } else {
                 classificationResult = await PromptAnalyser.classify(content, this.model, this.abortController?.signal);
             }
@@ -834,34 +844,36 @@ export class Agent {
                                     );
 
                                     const toolId = msg.tool_call_id || (msg as any).id;
-                                    if (toolId && !this.uniqueToolResultIds.has(toolId)) {
-                                        this.uniqueToolResultIds.add(toolId);
+                                        if (toolId) {
+                                            if (!this.uniqueToolResultIds.has(toolId)) {
+                                                this.uniqueToolResultIds.add(toolId);
 
-                                        collectedToolResults.push({
-                                            id: toolId,
-                                            name: toolNames.get(toolId),
-                                            content: safeResult
-                                        });
-
-                                            onUpdate(JSON.stringify({
-                                                id: toolId,
-                                                interaction: {
+                                                collectedToolResults.push({
+                                                    id: toolId,
                                                     name: toolNames.get(toolId),
-                                                    result: safeResult.substring(0, 5000),
-                                                    status: 'completed'
-                                                }
-                                            }), 'toolInteraction');
+                                                    content: safeResult
+                                                });
 
-                                            // Check for SAFETY_REQUIRED pattern
-                                            if (safeResult.includes("SAFETY_REQUIRED")) {
-                                                this.lastAnyToolTriggeredSafety = true;
-                                                onUpdate(`\n\n🛡️ **Safety Gate Triggered**: A manual approval is required. Terminating turn...`);
-                                                this.currentTurnEndTime = Date.now();
-                                                persistState();
-                                                this.cancel();
-                                                return;
+                                                onUpdate(JSON.stringify({
+                                                    id: toolId,
+                                                    interaction: {
+                                                        name: toolNames.get(toolId),
+                                                        result: safeResult.substring(0, 5000),
+                                                        status: 'completed'
+                                                    }
+                                                }), 'toolInteraction');
+
+                                                // Check for SAFETY_REQUIRED pattern
+                                                if (safeResult.includes("SAFETY_REQUIRED")) {
+                                                    this.lastAnyToolTriggeredSafety = true;
+                                                    onUpdate(`\n\n🛡️ **Safety Gate Triggered**: A manual approval is required. Terminating turn...`);
+                                                    this.currentTurnEndTime = Date.now();
+                                                    persistState();
+                                                    this.cancel();
+                                                    return;
+                                                }
                                             }
-                                    }
+                                        }
                                 }
                             }
                         }
