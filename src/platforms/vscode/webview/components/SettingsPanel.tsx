@@ -268,7 +268,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             <div key={f} className="file-item">
                                 <span className="file-name">{f}</span>
                                 {detectedFiles?.compose === f && <span className="file-tag tag-compose">Docker Compose</span>}
-                                {detectedFiles?.config === f && <span className="file-tag tag-config">Kong Config</span>}
+                                {detectedFiles?.config === f && <span className="file-tag tag-config">decK State</span>}
+                                {detectedFiles?.gateway_config === f && <span className="file-tag tag-gateway">Gateway Config</span>}
                                 {detectedFiles?.ruleset === f && <span className="file-tag tag-ruleset">Ruleset</span>}
                                 <button className="open-file-btn" onClick={() => vscode.postMessage({ type: 'openFile', filename: f })}>Open</button>
                             </div>

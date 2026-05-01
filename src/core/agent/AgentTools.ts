@@ -236,7 +236,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "read_storage_file",
-                description: "Reads the content of a specific file from the local storage directory (e.g., kong.yml) for analysis, validation, or diffing.",
+                description: "Reads the content of a specific file from the local storage directory (e.g., kong-deck-state.yml) for analysis, validation, or diffing.",
                 schema: z.object({
                     filename: z.string().describe("The name of the file to read"),
                 }),
@@ -263,7 +263,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "open_file_in_editor",
-                description: "Opens a specific file (e.g., kong.yml) in the IDE's editor window for the user to view or manually edit. This is purely for UI visibility.",
+                description: "Opens a specific file (e.g., kong-deck-state.yml) in the IDE's editor window for the user to view or manually edit. This is purely for UI visibility.",
                 schema: z.object({
                     filename: z.string(),
                 }),
@@ -277,7 +277,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "openapi_to_kong",
-                description: "APIOPS: TRANSFORMATION. Converts an OpenAPI Specification (OAS/Swagger) file into a decK declarative configuration file. Use this at the start of a 'Design-First' workflow. You must provide the input filename and a name for the generated output file (e.g., kong.yml).",
+                description: "APIOPS: TRANSFORMATION. Converts an OpenAPI Specification (OAS/Swagger) file into a decK declarative configuration file. Use this at the start of a 'Design-First' workflow. You must provide the input filename and a name for the generated output file (e.g., kong-deck-state.yml).",
                 schema: z.object({
                     input: z.string().describe("The OAS file to convert"),
                     output: z.string().describe("The name of the generated Kong config file"),
@@ -331,7 +331,7 @@ export function buildAgentTools(ctx: ToolContext) {
             async ({ filename }) => {
                 const warning = checkParsimony("validate_kong_config");
                 if (warning) return warning;
-                return await toolManager.validateWithDeck(filename || "kong.yml");
+                return await toolManager.validateWithDeck(filename || "kong-deck-state.yml");
             },
             {
                 name: "validate_kong_config",
@@ -346,7 +346,7 @@ export function buildAgentTools(ctx: ToolContext) {
             async ({ filename }) => {
                 const warning = checkParsimony("preview_sync_diff");
                 if (warning) return warning;
-                return await toolManager.diffWithDeck(filename || "kong.yml");
+                return await toolManager.diffWithDeck(filename || "kong-deck-state.yml");
             },
             {
                 name: "preview_sync_diff",
@@ -362,7 +362,7 @@ export function buildAgentTools(ctx: ToolContext) {
             async ({ filename }) => {
                 const warning = checkParsimony("sync_to_kong_using_deck");
                 if (warning) return warning;
-                return await toolManager.syncWithSafetyGate(execCtx, filename || "kong.yml");
+                return await toolManager.syncWithSafetyGate(execCtx, filename || "kong-deck-state.yml");
             },
             {
                 name: "sync_to_kong_using_deck",
@@ -378,13 +378,13 @@ export function buildAgentTools(ctx: ToolContext) {
             async ({ filename }) => {
                 const warning = checkParsimony("preview_export_diff");
                 if (warning) return warning;
-                return await toolManager.previewExportHardened(execCtx, filename || "kong.yml");
+                return await toolManager.previewExportHardened(execCtx, filename || "kong-deck-state.yml");
             },
             {
                 name: "preview_export_diff",
                 description: "Compares the LIVE Kong Gateway configuration against your local file to show how it will be updated. This is a read-only preview that internally verifies connectivity; do NOT call auxiliary diagnostic tools (Scan/Status/Connect) before / after this.Do not sync or export the changes after this without user approval. You can suggest to export config as next step",
                 schema: z.object({
-                    filename: z.string().optional().default("kong.yml"),
+                    filename: z.string().optional().default("kong-deck-state.yml"),
                 }),
             }
         ),
@@ -394,13 +394,13 @@ export function buildAgentTools(ctx: ToolContext) {
             async ({ filename }) => {
                 const warning = checkParsimony("export_live_to_storage_file");
                 if (warning) return warning;
-                return await toolManager.exportWithSafetyGate(execCtx, filename || "kong.yml");
+                return await toolManager.exportWithSafetyGate(execCtx, filename || "kong-deck-state.yml");
             },
             {
                 name: "export_live_to_storage_file",
-                description: "Downloads the current live Kong configuration and OVERWRITES your local configuration file (e.g., kong.yml). MANDATORY: You MUST run 'preview_export_diff' first and show the results to the user. This tool requires explicit user approval via '[APPROVAL_REQUIRED]' after the preview has been reviewed. NEVER skip the preview step.",
+                description: "Downloads the current live Kong configuration and OVERWRITES your local configuration file (e.g., kong-deck-state.yml). MANDATORY: You MUST run 'preview_export_diff' first and show the results to the user. This tool requires explicit user approval via '[APPROVAL_REQUIRED]' after the preview has been reviewed. NEVER skip the preview step.",
                 schema: z.object({
-                    filename: z.string().optional().default("kong.yml"),
+                    filename: z.string().optional().default("kong-deck-state.yml"),
                 }),
             }
         ),

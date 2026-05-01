@@ -5,7 +5,7 @@ import { IConfig, IAppPlatform } from '../../interfaces/ICoreInterfaces';
 
 export class StorageTool {
   private _fileCache: Map<string, string> = new Map();
-  private _classificationCache: Map<string, 'compose' | 'kong' | 'ruleset' | 'other'> = new Map();
+  private _classificationCache: Map<string, 'compose' | 'kong' | 'ruleset' | 'gateway_config' | 'other'> = new Map();
   private _agent: any;
   private _preWriteSnapshots: Map<string, string> = new Map();
   private _stagedFiles: Map<string, string> = new Map();
@@ -265,7 +265,7 @@ export class StorageTool {
         let type = this._classificationCache.get(hash);
 
         // If not in cache and Agent is available, use LLM
-        if (!type && this._agent && (file.endsWith('.yml') || file.endsWith('.yaml'))) {
+        if (!type && this._agent && (file.endsWith('.yml') || file.endsWith('.yaml') || file.endsWith('.conf'))) {
             type = await this._agent.classifyFile(content);
             if (type) {
                 this._classificationCache.set(hash, type);
@@ -279,9 +279,14 @@ export class StorageTool {
             }
         }
         if (type === 'kong') {
-            // Favor: 1. Custom named (not kong.yml) 2. kong.yml
-            if (!detected.config || (detected.config === 'kong.yml' && file !== 'kong.yml')) {
+            // Favor: 1. Custom named (not kong-deck-state.yml) 2. kong-deck-state.yml
+            if (!detected.config || (detected.config === 'kong-deck-state.yml' && file !== 'kong-deck-state.yml')) {
                 detected.config = file;
+            }
+        }
+        if (type === 'gateway_config') {
+            if (!(detected as any).gateway_config || ((detected as any).gateway_config === 'kong.conf' && file !== 'kong.conf')) {
+                (detected as any).gateway_config = file;
             }
         }
         if (type === 'ruleset') {
@@ -304,7 +309,7 @@ export class StorageTool {
 
       const files = fs.readdirSync(storagePath);
       for (const file of files) {
-        if (file.endsWith('.yml') || file.endsWith('.yaml') || file.endsWith('.json')) {
+        if (file.endsWith('.yml') || file.endsWith('.yaml') || file.endsWith('.json') || file.endsWith('.conf')) {
           const fullPath = path.join(storagePath, file);
           const content = fs.readFileSync(fullPath, 'utf8');
           this._fileCache.set(file, content);

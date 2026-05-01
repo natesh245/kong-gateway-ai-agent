@@ -65,7 +65,7 @@ export const App: React.FC = () => {
     const [usageStats, setUsageStats] = useState<UsageStats>(savedState.usageStats || { inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     const [availableModels, setAvailableModels] = useState<string[]>(savedState.models || []);
     const [managedFiles, setManagedFiles] = useState<string[]>(savedState.files || []);
-    const [detectedFiles, setDetectedFiles] = useState<{ compose?: string, config?: string }>(savedState.detectedFiles || {});
+    const [detectedFiles, setDetectedFiles] = useState<{ compose?: string, config?: string, gateway_config?: string, ruleset?: string }>(savedState.detectedFiles || {});
     
     // Lifecycle Tracking
     const [isInitialLoad, setIsInitialLoad] = useState(!savedState.config);

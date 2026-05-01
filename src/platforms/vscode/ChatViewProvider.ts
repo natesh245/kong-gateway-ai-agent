@@ -364,7 +364,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             const diff = DiffUtil.generateUnifiedDiff(filename, oldContent, newContent);
                             const chatDiff = DiffUtil.formatForChat(diff);
 
-                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nCRITICAL INSTRUCTION: The file is ALREADY saved to disk. **DO NOT call \`write_storage_file\`**. Please review it according to the DECLARATIVE WORKFLOW. Provide a detailed LLM summary of the changes, call \`lint_kong_config\` and \`validate_kong_config\` to verify it, and then call \`preview_sync_diff\`. **DO NOT CALL SYNC TOOLS**. Stop after presenting the review, validation, linting, and preview sync diff.`;
+                            const fileType = await this._agent.classifyFile(newContent);
+                            let govInstructions = "";
+                            if (fileType === 'kong') {
+                                govInstructions = ", call `lint_kong_config` and `validate_kong_config` to verify it, and then call `preview_sync_diff`. **DO NOT CALL SYNC TOOLS**. Stop after presenting the review, validation, linting, and preview sync diff.";
+                            } else {
+                                govInstructions = ". **DO NOT call any Kong-specific validation or sync tools**. Provide only a detailed summary of the changes and stop.";
+                            }
+
+                            const prompt = `I just manually updated ${filename}. Here is the diff:\n\n\`\`\`diff\n${chatDiff}\n\`\`\`\n\nCRITICAL INSTRUCTION: The file is ALREADY saved to disk. **DO NOT call \`write_storage_file\`**. Please review it according to the DECLARATIVE WORKFLOW. Provide a detailed LLM summary of the changes${govInstructions}`;
 
                             const messageId = Date.now().toString();
                             webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
@@ -495,8 +503,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                                 }
                                 
                                 // Automatically trigger the next workflow step for the agent
-                                setTimeout(() => {
-                                    this._handleUserMessage(`I have accepted the changes to ${data.filename}. Please perform an LLM review and provide a detailed summary of the changes, then use \`lint_kong_config\` and \`validate_kong_config\` to verify the configuration, and finally show me the sync preview.`, data.timestamp);
+                                setTimeout(async () => {
+                                    const fullPath = path.join(storagePath, data.filename);
+                                    let type = 'other';
+                                    if (fs.existsSync(fullPath)) {
+                                        const content = fs.readFileSync(fullPath, 'utf8');
+                                        type = await this._agent.classifyFile(content);
+                                    }
+
+                                    let prompt = `I have accepted the changes to ${data.filename}. Please perform an LLM review and provide a detailed summary of the changes.`;
+                                    if (type === 'kong') {
+                                        prompt += ` After the review, use \`lint_kong_config\` and \`validate_kong_config\` to verify the configuration, and finally show me the sync preview.`;
+                                    }
+
+                                    this._handleUserMessage(prompt, data.timestamp);
                                 }, 500);
                             } catch (e: any) {
                                 this.platform.showErrorMessage(`Failed to apply changes: ${e.message}`);
@@ -628,6 +648,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 gitRemoteUrl: this.config.get('gitRemoteUrl') || '',
                 autoCommit: this.config.get('autoCommit') === true,
                 showThinking: this.config.get('showThinking') !== false,
+                trackedFiles: this._agent.activeFiles || {},
                 langChainTracing: this.config.get('langChainTracing') === true,
                 langSmithApiKey: this.config.get('langSmithApiKey') || '',
                 langSmithProject: this.config.get('langSmithProject') || 'kong-gateway-agent',

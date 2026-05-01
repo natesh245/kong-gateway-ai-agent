@@ -48,7 +48,7 @@ export class Agent {
         totalTokens: 0,
         lastTurnUsage: { inputTokens: 0, outputTokens: 0, toolCalls: 0 }
     };
-    private activeFiles: { compose?: string, config?: string } = {};
+    public activeFiles: { compose?: string, config?: string, gateway_config?: string, ruleset?: string } = {};
 
 
     constructor(private config: IConfig, private toolManager: ToolManager, private platform: IAppPlatform) {
@@ -416,13 +416,13 @@ export class Agent {
         };
     }
 
-    public async classifyFile(content: string): Promise<'compose' | 'kong' | 'ruleset' | 'other'> {
+    public async classifyFile(content: string): Promise<'compose' | 'kong' | 'ruleset' | 'gateway_config' | 'other'> {
         if (!this.initClient() || !this.model) return 'other';
         const sample = content.length > 2000 ? content.substring(0, 2000) : content;
 
         try {
             const response = await this.model.invoke([
-                new SystemMessage("Identify if the following YAML is a 'compose' (Docker Compose), 'kong' (Kong Gateway declarative config), 'ruleset' (decK linting ruleset), or 'other'. Output ONLY the single word classification."),
+                new SystemMessage("Identify if the following content is a 'compose' (Docker Compose YAML), 'kong' (Kong Gateway decK state YAML), 'ruleset' (decK linting ruleset YAML), 'gateway_config' (Kong Gateway kong.conf properties file), or 'other'. Output ONLY the single word classification."),
                 new HumanMessage(sample)
             ]);
 
@@ -430,6 +430,7 @@ export class Agent {
             if (result.includes('compose')) return 'compose';
             if (result.includes('kong')) return 'kong';
             if (result.includes('ruleset')) return 'ruleset';
+            if (result.includes('gateway_config') || result.includes('gateway')) return 'gateway_config';
             return 'other';
         } catch (e) {
             return 'other';
@@ -537,7 +538,8 @@ export class Agent {
             const discovered = await this.toolManager.storage.findFilesByContent();
             this.activeFiles = discovered;
             const activeCompose = discovered.compose || 'none (default: kong-docker-compose.yml)';
-            const activeConfig = discovered.config || 'none (default: kong.yml)';
+            const activeConfig = discovered.config || 'none (default: kong-deck-state.yml)';
+            const activeGateway = (discovered as any).gateway_config || 'none (default: kong.conf)';
             const activeRuleset = discovered.ruleset || 'none (default: ruleset.yaml)';
 
             const contextHeader = `🚨 **STRICT OPERATION BOUNDARY**: You are a DEDICATED Kong Gateway Specialist. \n` +
@@ -547,7 +549,8 @@ export class Agent {
                 `- Current Mode: **${kongMode.toUpperCase()}**\n` +
                 `- Proxy Port: ${proxyPort} | Admin API Port: ${adminPort} | Manager Port: ${managerPort}\n` +
                 `- Detected Compose: ${activeCompose}\n` +
-                `- Detected Config: ${activeConfig}\n` +
+                `- Detected decK State: ${activeConfig}\n` +
+                `- Detected Gateway Config: ${activeGateway}\n` +
                 `- Detected Ruleset: ${activeRuleset}\n\n`;
 
             // Store the clean user message in history
