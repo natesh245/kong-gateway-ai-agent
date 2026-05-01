@@ -473,6 +473,8 @@ export class Agent {
         try {
             if (fastPassPhrases.includes(normalizedInput) || normalizedInput.length < 2) {
                 classificationResult = { classification: 'GREET', reason: 'Greeting (Fast-Pass)' };
+            } else if (normalizedInput.includes("accepted the changes to") || normalizedInput.includes("review and provide a detailed summary")) {
+                classificationResult = { classification: 'KONGR', reason: 'Automated Review (Fast-Pass)' };
             } else {
                 classificationResult = await PromptAnalyser.classify(content, this.model, this.abortController?.signal);
             }
