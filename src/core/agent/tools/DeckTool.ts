@@ -481,4 +481,34 @@ export class DeckTool {
       return `Patch failed: ${e.stderr || e.message}`;
     }
   }
+
+  public async initializeGatewayConfig(signal?: AbortSignal): Promise<string> {
+    try {
+      const storagePath = this.storage.getStoragePath();
+      if (!storagePath) throw new Error("Workspace path is not configured.");
+      
+      const targetPath = path.join(storagePath, 'kong.conf');
+      if (require('fs').existsSync(targetPath)) {
+        return "Gateway configuration (kong.conf) already exists in the workspace.";
+      }
+
+      this.platform.showInformationMessage("Kong Agent: Initializing default Gateway configuration (kong.conf)...");
+      
+      // Attempt to download the official default
+      const url = "https://raw.githubusercontent.com/Kong/kong/master/kong.conf.default";
+      const command = `curl -L "${url}" -o "${targetPath}"`;
+      
+      try {
+        await execAsync(command, { signal });
+        return "Successfully initialized kong.conf with official defaults from the Kong repository.";
+      } catch (e: any) {
+        // Fallback to a minimal config if offline/failed
+        const minimal = `# Minimal Kong Gateway Configuration\ndatabase = off\ndeclarative_config = kong-deck-state.yml\nproxy_listen = 0.0.0.0:8000\nadmin_listen = 0.0.0.0:8001\n`;
+        require('fs').writeFileSync(targetPath, minimal, 'utf8');
+        return "Initialized workspace with a minimal kong.conf (Network download failed).";
+      }
+    } catch (e: any) {
+      return `Failed to initialize Gateway config: ${e.message}`;
+    }
+  }
 }

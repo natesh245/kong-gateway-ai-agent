@@ -328,6 +328,17 @@ export function buildAgentTools(ctx: ToolContext) {
         ),
 
         tool(
+            async () => {
+                return await toolManager.deck.initializeGatewayConfig(ctx.abortSignal);
+            },
+            {
+                name: "initialize_gateway_config",
+                description: "Initializes a default 'kong.conf' Gateway configuration file in the workspace by downloading it from the official Kong repository. Use this if the user asks to setup a gateway config or if it is missing.",
+                schema: z.object({}),
+            }
+        ),
+
+        tool(
             async ({ filename }) => {
                 const warning = checkParsimony("validate_kong_config");
                 if (warning) return warning;
