@@ -367,7 +367,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             const fileType = await this._agent.classifyFile(newContent);
                             let govInstructions = "";
                             if (fileType === 'kong') {
-                                govInstructions = ", call `lint_kong_config` and `validate_kong_config` to verify it, and then call `preview_sync_diff`. **DO NOT CALL SYNC TOOLS**. Stop after presenting the review, validation, linting, and preview sync diff.";
+                                govInstructions = `, call \`lint_kong_config\` and \`validate_kong_config\` for "${filename}" to verify it, and then call \`preview_sync_diff\` for "${filename}". **DO NOT CALL SYNC TOOLS**. Stop after presenting the review, validation, linting, and preview sync diff.`;
                             } else {
                                 govInstructions = ". **DO NOT call any Kong-specific validation or sync tools**. Provide only a detailed summary of the changes and stop.";
                             }

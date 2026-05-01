@@ -279,8 +279,8 @@ export class StorageTool {
             }
         }
         if (type === 'kong') {
-            // Favor: 1. Custom named (not kong-deck-state.yml) 2. kong-deck-state.yml
-            if (!detected.config || (detected.config === 'kong-deck-state.yml' && file !== 'kong-deck-state.yml')) {
+            // Favor: 1. kong-deck-state.yml 2. Any other detected kong config
+            if (!detected.config || file === 'kong-deck-state.yml') {
                 detected.config = file;
             }
         }
