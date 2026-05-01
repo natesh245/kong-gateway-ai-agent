@@ -4,6 +4,7 @@ import { DeckTool } from './DeckTool';
 import { IConfig, IAppPlatform } from '../../interfaces/ICoreInterfaces';
 import { DiffUtil } from '../../utils/DiffUtil';
 import * as path from 'path';
+import * as fs from 'fs';
 
 /**
  * Interface for providing conversation context to tools
@@ -57,8 +58,8 @@ export class ToolManager {
   public async openapi2kong(input: string, output: string, signal?: AbortSignal): Promise<string> {
     return this.deck.openapi2kong(input, output, signal);
   }
-  public async lint(filename: string, signal?: AbortSignal): Promise<string> {
-    return this.deck.lint(filename, signal);
+  public async lint(filename: string, rulesetFile?: string, signal?: AbortSignal): Promise<string> {
+    return this.deck.lint(filename, rulesetFile, signal);
   }
   public async merge(filenames: string[], output: string, signal?: AbortSignal): Promise<string> {
     return this.deck.merge(filenames, output, signal);
@@ -152,7 +153,7 @@ export class ToolManager {
    */
   public async connectWithSafetyGate(ctx: ToolExecutionContext, proxyPort?: number, adminPort?: number, managerPort?: number): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
-    if (lastUserContent === 'yes' || lastUserContent.includes('confirm') || lastUserContent.includes('proceed')) {
+    if (/\byes\b/i.test(lastUserContent) || lastUserContent.includes('confirm') || lastUserContent.includes('proceed')) {
       const hasScanned = ctx.recentHistoryHasToolCall('check_existing_containers') ||
         ctx.recentHistoryHasToolCall('reconcile_port_settings');
 
@@ -169,15 +170,24 @@ export class ToolManager {
     return "SAFETY_REQUIRED: Adopting an existing instance requires explicit user confirmation. Explain the scan results first, then ask for confirmation with '[APPROVAL_REQUIRED]'.";
   }
 
-  /**
-   * Writes a file and generates a diff for the user.
-   */
   public async writeStorageFileWithDiff(filename: string, content: string): Promise<string> {
     const oldContent = this.getFileCache(filename) || "";
-    await this.writeStorageFile(filename, content);
+    const tempFilePath = await this.storage.stageStorageFile(filename, content);
+    
+    const storagePath = this.getStoragePath();
+    if (storagePath) {
+      const originalFilePath = path.join(storagePath, filename);
+      if (!fs.existsSync(originalFilePath)) {
+          fs.writeFileSync(originalFilePath, "", "utf8");
+      }
+      try {
+          await this.platform.openDiffInEditor(originalFilePath, tempFilePath, `Staged Changes: ${filename}`);
+      } catch (e) {}
+    }
+
     const rawDiff = DiffUtil.generateUnifiedDiff(filename, oldContent, content);
     const chatDiff = DiffUtil.formatForChat(rawDiff);
-    return `Successfully wrote ${filename}.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
+    return `[STAGED_FILE_EDIT:${filename}]\nSuccessfully staged ${filename} for your review. Please click Accept or Reject in the UI to apply or discard these changes.\n\nDIFF:\n\`\`\`diff\n${chatDiff}\n\`\`\``;
   }
 
   /**
@@ -185,17 +195,16 @@ export class ToolManager {
    */
   public async syncWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
-    const isApproved = lastUserContent === 'yes' || 
+    const isApproved = /\byes\b/i.test(lastUserContent) || 
                        lastUserContent.includes('proceed') || 
                        lastUserContent.includes('confirm sync') || 
                        lastUserContent.includes('apply');
 
     if (isApproved) {
-      const hasValidated = ctx.recentHistoryHas('valid') || ctx.recentHistoryHas('success');
-      const hasDiffed = ctx.recentHistoryHas('diff') || ctx.recentHistoryHas('no differences');
+      const hasDiffed = ctx.recentHistoryHasToolCall('preview_sync_diff');
 
-      if (!hasValidated || !hasDiffed) {
-        return "SAFETY_REQUIRED: I cannot sync without first validating the file and showing you the diff. I must run 'validate_kong_config' and 'preview_sync_diff' first.";
+      if (!hasDiffed) {
+        return "SAFETY_REQUIRED: I cannot sync without first showing you the diff. I must run 'preview_sync_diff' first.";
       }
       return await this.syncWithDeck(filename, ctx.abortSignal);
     }
@@ -239,7 +248,7 @@ export class ToolManager {
    */
   public async exportWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
-    const isApproved = lastUserContent === 'yes' || 
+    const isApproved = /\byes\b/i.test(lastUserContent) || 
                        lastUserContent.includes('proceed') || 
                        lastUserContent.includes('confirm export') || 
                        lastUserContent.includes('apply');
@@ -260,8 +269,8 @@ export class ToolManager {
   public async resetWithSafetyGate(ctx: ToolExecutionContext): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
     if (lastUserContent === 'yes' || lastUserContent.includes('confirm reset')) {
-      const hasLive = ctx.recentHistoryHas('status', 20);
-      const hasLocal = ctx.recentHistoryHas('_format_version', 20);
+      const hasLive = ctx.recentHistoryHasToolCall('get_instance_details', 20);
+      const hasLocal = ctx.recentHistoryHasToolCall('read_storage_file', 20) || ctx.recentHistoryHasToolCall('list_storage_files', 20);
       if (!hasLive || !hasLocal) {
         return "SAFETY_REQUIRED: I cannot reset without analyzing live (get_instance_details) and local (read_storage_file) configs first.";
       }

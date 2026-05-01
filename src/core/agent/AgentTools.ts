@@ -65,8 +65,8 @@ export function buildAgentTools(ctx: ToolContext) {
         const messages = ctx.getMessages();
         const history = messages.slice(-lookback);
         return history.some((m: any) =>
-            (m instanceof ToolMessage && m.name === toolName) ||
-            (m.tool_calls && m.tool_calls.some((tc: any) => tc.name === toolName))
+            (m.toolInteractions && m.toolInteractions.some((ti: any) => ti.name === toolName)) ||
+            (m.tool_calls && m.tool_calls.some((tc: any) => (tc.name === toolName) || (tc.function && tc.function.name === toolName)))
         );
     }
 
@@ -244,7 +244,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "write_storage_file",
-                description: "Writes full content to a file in the local storage directory. MANDATORY: Call this tool IMMEDIATELY when the user proposes a configuration change. Write the file BEFORE asking for approval so the user can review the diff first. NEVER automatically call 'preview_sync_diff' or 'sync_to_kong_using_deck' immediately after this. DO NOT ask the user if they want to preview or sync after writing; you must wait for the user to initiate the next action themselves.",
+                description: "Proposes a change to a file in the local storage directory. This tool DOES NOT write to disk immediately. It STAGES the file and presents a diff in the UI for the user to review. The user MUST explicitly click 'Accept' in the UI to save it. If the user asks for additional changes BEFORE accepting, you MUST call this tool again on the SAME filename to cumulatively update the staged file. Do not create new patch files. NEVER call 'preview_sync_diff' or 'sync_to_kong_using_deck' immediately after this. You must wait for the user to Accept the changes and initiate the next action themselves.",
                 schema: z.object({
                     filename: z.string().describe("The name of the file to write to"),
                     content: z.string().describe("The full content to write to the file"),
@@ -281,14 +281,15 @@ export function buildAgentTools(ctx: ToolContext) {
         ),
 
         tool(
-            async ({ filename }) => {
-                return await toolManager.lint(filename, ctx.abortSignal);
+            async ({ filename, rulesetFile }) => {
+                return await toolManager.lint(filename, rulesetFile, ctx.abortSignal);
             },
             {
                 name: "lint_kong_config",
-                description: "APIOPS: GOVERNANCE. Lints a local Kong configuration file against best practices and governance rules. Returns a report of any recommendations or rule violations. Use this before validation or sync to ensure high configuration quality.",
+                description: "APIOPS: GOVERNANCE. Lints a local Kong configuration file against best practices and governance rules. Returns a report of any recommendations or rule violations. Use this before validation or sync to ensure high configuration quality. A ruleset file is required to run this tool.",
                 schema: z.object({
                     filename: z.string().describe("The configuration file to lint"),
+                    rulesetFile: z.string().optional().describe("Optional: The name of the ruleset file (e.g., ruleset.yaml). If omitted, the tool will try to auto-detect one."),
                 }),
             }
         ),
@@ -329,7 +330,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "validate_kong_config",
-                description: "APIOPS: VALIDATE. Uses decK to validate the schema and syntax of a local Kong configuration file. This provides a deep structural check to ensure the file is ready for a gateway sync. MANDATORY: Run this before 'preview_sync_diff'.",
+                description: "APIOPS: VALIDATE. Uses decK to validate the schema and syntax of a local Kong configuration file. This provides a deep structural check to ensure the file is ready for a gateway sync.",
                 schema: z.object({
                     filename: z.string(),
                 }),
@@ -360,7 +361,7 @@ export function buildAgentTools(ctx: ToolContext) {
             },
             {
                 name: "sync_to_kong_using_deck",
-                description: "Applies local configuration changes to the live Kong Gateway. MANDATORY: You MUST run 'validate_kong_config' and 'preview_sync_diff' first and show the results to the user. This tool requires explicit user approval via '[APPROVAL_REQUIRED]' after the diff has been reviewed. NEVER skip the validation or diffing steps.",
+                description: "Applies local configuration changes to the live Kong Gateway. MANDATORY: You MUST run 'preview_sync_diff' in a separate turn first. Then, you MUST ask the user for approval and STOP. Do NOT call this tool until the user replies with 'yes' or 'confirm'. If you call this tool before the user explicitly approves the diff, the safety gate will block it. Use the text '[APPROVAL_REQUIRED]' to trigger the UI buttons.",
                 schema: z.object({
                     filename: z.string().describe("The configuration file to sync"),
                 }),

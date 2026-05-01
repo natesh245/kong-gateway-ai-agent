@@ -21,6 +21,8 @@ export interface IAppPlatform {
     showInformationMessage(message: string): void;
     showErrorMessage(message: string): void;
     openFileInEditor(filePath: string): Promise<void>;
+    openDiffInEditor(originalFilePath: string, stagedFilePath: string, title: string): Promise<void>;
+    closeDiffEditor(stagedFilePath: string): Promise<void>;
 }
 
 export interface IMessage {

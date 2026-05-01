@@ -42,4 +42,25 @@ export class VscodePlatform implements IAppPlatform {
         const doc = await vscode.workspace.openTextDocument(filePath);
         await vscode.window.showTextDocument(doc);
     }
+
+    async openDiffInEditor(originalFilePath: string, stagedFilePath: string, title: string): Promise<void> {
+        const originalUri = vscode.Uri.file(originalFilePath);
+        const stagedUri = vscode.Uri.file(stagedFilePath);
+        await vscode.commands.executeCommand('vscode.diff', originalUri, stagedUri, title);
+    }
+
+    async closeDiffEditor(stagedFilePath: string): Promise<void> {
+        if (!vscode.window.tabGroups) return;
+        const stagedUri = vscode.Uri.file(stagedFilePath);
+        for (const tabGroup of vscode.window.tabGroups.all) {
+            for (const tab of tabGroup.tabs) {
+                if (tab.input && typeof tab.input === 'object' && 'modified' in tab.input) {
+                    const modifiedUri = (tab.input as any).modified as vscode.Uri;
+                    if (modifiedUri && modifiedUri.fsPath === stagedUri.fsPath) {
+                        await vscode.window.tabGroups.close(tab);
+                    }
+                }
+            }
+        }
+    }
 }

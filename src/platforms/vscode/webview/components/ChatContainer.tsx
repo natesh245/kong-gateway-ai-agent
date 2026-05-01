@@ -22,6 +22,7 @@ interface ChatContainerProps {
     statusText: string;
     onStop: () => void;
     onAction: (text: string) => void;
+    onDiffAction: (action: 'accept' | 'reject', filename: string) => void;
     showThinking?: boolean;
 }
 
@@ -31,6 +32,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     statusText, 
     onStop,
     onAction,
+    onDiffAction,
     showThinking
 }) => {
     const chatEndRef = useRef<HTMLDivElement>(null);
@@ -52,6 +54,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     {...m}
                     showThinking={showThinking}
                     onAction={onAction}
+                    onDiffAction={onDiffAction}
                 />
             ))}
             <div ref={chatEndRef} />

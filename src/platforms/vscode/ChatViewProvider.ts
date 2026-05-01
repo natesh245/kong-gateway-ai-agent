@@ -70,17 +70,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._debounceTimer = setTimeout(async () => {
             if (this._view) {
                 const filename = path.basename(uri.fsPath);
+                
+                // Only track specific configuration files and ignore hidden/temp files (except staged files)
+                if (filename.startsWith('.') && !filename.startsWith('.staged_')) return;
+                const isValidExtension = filename.endsWith('.yml') || 
+                                         filename.endsWith('.yaml') || 
+                                         filename.endsWith('.json') || 
+                                         filename.endsWith('.conf');
+                if (!isValidExtension) return;
 
-                // Refresh the managed files list in the webview
                 // Refresh the managed files list in the webview (skipping full history sync)
                 await this._updateWebviewConfig(true);
 
-                // Notify user specifically about the change
-                this._view.webview.postMessage({
-                    type: 'fileChanged',
-                    filename: filename,
-                    changeType: changeType
-                });
+                // Notify user specifically about the change ONLY if the agent didn't just write it
+                if (!this.toolManager.storage.recentlyWritten.has(filename)) {
+                    this._view.webview.postMessage({
+                        type: 'fileChanged',
+                        filename: filename,
+                        changeType: changeType
+                    });
+                }
             }
         }, 1000);
     }
@@ -407,18 +416,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'resetInstance':
                     {
                         const prompt = "I have requested a full reset of the Kong instance configuration from the UI dashboard. Please explain the consequences and, if I confirm, perform the reset using decK.";
-                        const messageId = Date.now().toString();
-                        webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: prompt });
-                        await this._agent.processMessage(prompt, (content: string, type: string = 'agent') => {
-                            this._dispatchAgentUpdate(webviewView, messageId, content, type);
-                        });
-
-                        const usageTotal = this._agent.getUsageStats().lastTurnUsage;
-                        webviewView.webview.postMessage({
-                            type: 'finalizeStreamedMessage',
-                            messageId,
-                            usage: usageTotal
-                        });
+                        await this._handleUserMessage(prompt);
+                        break;
+                    }
+                case 'sendMessage':
+                    {
+                        await this._handleUserMessage(data.text);
                         break;
                     }
                 case 'updateThinkingPref':
@@ -468,6 +471,99 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'cancelAgent':
                     {
                         this._agent.cancel();
+                        break;
+                    }
+                case 'acceptDiff':
+                    {
+                        if (data.filename) {
+                            try {
+                                await this.toolManager.storage.commitStagedFile(data.filename);
+                                this.platform.showInformationMessage(`Successfully applied changes to ${data.filename}`);
+                                webviewView.webview.postMessage({ type: 'diffResolved', filename: data.filename, status: 'accepted' });
+                                this._updateWebviewConfig(true);
+                                
+                                const storagePath = this.toolManager.getStoragePath();
+                                if (storagePath) {
+                                    const stagedFilePath = path.join(storagePath, `.staged_${data.filename}`);
+                                    await this.platform.closeDiffEditor(stagedFilePath);
+                                }
+                                
+                                // Automatically trigger the next workflow step for the agent
+                                setTimeout(() => {
+                                    this._handleUserMessage(`I have accepted the changes to ${data.filename}. Please validate the configuration and show me the sync preview.`);
+                                }, 500);
+                            } catch (e: any) {
+                                this.platform.showErrorMessage(`Failed to apply changes: ${e.message}`);
+                            }
+                        }
+                        break;
+                    }
+                case 'rejectDiff':
+                    {
+                        if (data.filename) {
+                            try {
+                                await this.toolManager.storage.discardStagedFile(data.filename);
+                                this.platform.showInformationMessage(`Discarded changes for ${data.filename}`);
+                                webviewView.webview.postMessage({ type: 'diffResolved', filename: data.filename, status: 'rejected' });
+                                this._updateWebviewConfig(true);
+                                
+                                const storagePath = this.toolManager.getStoragePath();
+                                if (storagePath) {
+                                    const stagedFilePath = path.join(storagePath, `.staged_${data.filename}`);
+                                    await this.platform.closeDiffEditor(stagedFilePath);
+                                }
+                            } catch (e: any) {
+                                this.platform.showErrorMessage(`Failed to discard changes: ${e.message}`);
+                            }
+                        }
+                        break;
+                    }
+                case 'acceptAllDiffs':
+                    {
+                        try {
+                            const stagedFiles = this.toolManager.storage.getStagedFiles();
+                            const storagePath = this.toolManager.getStoragePath();
+                            
+                            await this.toolManager.storage.commitAllStagedFiles();
+                            this.platform.showInformationMessage(`Successfully applied all staged changes.`);
+                            webviewView.webview.postMessage({ type: 'allDiffsResolved', status: 'accepted' });
+                            this._updateWebviewConfig(true);
+                            
+                            if (storagePath) {
+                                for (const filename of stagedFiles) {
+                                    const stagedFilePath = path.join(storagePath, `.staged_${filename}`);
+                                    await this.platform.closeDiffEditor(stagedFilePath);
+                                }
+                            }
+                            
+                            setTimeout(() => {
+                                this._handleUserMessage(`I have accepted all staged changes. Please validate the configuration and show me the sync preview.`);
+                            }, 500);
+                        } catch (e: any) {
+                            this.platform.showErrorMessage(`Failed to apply changes: ${e.message}`);
+                        }
+                        break;
+                    }
+                case 'rejectAllDiffs':
+                    {
+                        try {
+                            const stagedFiles = this.toolManager.storage.getStagedFiles();
+                            const storagePath = this.toolManager.getStoragePath();
+                            
+                            await this.toolManager.storage.discardAllStagedFiles();
+                            this.platform.showInformationMessage(`Discarded all staged changes.`);
+                            webviewView.webview.postMessage({ type: 'allDiffsResolved', status: 'rejected' });
+                            this._updateWebviewConfig(true);
+                            
+                            if (storagePath) {
+                                for (const filename of stagedFiles) {
+                                    const stagedFilePath = path.join(storagePath, `.staged_${filename}`);
+                                    await this.platform.closeDiffEditor(stagedFilePath);
+                                }
+                            }
+                        } catch (e: any) {
+                            this.platform.showErrorMessage(`Failed to discard changes: ${e.message}`);
+                        }
                         break;
                     }
             }
@@ -530,6 +626,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 langSmithApiKey: this.config.get('langSmithApiKey') || '',
                 langSmithProject: this.config.get('langSmithProject') || 'kong-gateway-agent',
                 langSmithEndpoint: this.config.get('langSmithEndpoint') || 'https://api.smith.langchain.com',
+                stagedFiles: this.toolManager.storage.getStagedFiles(),
                 usageStats: this._agent.getUsageStats(),
                 ...(skipHistory ? {} : { history: history })
             });
@@ -585,6 +682,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         // Update session total in real-time
         webviewView.webview.postMessage({ type: 'updateUsage', stats: this._agent.getUsageStats() });
+    }
+
+    private async _handleUserMessage(text: string) {
+        if (!this._view) return;
+        const webviewView = this._view;
+        const messageId = Date.now().toString();
+        webviewView.webview.postMessage({ type: 'addMessage', role: 'user', content: text });
+        webviewView.webview.postMessage({ type: 'toolStatus', status: 'Thinking...' });
+
+        await this._agent.processMessage(text, (content: string, type: string = 'agent') => {
+            this._dispatchAgentUpdate(webviewView, messageId, content, type);
+        });
+
+        const usageTotal = this._agent.getUsageStats().lastTurnUsage;
+        webviewView.webview.postMessage({
+            type: 'finalizeStreamedMessage',
+            messageId,
+            usage: usageTotal
+        });
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {

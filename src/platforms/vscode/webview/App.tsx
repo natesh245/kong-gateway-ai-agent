@@ -44,6 +44,7 @@ interface Config {
     maxToolCalls?: number;
     maxContext?: number;
     maxAgentTimeout?: number;
+    stagedFiles?: string[];
     [key: string]: any;
 }
 
@@ -197,7 +198,10 @@ export const App: React.FC = () => {
                         
                         setMessages(prev => {
                             const content = m.content || '';
-                            const cleanContent = content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+                            const cleanContent = content
+                                .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+                                .replace(/SYSTEM_WARNING:.*?(?:\n\n|$)/gi, '')
+                                .trim();
 
                             if (cleanContent) {
                                 return [...prev, {
@@ -240,7 +244,7 @@ export const App: React.FC = () => {
                         } else {
                             const validRoles = ['user', 'agent', 'assistant', 'ui-diff'];
                             
-                            setMessages(m.history
+                            const processedHistory = m.history
                                 .filter((msg: any) => {
                                     const role = msg?.role;
                                     const content = typeof msg.content === 'string' ? msg.content : '';
@@ -257,7 +261,7 @@ export const App: React.FC = () => {
                                         }
                                     }
 
-                                    if (!content.trim()) return false;
+                                    if (!content.trim() && !msg.reasoning?.trim() && (!msg.toolInteractions || msg.toolInteractions.length === 0)) return false;
                                     return true;
                                 })
                                 .map((msg: any) => ({
@@ -270,8 +274,63 @@ export const App: React.FC = () => {
                                     startTime: msg.startTime || Date.now(),
                                     endTime: msg.endTime || Date.now(),
                                     lastUsage: msg.lastUsage
-                                }))
-                            );
+                                }));
+
+                            // Post-process to merge consecutive agent messages into a single turn
+                            const mergedHistory: any[] = [];
+                            let currentTurnAgentMsg: any = null;
+
+                            for (const msg of processedHistory) {
+                                if (msg.role === 'user') {
+                                    if (currentTurnAgentMsg) {
+                                        mergedHistory.push(currentTurnAgentMsg);
+                                        currentTurnAgentMsg = null;
+                                    }
+                                    mergedHistory.push(msg);
+                                } else if (msg.role === 'agent') {
+                                    if (!currentTurnAgentMsg) {
+                                        // Clone the array to avoid mutating the original
+                                        currentTurnAgentMsg = { ...msg, toolInteractions: [...msg.toolInteractions] };
+                                    } else {
+                                        // Merge intermediate into current
+                                        // The previous content (if any) was intermediate, so shift it to reasoning
+                                        if (currentTurnAgentMsg.content) {
+                                            currentTurnAgentMsg.reasoning = currentTurnAgentMsg.reasoning 
+                                                ? currentTurnAgentMsg.reasoning + "\n\n" + currentTurnAgentMsg.content 
+                                                : currentTurnAgentMsg.content;
+                                        }
+                                        // Add the new content
+                                        currentTurnAgentMsg.content = msg.content;
+
+                                        // Append reasoning
+                                        if (msg.reasoning) {
+                                            currentTurnAgentMsg.reasoning = currentTurnAgentMsg.reasoning
+                                                ? currentTurnAgentMsg.reasoning + "\n\n" + msg.reasoning
+                                                : msg.reasoning;
+                                        }
+
+                                        // Append tool interactions
+                                        if (msg.toolInteractions) {
+                                            currentTurnAgentMsg.toolInteractions.push(...msg.toolInteractions);
+                                        }
+
+                                        // Update usage and timing
+                                        if (msg.lastUsage) currentTurnAgentMsg.lastUsage = msg.lastUsage;
+                                        if (msg.endTime) currentTurnAgentMsg.endTime = msg.endTime;
+                                    }
+                                } else {
+                                    if (currentTurnAgentMsg) {
+                                        mergedHistory.push(currentTurnAgentMsg);
+                                        currentTurnAgentMsg = null;
+                                    }
+                                    mergedHistory.push(msg);
+                                }
+                            }
+                            if (currentTurnAgentMsg) {
+                                mergedHistory.push(currentTurnAgentMsg);
+                            }
+                            
+                            setMessages(mergedHistory);
                         }
                     }
                     break;
@@ -289,6 +348,14 @@ export const App: React.FC = () => {
                     setIsTyping(false);
                     setStatusText('');
                     setToast('🧹 Chat history refreshed');
+                    break;
+                case 'diffResolved':
+                    // We can just show a toast or hide the buttons. The actual text stays.
+                    if (m.status === 'accepted') {
+                        setToast(`✅ Applied changes to ${m.filename}`);
+                    } else {
+                        setToast(`❌ Discarded changes to ${m.filename}`);
+                    }
                     break;
             }
         };
@@ -314,6 +381,14 @@ export const App: React.FC = () => {
         setIsTyping(true);
         setStatusText(`Agent is analyzing diffs for ${filename}...`);
         vscode.postMessage({ type: 'requestReview', filename });
+    }, [vscode]);
+
+    const handleDiffAction = useCallback((action: 'accept' | 'reject', filename: string) => {
+        if (action === 'accept') {
+            vscode.postMessage({ type: 'acceptDiff', filename });
+        } else {
+            vscode.postMessage({ type: 'rejectDiff', filename });
+        }
     }, [vscode]);
 
     const handleCancel = useCallback(() => {
@@ -369,6 +444,18 @@ export const App: React.FC = () => {
                     />
                 )}
 
+                {config.stagedFiles && config.stagedFiles.length > 0 && (
+                    <div className="global-diff-banner" style={{ background: 'var(--vscode-editorWarning-background)', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '10px', borderRadius: '4px' }}>
+                        <div>
+                            <span style={{ fontWeight: 'bold' }}>{config.stagedFiles.length} file{config.stagedFiles.length > 1 ? 's' : ''} staged for review</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button className="approval-btn yes" onClick={() => vscode.postMessage({ type: 'acceptAllDiffs' })}>✅ Accept All</button>
+                            <button className="approval-btn no" onClick={() => vscode.postMessage({ type: 'rejectAllDiffs' })}>❌ Reject All</button>
+                        </div>
+                    </div>
+                )}
+
                 <ChatContainer 
                     messages={messages} 
                     isTyping={isTyping}
@@ -376,6 +463,7 @@ export const App: React.FC = () => {
                     showThinking={config.showThinking !== false}
                     onStop={handleCancel}
                     onAction={handleSendAction}
+                    onDiffAction={handleDiffAction}
                 />
 
                 {isTyping && (

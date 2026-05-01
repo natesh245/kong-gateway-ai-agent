@@ -149,8 +149,15 @@ export class Agent {
             if (m.role === 'user') {
                 lcMessages.push(new HumanMessage(m.content));
             } else if (m.role === 'assistant' || m.role === 'agent') {
+                let cleanContent = m.content || "";
+                
+                // CRITICAL FIX: If the persistent state incorrectly saved the tool result directly into the AIMessage content (e.g. from a past UI bug), we strip it here.
+                if (cleanContent.includes("SAFETY_REQUIRED:")) {
+                    cleanContent = "";
+                }
+
                 const aiMsg = new AIMessage({
-                    content: m.content || "",
+                    content: cleanContent,
                     additional_kwargs: {
                         reasoning: m.reasoning || "",
                         lastUsage: m.lastUsage
@@ -168,6 +175,7 @@ export class Agent {
                     for (const interaction of m.toolInteractions) {
                         lcMessages.push(new ToolMessage({
                             id: interaction.id,
+                            name: interaction.name || interaction.toolName || "",
                             content: interaction.result || "",
                             tool_call_id: interaction.id
                         }));
@@ -237,6 +245,10 @@ export class Agent {
                     temperature: 0,
                     maxOutputTokens: 4096,
                 }) as any;
+                const origBind = this.model!.bindTools;
+                this.model!.bindTools = function(tools: any, kwargs: any) {
+                    return origBind.call(this, tools, { ...kwargs, parallel_tool_calls: false });
+                };
             } catch (e) {
                 this.platform.showErrorMessage("Kong Agent: @langchain/google-genai package is not yet installed. Please run 'npm install @langchain/google-genai'.");
                 return false;
@@ -261,6 +273,10 @@ export class Agent {
                         }
                     }
                 }) as any;
+                const origBindOR = this.model!.bindTools;
+                this.model!.bindTools = function(tools: any, kwargs: any) {
+                    return origBindOR.call(this, tools, { ...kwargs, parallel_tool_calls: false });
+                };
             } catch (e) {
                 // Fallback to legacy ChatOpenAI if ChatOpenRouter isn't ready
                 this.model = new ChatOpenAI({
@@ -274,7 +290,11 @@ export class Agent {
                             "X-Title": this.platform.getAppName()
                         }
                     }
-                });
+                }) as any;
+                const origBindAI = this.model!.bindTools;
+                this.model!.bindTools = function(tools: any, kwargs: any) {
+                    return origBindAI.call(this, tools, { ...kwargs, parallel_tool_calls: false });
+                };
             }
         }
 
@@ -390,19 +410,20 @@ export class Agent {
         };
     }
 
-    public async classifyFile(content: string): Promise<'compose' | 'kong' | 'other'> {
+    public async classifyFile(content: string): Promise<'compose' | 'kong' | 'ruleset' | 'other'> {
         if (!this.initClient() || !this.model) return 'other';
         const sample = content.length > 2000 ? content.substring(0, 2000) : content;
 
         try {
             const response = await this.model.invoke([
-                new SystemMessage("Identify if the following YAML is a 'compose' (Docker Compose), 'kong' (Kong Gateway declarative config), or 'other'. Output ONLY the single word classification."),
+                new SystemMessage("Identify if the following YAML is a 'compose' (Docker Compose), 'kong' (Kong Gateway declarative config), 'ruleset' (decK linting ruleset), or 'other'. Output ONLY the single word classification."),
                 new HumanMessage(sample)
             ]);
 
             const result = (response.content as string).toLowerCase().trim() || 'other';
             if (result.includes('compose')) return 'compose';
             if (result.includes('kong')) return 'kong';
+            if (result.includes('ruleset')) return 'ruleset';
             return 'other';
         } catch (e) {
             return 'other';
@@ -509,6 +530,7 @@ export class Agent {
             this.activeFiles = discovered;
             const activeCompose = discovered.compose || 'none (default: kong-docker-compose.yml)';
             const activeConfig = discovered.config || 'none (default: kong.yml)';
+            const activeRuleset = discovered.ruleset || 'none (default: ruleset.yaml)';
 
             const contextHeader = `🚨 **STRICT OPERATION BOUNDARY**: You are a DEDICATED Kong Gateway Specialist. \n` +
                 `- **REFUSE** all non-Kong queries immediately.\n` +
@@ -517,7 +539,8 @@ export class Agent {
                 `- Current Mode: **${kongMode.toUpperCase()}**\n` +
                 `- Proxy Port: ${proxyPort} | Admin API Port: ${adminPort} | Manager Port: ${managerPort}\n` +
                 `- Detected Compose: ${activeCompose}\n` +
-                `- Detected Config: ${activeConfig}\n\n`;
+                `- Detected Config: ${activeConfig}\n` +
+                `- Detected Ruleset: ${activeRuleset}\n\n`;
 
             // Store the clean user message in history
             this.messages.push(new HumanMessage(SanitizationUtil.scrubString(content)));
@@ -579,7 +602,14 @@ export class Agent {
                 let sequentialToolCount = 0;
 
                 const persistState = () => {
-                    if (fullContent || collectedToolCalls.length > 0) {
+                    // Fallback: If the model called tools but failed to wrap its preamble in <thought> tags,
+                    // we consider the content to be reasoning to prevent it from leaking into the user chat UI.
+                    if (collectedToolCalls.length > 0 && fullContent.trim() && !fullReasoning.trim()) {
+                        fullReasoning = fullContent.trim();
+                        fullContent = "";
+                    }
+
+                    if (fullContent || collectedToolCalls.length > 0 || fullReasoning) {
                         const assistantMsg = new AIMessage({
                             content: fullContent,
                             tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls.map(tc => ({
@@ -594,6 +624,12 @@ export class Agent {
                         });
                         this.messages.push(assistantMsg);
 
+                        fullContent = "";
+                        fullReasoning = "";
+                        collectedToolCalls = [];
+                    }
+
+                    if (collectedToolResults.length > 0) {
                         for (const tr of collectedToolResults) {
                             this.messages.push(new ToolMessage({
                                 content: tr.content,
@@ -601,6 +637,7 @@ export class Agent {
                                 name: tr.name || "",
                             }));
                         }
+                        collectedToolResults = [];
                     }
                 };
 
@@ -805,6 +842,18 @@ export class Agent {
                                 }
                             }
                         }
+                        // Flush any remaining buffer before persisting this step
+                        if (streamBuffer.length > 0) {
+                            if (isInsideThought) {
+                                fullReasoning += streamBuffer;
+                                onUpdate(streamBuffer, 'reasoning');
+                            } else {
+                                fullContent += streamBuffer;
+                                onUpdate(streamBuffer, 'agent');
+                            }
+                            streamBuffer = "";
+                        }
+                        persistState();
                     }
                 }
 

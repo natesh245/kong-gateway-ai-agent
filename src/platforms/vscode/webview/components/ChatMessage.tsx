@@ -20,22 +20,25 @@ interface Message {
 
 interface ChatMessageProps extends Message {
     onAction: (text: string) => void;
+    onDiffAction: (action: 'accept' | 'reject', filename: string) => void;
     toolInteractions?: any[];
 }
 
 const ToolInteraction: React.FC<{ interaction: any }> = ({ interaction }) => {
     const [isExpanded, setIsExpanded] = React.useState(false);
-    const isError = interaction.result?.toLowerCase().includes('error');
-    const isSuccess = !isError && interaction.status === 'completed';
+    const resultStr = interaction.result?.toLowerCase() || '';
+    const isSafetyGated = resultStr.includes('safety_required');
+    const isError = resultStr.includes('error') || resultStr.includes('failed');
+    const isSuccess = !isError && !isSafetyGated && interaction.status === 'completed';
 
     return (
-        <div className={`tool-interaction ${interaction.status} ${isExpanded ? 'expanded' : ''}`}>
+        <div className={`tool-interaction ${interaction.status} ${isExpanded ? 'expanded' : ''} ${isSafetyGated ? 'gated' : ''}`}>
             <div className="tool-interaction-header" onClick={() => setIsExpanded(!isExpanded)} title="Click to view arguments and result">
-                <i className={`codicon codicon-${isSuccess ? 'pass' : isError ? 'error' : 'sync'}`}></i>
+                <i className={`codicon codicon-${isSafetyGated ? 'shield' : isSuccess ? 'pass' : isError ? 'error' : 'sync'}`}></i>
                 <div className="tool-info">
                     <span className="tool-name">{interaction.name || 'Executing Tool...'}</span>
-                    <span className={`tool-status-badge ${interaction.status}`}>
-                        {interaction.status === 'started' ? 'RUNNING' : isSuccess ? 'SUCCESS' : 'FAILED'}
+                    <span className={`tool-status-badge ${isSafetyGated ? 'gated' : isSuccess ? 'success' : isError ? 'error' : interaction.status}`}>
+                        {interaction.status === 'started' ? 'RUNNING' : isSafetyGated ? 'BLOCKED' : isSuccess ? 'SUCCESS' : 'FAILED'}
                     </span>
                 </div>
                 <i className={`codicon codicon-chevron-${isExpanded ? 'down' : 'right'}`} style={{ marginLeft: 'auto', fontSize: '10px' }}></i>
@@ -60,7 +63,7 @@ const ToolInteraction: React.FC<{ interaction: any }> = ({ interaction }) => {
     );
 };
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoning, toolInteractions, className, lastUsage, complete, cancelled, startTime, endTime, showThinking, onAction }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoning, toolInteractions, className, lastUsage, complete, cancelled, startTime, endTime, showThinking, onAction, onDiffAction }) => {
     const vscode = getVsCodeApi();
     const [isReasoningExpanded, setIsReasoningExpanded] = React.useState(true);
 
@@ -78,6 +81,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoni
             const after = parts.slice(2).join(" ") || "";
             displayContent = (before + after).trim();
         }
+    } else if (toolInteractions && toolInteractions.length > 0 && !displayReasoning.trim() && displayContent.trim()) {
+        // Fallback: If this is a tool-call turn with no explicit reasoning, but it has content,
+        // assume the content is actually preamble/reasoning that leaked.
+        displayReasoning = displayContent;
+        displayContent = "";
     }
 
     // Logic to detect approval requirements
@@ -85,6 +93,32 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoni
     if (displayContent.includes('[APPROVAL_REQUIRED]')) {
         hasApproval = true;
         displayContent = displayContent.replace('[APPROVAL_REQUIRED]', '').trim();
+    }
+    
+    // Prevent reasoning box leakage for strict tool interactions
+    if (toolInteractions && toolInteractions.length > 0 && !displayReasoning.trim() && !displayContent.trim()) {
+        hasApproval = false;
+    }
+
+    const stagedFilenames: string[] = [];
+    
+    // First try extracting from the agent's content if it echoed it
+    const stagedMatches = displayContent.matchAll(/\[STAGED_FILE_EDIT:([^\]]+)\]/g);
+    for (const match of stagedMatches) {
+        if (!stagedFilenames.includes(match[1])) stagedFilenames.push(match[1]);
+        displayContent = displayContent.replace(match[0], '').trim();
+    }
+
+    // If not found in content, check the tool interactions directly
+    if (toolInteractions) {
+        for (const ti of toolInteractions) {
+            if (ti.name === 'write_storage_file' && ti.result && ti.result.includes('[STAGED_FILE_EDIT:')) {
+                const matches = ti.result.matchAll(/\[STAGED_FILE_EDIT:([^\]]+)\]/g);
+                for (const match of matches) {
+                    if (!stagedFilenames.includes(match[1])) stagedFilenames.push(match[1]);
+                }
+            }
+        }
     }
 
     // Interactive "Next Steps" Handlers from legacy
@@ -101,7 +135,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoni
     const elapsedTime = startTime && endTime ? ((endTime - startTime) / 1000).toFixed(1) : null;
     const toolCount = toolInteractions?.length || lastUsage?.toolCalls || 0;
 
-    if (!displayContent.trim() && !displayReasoning.trim() && !hasApproval && role === 'agent') return null;
+    if (!displayContent.trim() && !displayReasoning.trim() && !hasApproval && (!toolInteractions || toolInteractions.length === 0) && role === 'agent') return null;
 
     const isSystemError = displayContent.toLowerCase().startsWith('error') || displayContent.toLowerCase().includes('failed:');
 
@@ -189,6 +223,17 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, reasoni
                     </button>
                 </div>
             )}
+
+            {stagedFilenames.map(filename => (
+                <div key={filename} className="approval-container staged-diff">
+                    <button className="approval-btn yes" onClick={() => onDiffAction('accept', filename)}>
+                        ✅ Accept {filename}
+                    </button>
+                    <button className="approval-btn no" onClick={() => onDiffAction('reject', filename)}>
+                        ❌ Reject
+                    </button>
+                </div>
+            ))}
 
             {lastUsage && (role === 'agent' || role === 'assistant') && (
                 <span className="message-usage-badge" title="Turn activity & token cost">

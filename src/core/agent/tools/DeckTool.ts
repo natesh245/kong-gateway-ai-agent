@@ -334,18 +334,49 @@ export class DeckTool {
     }
   }
 
-  public async lint(filename: string, signal?: AbortSignal): Promise<string> {
+  public async lint(filename: string, rulesetFile?: string, signal?: AbortSignal): Promise<string> {
     try {
       const storagePath = this.storage.getStoragePath();
+      
+      if (!rulesetFile) {
+        const fs = require('fs');
+        const defaultRulesets = ['ruleset.yml', 'ruleset.yaml', 'rules.yml', 'rules.yaml'];
+        for (const candidate of defaultRulesets) {
+           if (fs.existsSync(path.join(storagePath, candidate))) {
+               rulesetFile = candidate;
+               break;
+           }
+        }
+      }
+
+      if (!rulesetFile) {
+        // Create a default ruleset file in the workspace
+        rulesetFile = 'ruleset.yaml';
+        const defaultRulesetPath = path.join(storagePath, rulesetFile);
+        const defaultContent = `rules:
+  service-https-check:
+    description: "Ensure https usage in Kong GW Services (Default Rule)"
+    given: $.services[*].protocol
+    severity: warn
+    then:
+      function: pattern
+      functionOptions:
+        match: "^https$"
+`;
+        const fs = require('fs');
+        fs.writeFileSync(defaultRulesetPath, defaultContent, 'utf8');
+      }
+
       const filePath = path.join(storagePath, filename);
+      const rulesetPath = path.join(storagePath, rulesetFile);
       const isHostInstalled = await this.isDeckInstalled(signal);
 
       if (isHostInstalled) {
-        const command = `deck file lint -s "${filePath}"`;
+        const command = `deck file lint -s "${filePath}" "${rulesetPath}"`;
         const { stdout } = await execAsync(command, { signal });
         return stdout || "Configuration passed linting.";
       } else {
-        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck file lint -s "/storage/${filename}"`;
+        const dockerCommand = `docker run --rm -v "${storagePath}:/storage" kong/deck file lint -s "/storage/${filename}" "/storage/${rulesetFile}"`;
         const { stdout } = await execAsync(dockerCommand, { signal });
         return stdout || "Configuration passed linting (Docker).";
       }

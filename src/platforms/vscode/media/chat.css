@@ -677,6 +677,11 @@ th { background: rgba(255,255,255,0.05); }
     color: #4ec9b0;
     border: 1px solid rgba(78, 201, 176, 0.2);
 }
+.tag-ruleset {
+    background: rgba(197, 134, 192, 0.15);
+    color: #c586c0;
+    border: 1px solid rgba(197, 134, 192, 0.2);
+}
 
 /* Settings Sub-Sections */
 .settings-subsection {
@@ -889,10 +894,16 @@ details.settings-subsection:not([open]) .subsection-toggle {
     border: 1px solid rgba(36, 150, 237, 0.2);
 }
 
-.tool-status-badge.completed { 
+.tool-status-badge.completed, .tool-status-badge.success { 
     background: rgba(78, 201, 176, 0.1);
     color: var(--vscode-testing-iconPassed);
     border: 1px solid rgba(78, 201, 176, 0.2);
+}
+
+.tool-status-badge.gated {
+    background: rgba(255, 170, 0, 0.1);
+    color: #ffaa00;
+    border: 1px solid rgba(255, 170, 0, 0.3);
 }
 
 .tool-status-badge.failed { 
