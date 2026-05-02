@@ -25,6 +25,19 @@ The webview is built using **Vanilla CSS** and **HTML5** to maintain maximum per
 
 ---
 
+## 🔌 IDE Integration Features
+
+The VS Code platform provides deep integration with the editor's environment to enhance the developer experience:
+
+- **Automatic Workspace Discovery**: Detects `docker-compose.yml`, `kong.yml`, and `ruleset.yaml` files in the active workspace on startup.
+- **Staged File Editing**: Proposed configuration changes are written to temporary "staged" files and opened in a side-by-side **Diff Editor** for manual review.
+- **Persistent Global State**: Conversation history, token counts, and configuration settings are stored in VS Code's `globalState`, ensuring they survive extension updates and IDE restarts.
+- **Dynamic Model Fetching**: Automatically fetches available model lists from OpenRouter/Gemini based on your API Key.
+- **Theme Awareness**: The chat UI automatically adapts to your VS Code theme (Light, Dark, High Contrast) using standard CSS variables.
+- **Abort Signal Propagation**: Long-running tool calls (like starting Kong or syncing large files) can be safely cancelled using the "Cancel" button, which propagates an `AbortSignal` all the way to the underlying CLI/Docker process.
+
+---
+
 ## 🛰️ Messaging Protocol
 
 Communication between the `ChatViewProvider` (Host) and `chat.js` (Webview) occurs via `vscode.postMessage`:

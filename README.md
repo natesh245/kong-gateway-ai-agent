@@ -5,14 +5,43 @@ An AI-powered VS Code extension that provides a declarative, GitOps-first interf
 ## 🚀 Key Features
 
 - **Agentic AI Interface**: Manage Kong via natural language chat (powered by OpenRouter/LLM).
-- **GitOps-First Workflow**: Uses the official **decK CLI** for declarative configuration (`kong.yml`).
+- **GitOps-First Workflow**: Uses the official **decK CLI** for declarative configuration (`kong-deck-state.yml`).
 - **Flexible Connectivity**: Support for **Local** (Docker-based) and **Remote** (URL-based) Kong instances.
 - **Docker Integration**: Automated lifecycle management (Start/Stop/Logs) for local Kong and Postgres.
 - **Token & Context Tracking**: Real-time monitoring of token consumption and model context usage.
 - **Enterprise Support**: Handles **Workspaces**, **RBAC Tokens**, and **TLS Verification** settings.
-- **Safety First**: Mandatory validation and diff previews before syncing changes to live instances.
+- **Hardened Safety Gates**: Mandatory validation and diff previews with robust text-based fallback detection for sync/export/reset.
+- **Modular Architecture**: Decoupled core logic (State, History, Client, Stream) for high performance and stability.
 - **Visual Excellence**: Modern, premium chat UI with "Thinking Process" toggles and error highlighting.
-- **Persistence**: Chat history is automatically saved to VS Code's global state and persists across sessions.
+- **Loop Protection**: Built-in watchdog to prevent infinite reasoning loops and tool call churning.
+
+---
+
+## 🦍 What can the Kong Agent do?
+
+The agent is a specialized specialist for Kong Gateway operations, capable of performing complex multi-step tasks across several domains:
+
+### 🚢 Docker & Environment Management
+- **Lifecycle Control**: Start, stop, and restart local Kong Gateway and Postgres instances.
+- **Health Monitoring**: Check Docker container status and verify Admin/Proxy API connectivity.
+- **Port Reconciliation**: Automatically detect and fix mismatches between your configuration and running Docker containers.
+- **Instance Adoption**: Seamlessly connect to and manage existing Kong instances found on your system.
+
+### 📜 Declarative Configuration (decK)
+- **GitOps Workflows**: Full support for `validate`, `diff`, and `sync` operations using `kong-deck-state.yml`.
+- **Live-to-Local Export**: Download current live configurations and surgically update your local files with preview diffs.
+- **Safe Resets**: Wipe a live Kong instance after generating a detailed markdown inventory of what will be deleted.
+- **Entity Discovery**: Search and list live Services, Routes, Plugins, and Consumers.
+
+### 🛠️ APIOps & Transformation
+- **OAS Conversion**: Transform OpenAPI (Swagger) specifications into Kong declarative configuration.
+- **Configuration Linting**: Validate your Kong configuration against best practices and custom rulesets.
+- **Modular Management**: Merge multiple configuration files or apply patches to existing YAML states.
+
+### 📂 Integrated Workspace Tools
+- **Surgical File Edits**: Modify specific parts of your configuration files with human-in-the-loop approval.
+- **Staged Changes**: View diffs of proposed file changes directly in the VS Code editor before accepting them.
+- **Git Integration**: Push and pull configuration changes to/from remote Git repositories.
 
 
 ---
