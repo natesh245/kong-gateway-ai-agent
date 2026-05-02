@@ -8,6 +8,7 @@ import {
 import { ToolManager, ToolExecutionContext } from "./tools/ToolManager";
 import { SanitizationUtil } from "../utils/SanitizationUtil";
 import { IConfig } from "../interfaces/ICoreInterfaces";
+import { AgentHistory } from "./AgentHistory";
 
 /**
  * Context object passed to each tool, allowing access to agent internals.
@@ -35,56 +36,10 @@ export function buildAgentTools(ctx: ToolContext) {
         return null;
     }
 
-    // --- Helpers for safety gate checks ---
-    function getLastUserContent(): string {
-        const messages = ctx.getMessages();
-        // Only consider the absolute most recent HumanMessage
-        const lastHumanIndex = [...messages].reverse().findIndex(m => m instanceof HumanMessage);
-
-        if (lastHumanIndex === -1 || lastHumanIndex > 2) {
-            // If the last human interaction is too far back (more than 2 messages ago), 
-            // it's likely "consumed" or stale.
-            return "";
-        }
-
-        const lastUser = [...messages].reverse()[lastHumanIndex];
-        return SanitizationUtil.stripContext(lastUser?.content as string || "").toLowerCase();
-    }
-
-    function recentHistoryHas(keyword: string, lookback = 50): boolean {
-        const messages = ctx.getMessages();
-        const history = messages.slice(-lookback);
-        return history.some((m: any) => {
-            const content = typeof m.content === 'string' ? m.content : "";
-            return content.toLowerCase().includes(keyword.toLowerCase());
-        });
-    }
-
-    function recentHistoryHasToolCall(toolName: string, lookback = 50): boolean {
-        const messages = ctx.getMessages();
-        const history = messages.slice(-lookback);
-        
-        // Robustness: For sync/preview, also check if the result marker [SYNC_PREVIEW] exists in history
-        if (toolName === 'preview_sync_diff') {
-            if (recentHistoryHas('[SYNC_PREVIEW]', lookback)) return true;
-        }
-
-        return history.some((m: any) =>
-            // 1. Check ToolMessage name (LangChain property)
-            (m.name === toolName) ||
-            // 2. Check AIMessage tool_calls (standard LangChain)
-            (m.tool_calls && m.tool_calls.some((tc: any) => (tc.name === toolName) || (tc.function && tc.function.name === toolName))) ||
-            // 3. Check our custom toolInteractions property (from globalState)
-            (m.toolInteractions && m.toolInteractions.some((ti: any) => ti.name === toolName)) ||
-            // 4. Check additional_kwargs for namespaced tool names (OpenRouter/Gemini quirk)
-            (m.additional_kwargs?.name === toolName)
-        );
-    }
-
     const execCtx: ToolExecutionContext = {
-        lastUserContent: getLastUserContent,
-        recentHistoryHas: recentHistoryHas,
-        recentHistoryHasToolCall: recentHistoryHasToolCall,
+        lastUserContent: () => AgentHistory.getLastUserContent(ctx.getMessages()),
+        recentHistoryHas: (keyword, lookback) => AgentHistory.recentHistoryHas(ctx.getMessages(), keyword, lookback),
+        recentHistoryHasToolCall: (toolName, lookback) => AgentHistory.recentHistoryHasToolCall(ctx.getMessages(), toolName, lookback),
         abortSignal: ctx.abortSignal
     };
 

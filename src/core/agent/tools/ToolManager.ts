@@ -196,10 +196,10 @@ export class ToolManager {
   public async syncWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
     const isApproved = /\byes\b/i.test(lastUserContent) || 
-                       lastUserContent.includes('proceed') || 
-                       lastUserContent.includes('confirm sync') || 
-                       lastUserContent.includes('apply') ||
-                       /\bsync\b/i.test(lastUserContent);
+                       /\bproceed\b/i.test(lastUserContent) || 
+                       /\bapprove\b/i.test(lastUserContent) ||
+                       /\bconfirm\b/i.test(lastUserContent) ||
+                       lastUserContent.includes('apply');
 
     if (isApproved) {
       const hasDiffed = ctx.recentHistoryHasToolCall('preview_sync_diff');
@@ -250,8 +250,9 @@ export class ToolManager {
   public async exportWithSafetyGate(ctx: ToolExecutionContext, filename: string): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
     const isApproved = /\byes\b/i.test(lastUserContent) || 
-                       lastUserContent.includes('proceed') || 
-                       lastUserContent.includes('confirm export') || 
+                       /\bproceed\b/i.test(lastUserContent) || 
+                       /\bapprove\b/i.test(lastUserContent) ||
+                       /\bconfirm\b/i.test(lastUserContent) ||
                        lastUserContent.includes('apply');
 
     if (isApproved) {
@@ -296,9 +297,9 @@ export class ToolManager {
   public async resetWithSafetyGate(ctx: ToolExecutionContext): Promise<string> {
     const lastUserContent = ctx.lastUserContent();
     const isApproved = /\byes\b/i.test(lastUserContent) || 
-                       lastUserContent.includes('confirm reset') || 
-                       lastUserContent.includes('proceed') || 
-                       lastUserContent.includes('approve');
+                       /\bproceed\b/i.test(lastUserContent) || 
+                       /\bapprove\b/i.test(lastUserContent) ||
+                       /\bconfirm\b/i.test(lastUserContent);
 
     if (isApproved) {
       const hasInventory = ctx.recentHistoryHasToolCall('preview_reset_inventory', 50);

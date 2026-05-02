@@ -1,5 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 const classificationSchema = z.object({
   classification: z.enum(["GREET", "KONGR", "OFFT"]).describe("GREET for Greetings, KONGR for Technical Kong Related, OFFT for Off Topic")
@@ -49,6 +50,29 @@ export class PromptAnalyser {
       // Default to allowed if classification fails for other reasons
       console.error("[PromptAnalyser] Classification failed:", e);
       return { classification: 'KONGR' };
+    }
+  }
+
+  /**
+   * Classifies file content using the LLM.
+   */
+  static async classifyFile(content: string, model: any): Promise<'compose' | 'kong' | 'ruleset' | 'gateway_config' | 'other'> {
+    const sample = content.length > 2000 ? content.substring(0, 2000) : content;
+
+    try {
+      const response = await model.invoke([
+        new SystemMessage("Identify if the following content is a 'compose' (Docker Compose YAML), 'kong' (Kong Gateway decK state YAML), 'ruleset' (decK linting ruleset YAML), 'gateway_config' (Kong Gateway kong.conf properties file), or 'other'. Output ONLY the single word classification."),
+        new HumanMessage(sample)
+      ]);
+
+      const result = (response.content as string).toLowerCase().trim() || 'other';
+      if (result.includes('compose')) return 'compose';
+      if (result.includes('kong')) return 'kong';
+      if (result.includes('ruleset')) return 'ruleset';
+      if (result.includes('gateway_config') || result.includes('gateway')) return 'gateway_config';
+      return 'other';
+    } catch (e) {
+      return 'other';
     }
   }
 

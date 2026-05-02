@@ -73,4 +73,26 @@ export class MessageUtils {
         if (typeof content !== 'string') return content;
         return content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
     }
+
+    /**
+     * Returns a human-friendly description for a tool name.
+     */
+    static getFriendlyToolName(name: string): string {
+        const mapping: Record<string, string> = {
+            'start_kong': 'Starting Kong Gateway (Docker)...',
+            'stop_kong': 'Stopping Kong Gateway...',
+            'sync_to_kong_using_deck': 'Syncing configuration with decK...',
+            'preview_sync_diff': 'Generating configuration diff...',
+            'validate_kong_config': 'Validating configuration...',
+            'verify_connectivity': 'Verifying Kong connectivity...',
+            'get_kong_status': 'Checking Kong status...',
+            'read_storage_file': 'Reading configuration file...',
+            'write_storage_file': 'Saving configuration...',
+            'git_sync_push': 'Pushing changes to Git...',
+            'git_sync_pull': 'Pulling updates from Git...',
+            'check_existing_containers': 'Scanning for active Kong instances...',
+            'reconcile_port_settings': 'Reconciling port settings with Docker...'
+        };
+        return mapping[name] || `Executing ${name}...`;
+    }
 }
