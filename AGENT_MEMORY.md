@@ -49,13 +49,15 @@ The `thinking` tags can be quite verbose.
 
 ### Tier 2: Persistent Long-Term Memory (Medium-Term)
 
-#### 2.1 File-Based Session Persistence
-*   **Implementation**: Serialize `AgentState.messages` and `StorageTool._stagedFiles` to a hidden directory (e.g., `.kong-agent/sessions/`).
-*   **Benefit**: Users can resume complex migration or troubleshooting tasks after a break.
-
 #### 2.2 Knowledge Extraction (Entity Memory)
-*   **Implementation**: Extract key facts (e.g., "The user is using Kong Enterprise 3.4", "The upstream service is `auth-service`") and store them in a persistent JSON key-value store.
-*   **Benefit**: Reduces the need for the agent to re-ask for basic environment details.
+*   **Implementation**: Extract key facts (e.g., "The user is using Kong Enterprise 3.4") and store them in a persistent JSON key-value store.
+*   **Storage Location**: **External** (VS Code `globalStorageUri`). This ensures the agent's internal "knowledge" is not committed to the repository and is harder for the agent to hallucinate about or overwrite via filesystem tools.
+
+#### 2.3 Configuration Persistence (Global) [PROPOSAL ONLY]
+*   **Implementation**: Create a `GlobalConfigProvider` that mirrors non-sensitive settings into a JSON file located in the extension's global storage path (outside the workspace).
+*   **Benefit**: Maintains settings across different sessions and machines (if synced) without cluttering the project or exposing secrets to the workspace tools.
+
+*   **⚠️ SECURITY UPDATE**: All internal agent memory (Chat History, Summaries, Vector Indexes) should reside in **External Storage** (VS Code's Global App Data) by default. The local workspace should ONLY contain files that are part of the active development cycle (e.g., `.staged` files for user-driven diffing).
 
 ### Tier 3: Semantic Retrieval (Long-Term)
 
@@ -78,6 +80,7 @@ The `thinking` tags can be quite verbose.
 ### Phase 2: Persistence
 - [ ] Create `MemoryManager.ts` to handle disk I/O for session state.
 - [ ] Implement automatic "save on turn end" and "load on init".
+- [ ] Implement `LocalConfigProvider` to sync VS Code settings to `.kong-agent/config.json`.
 
 ### Phase 3: Semantic Enhancement
 - [ ] Research lightweight vector embedding options for local use.
