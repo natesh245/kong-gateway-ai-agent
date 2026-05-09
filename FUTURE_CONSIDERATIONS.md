@@ -28,6 +28,10 @@ This document serves as a high-level index for the long-term architectural goals
 *   **Focus**: Monitoring and alerting for external state changes.
 *   **Key Goals**: Snapshot baseline management, background "Pulse" checking, and interactive drift reconciliation.
 
+### 7. [Multi-Session Chat](file:///Users/natesh/projects/kong-gateway-agent/MULTI_SESSION_CHAT.md)
+*   **Focus**: Concurrent task management and thread isolation.
+*   **Key Goals**: Session sidebar, auto-titling, and isolated staged changes per thread.
+
 ---
 
 ## 🚀 Vision
