@@ -260,7 +260,11 @@ export class Agent {
 
         const executionTask = async () => {
             const persistState = () => {
-                if (collectedToolCalls.length > 0 && streamState.fullContent.trim() && !streamState.fullReasoning.trim()) {
+                if (collectedToolCalls.length > 0 && 
+                    streamState.fullContent.trim() && 
+                    !streamState.fullReasoning.trim() && 
+                    !streamState.fullContent.includes('[APPROVAL_REQUIRED]') &&
+                    !streamState.fullContent.includes('|')) {
                     streamState.fullReasoning = streamState.fullContent.trim();
                     streamState.fullContent = "";
                 }
