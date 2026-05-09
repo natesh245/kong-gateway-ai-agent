@@ -51,7 +51,9 @@ The `thinking` tags can be quite verbose.
 
 #### 2.2 Knowledge Extraction (Entity Memory)
 *   **Implementation**: Extract key facts (e.g., "The user is using Kong Enterprise 3.4") and store them in a persistent JSON key-value store.
-*   **Storage Location**: **External** (VS Code `globalStorageUri`). This ensures the agent's internal "knowledge" is not committed to the repository and is harder for the agent to hallucinate about or overwrite via filesystem tools.
+*   **Temporal Resolution**: During extraction, convert relative dates ("yesterday", "last week") into absolute timestamps to ensure memory accuracy over long durations.
+*   **Supersession Logic**: If a fact is updated (e.g., Kong version changes from 3.4 to 3.5), the old memory should be marked as "Superseded" with a pointer to the new version, preserving a version chain for auditability.
+*   **Storage Location**: **External** (VS Code `globalStorageUri`).
 
 #### 2.3 Configuration Persistence (Global) [PROPOSAL ONLY]
 *   **Implementation**: Create a `GlobalConfigProvider` that mirrors non-sensitive settings into a JSON file located in the extension's global storage path (outside the workspace).
@@ -63,6 +65,7 @@ The `thinking` tags can be quite verbose.
 
 #### 3.1 Vector Memory (RAG)
 *   **Implementation**: Integrate a local vector store (e.g., ChromaDB or a simple JSON-based vector index).
+*   **HyDE (Hypothetical Document Embedding)**: Improve retrieval by having the agent generate a "Hypothetical Answer" and searching for memories similar to that answer, rather than searching with the user's raw query.
 *   **Usage**:
     *   **Past Solutions**: Index successful tool execution sequences.
     *   **Kong Documentation**: Index relevant sections of Kong docs for RAG retrieval.

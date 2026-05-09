@@ -8,6 +8,7 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
 2.  **Surgical Pruning**: Tool results that are no longer relevant to the current turn are compressed or dropped.
 3.  **Token Budgeting**: Every turn is allocated a specific "Token Budget" across different layers (System, Thinking, History, Results).
 4.  **Just-in-Time (JIT) Injection**: System status (connectivity, docker health) is injected only when the "Context Watchdog" determines the state might have changed.
+5. **Metadata Anchoring**: Every prompt is anchored with high-fidelity metadata, including absolute current time (to resolve relative date mentions) and session-specific environment tags.
 
 ---
 
