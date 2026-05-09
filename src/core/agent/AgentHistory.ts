@@ -160,7 +160,11 @@ export class AgentHistory {
         // This handles cases where the model might have hallucinated the output format
         // or where tool execution was recorded differently.
         if (toolName === 'preview_sync_diff' && (this.recentHistoryHas(messages, '[SYNC_PREVIEW]', lookback) || this.recentHistoryHas(messages, 'Sync Preview Summary', lookback))) return true;
-        if (toolName === 'preview_export_diff' && (this.recentHistoryHas(messages, 'PREVIEW EXPORT RESULTS', lookback) || this.recentHistoryHas(messages, 'Export Preview Summary', lookback))) return true;
+        if (toolName === 'preview_export_diff' && (
+            this.recentHistoryHas(messages, 'PREVIEW EXPORT RESULTS', lookback) || 
+            this.recentHistoryHas(messages, 'Export Preview Summary', lookback) ||
+            this.recentHistoryHas(messages, 'Would you like to proceed and overwrite', lookback)
+        )) return true;
         if (toolName === 'preview_reset_inventory' && (this.recentHistoryHas(messages, 'RESET PREVIEW DATA', lookback) || this.recentHistoryHas(messages, 'Reset Inventory Summary', lookback))) return true;
 
         return history.some((m: any) =>

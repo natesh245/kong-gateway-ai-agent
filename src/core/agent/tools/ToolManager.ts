@@ -260,7 +260,9 @@ export class ToolManager {
       if (!hasDiffed) {
         return "SAFETY_REQUIRED: I cannot export without first showing you the diff. I must run 'preview_export_diff' first.";
       }
-      return await this.dumpWithDeck(filename, ctx.abortSignal);
+      const dumpResult = await this.dumpWithDeck(filename, ctx.abortSignal);
+      const lintResult = await this.lint(filename, undefined, ctx.abortSignal);
+      return `${dumpResult}\n\n**Post-Export Linting Results:**\n\`\`\`\n${lintResult}\n\`\`\``;
     }
     return "SAFETY_REQUIRED: I cannot export without your explicit confirmation. Please review the 'preview_export_diff' results and say 'confirm export' or 'yes'. Use '[APPROVAL_REQUIRED]'.";
   }
