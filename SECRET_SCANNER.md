@@ -47,16 +47,17 @@ The scanner operates at three critical interception points:
 - [ ] Create a "Safe Mode" UI toggle that enables/disables strict secret blocking.
 - [ ] Develop a `SafeDiff` utility to ensure secrets aren't exposed in diff views.
 
-### Phase 3: Advanced Entropy Detection (Long-Term)
-- [ ] Integrate a specialized library (e.g., `shhgit` logic or `trufflehog` patterns) for deep secret scanning.
-- [ ] Implement "Secret State Tracking": If the agent *needs* a token to perform an operation (e.g., calling the Admin API), the scanner ensures it only uses the token in the tool execution and never logs it.
+### Phase 3: Advanced Entropy & 3rd-Party Integration (Long-Term)
+- [ ] **Gitleaks/Trufflehog Integration**: Integrate with established 3rd-party scanners to perform full workspace audits.
+- [ ] **Pre-Commit Hook Simulation**: Allow the agent to run a secret scan on any file before it is "accepted" or "synced" to the gateway.
+- [ ] **Secret State Tracking**: If the agent *needs* a token to perform an operation, the scanner ensures it only uses the token in the tool execution and never logs it.
 
 ---
 
-## 4. Kong-Specific Patterns
-The scanner will prioritize these high-risk fields:
-- `kong_admin_token`
-- `pg_password`
-- `consumer.custom_id` (if sensitive)
-- `key-auth` credentials
-- `jwt` secrets
+## 5. 3rd-Party Integration: Gitleaks / Trufflehog
+
+To provide industrial-grade scanning, the Agent will support integration with **Gitleaks** or **Trufflehog**:
+
+1.  **Workspace Audit Tool**: A new tool `scan_workspace_for_secrets` that runs `gitleaks detect --source .` and returns a summary of risks to the user.
+2.  **Auto-Discovery**: If the tool detects a binary of Gitleaks on the user's `$PATH`, it will offer to run a security audit during the initial workspace discovery phase.
+3.  **Human-in-the-Loop**: If a 3rd-party tool finds a secret in a file the agent is trying to read, the agent will pause and warn the user: *"⚠️ Gitleaks detected a potential secret in this file. Redacting before proceeding."*
