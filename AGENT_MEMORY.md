@@ -50,9 +50,13 @@ The `thinking` tags can be quite verbose.
 ### Tier 2: Persistent Long-Term Memory (Medium-Term)
 
 #### 2.2 Knowledge Extraction (Entity Memory)
-*   **Implementation**: Extract key facts (e.g., "The user is using Kong Enterprise 3.4") and store them in a persistent JSON key-value store.
+*   **Implementation**: Extract key facts (e.g., "The user is using Kong Enterprise 3.4") and store them as structured **Memory Units**.
+*   **Memory Unit Metadata**:
+    *   **Temporal Context**: Absolute timestamp of when the fact was learned.
+    *   **Strength Indicator**: A score (0.0 - 1.0) based on verification (e.g., direct API response = 1.0, user mention = 0.8, LLM inference = 0.5).
+    *   **Associative Links**: References to related files, Kong entities, or other memories.
 *   **Temporal Resolution**: During extraction, convert relative dates ("yesterday", "last week") into absolute timestamps to ensure memory accuracy over long durations.
-*   **Supersession Logic**: If a fact is updated (e.g., Kong version changes from 3.4 to 3.5), the old memory should be marked as "Superseded" with a pointer to the new version, preserving a version chain for auditability.
+*   **Supersession Logic**: If a fact is updated, the old memory should be marked as "Superseded" with a pointer to the new version.
 *   **Storage Location**: **External** (VS Code `globalStorageUri`).
 
 #### 2.3 Configuration Persistence (Global) [PROPOSAL ONLY]
@@ -71,7 +75,8 @@ The `thinking` tags can be quite verbose.
 
 #### 2.6 Episodic Memory (Success Patterns)
 *   **Implementation**: Automatically extract and store "Success Episodes"—sequences of tool calls that successfully resolved a complex task.
-*   **Pattern Matching**: When the agent encounters a similar problem in the future (e.g., another "Admin API 401 Unauthorized"), it retrieves the successful episode as a "few-shot" example.
+*   **Causal Linking**: Each episode stores the **Intent -> Action -> Result** chain, helping the agent understand *why* a specific solution worked.
+*   **Pattern Matching**: When the agent encounters a similar problem in the future, it retrieves the successful episode as a "few-shot" example.
 *   **Trial-and-Error Pruning**: Explicitly discard failed attempts and only store the final, verified solution path in long-term episodic memory.
 
 *   **⚠️ SECURITY UPDATE**: All internal agent memory (Chat History, Summaries, Vector Indexes) should reside in **External Storage** (VS Code's Global App Data) by default. The local workspace should ONLY contain files that are part of the active development cycle (e.g., `.staged` files for user-driven diffing).
