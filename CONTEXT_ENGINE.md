@@ -15,7 +15,8 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
 9.  **File-Anchored Memory Injection**: Automatically surface memories that are linked to the specific files currently being read or modified by the agent.
 10. **Trial-and-Error Pruning**: Upon successful task completion, the engine compresses the intermediate failed attempts and only keeps the "Success Path" in the prompt context to keep reasoning clean.
 11. **Importance Weighting**: High-value discoveries (e.g., "The Admin API is on port 8444") are tagged with permanent high importance, ensuring they stay in the prompt even after multiple summarization cycles.
-12. **Associative Retrieval**: When a specific memory is triggered, the engine automatically pulls in "linked" memories (e.g., pulling in a known Auth issue when the user mentions a Service that uses that Auth).
+12. **Associative Retrieval**: When a specific memory is triggered, the engine automatically pulls in "linked" memories.
+13. **Z-Score Normalization**: Combine Recency, Importance, and Relevance signals using Z-scores to prevent any single score from disproportionately influencing the final ranking.
 
 ---
 

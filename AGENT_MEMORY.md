@@ -84,7 +84,8 @@ The `thinking` tags can be quite verbose.
 ### Tier 3: Semantic Retrieval (Long-Term)
 
 #### 3.1 Vector Memory (RAG)
-*   **Implementation**: Integrate a local vector store (e.g., ChromaDB or a simple JSON-based vector index).
+*   **Hybrid Search**: Implement a dual-index system combining **Vector Similarity** (for semantic meaning) and **Keyword Search/BM25** (for exact technical terms like error codes or entity IDs).
+*   **Storage**: Integrate a local vector store (e.g., ChromaDB or a simple JSON-based vector index).
 *   **HyDE (Hypothetical Document Embedding)**: Improve retrieval by having the agent generate a "Hypothetical Answer" and searching for memories similar to that answer, rather than searching with the user's raw query.
 *   **Usage**:
     *   **Past Solutions**: Index successful tool execution sequences.
