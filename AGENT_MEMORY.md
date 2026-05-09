@@ -62,6 +62,7 @@ The `thinking` tags can be quite verbose.
 #### 2.4 Procedural Memory (Rules & Patterns)
 *   **Implementation**: A specialized persistent layer for the agent's "Operational DNA."
 *   **Content**: Hard-earned rules (e.g., "Always check if a service has active routes before deletion", "Use the 1.5.0-latest tag for decK in this environment").
+*   **File-Anchored Memory**: Associate specific memories with individual files (e.g., "Note: `kong-auth.yml` requires the `jwt` plugin version 2.0+"). When the agent reads a file, its anchored memories are automatically injected into the prompt.
 *   **Benefit**: Unlike the system prompt (which is fixed), Procedural Memory allows the agent to "learn" new operational guardrails over time.
 
 #### 2.5 Knowledge Graph Integration (Long-Term)

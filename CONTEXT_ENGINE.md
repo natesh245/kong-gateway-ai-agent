@@ -11,6 +11,8 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
 5.  **Metadata Anchoring**: Every prompt is anchored with high-fidelity metadata, including absolute current time and session-specific environment tags.
 6.  **Modular Guidance**: Context-specific rules are loaded dynamically based on the files being touched (e.g., loading `*.yaml` rules only when editing configs).
 7.  **Automated Hooks**: Deterministic actions (like `decK lint`) are triggered by agent events to ensure configuration integrity.
+8.  **Staleness Checks**: A mechanism to detect when a memory or tool result no longer applies to the current state of the codebase.
+9.  **File-Anchored Memory Injection**: Automatically surface memories that are linked to the specific files currently being read or modified by the agent.
 
 ---
 
