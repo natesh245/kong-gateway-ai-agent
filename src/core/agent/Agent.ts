@@ -322,12 +322,15 @@ export class Agent {
                 }
 
                 const recursionLimit = config.get<number>('recursionLimit') || 50;
+                const runNameSnippet = content.length > 50 ? `${content.substring(0, 50)}...` : content;
+                
                 const stream = await this.langchainAgent.stream(
                     { messages: apiMessages },
                     {
                         streamMode: ["messages", "updates"] as any,
                         signal: this.state.abortController?.signal,
                         recursionLimit: recursionLimit,
+                        runName: `KongAgent: ${runNameSnippet}`
                     }
                 );
 

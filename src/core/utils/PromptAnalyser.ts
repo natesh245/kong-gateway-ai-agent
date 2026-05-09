@@ -33,7 +33,10 @@ export class PromptAnalyser {
       const result = await structuredModel.invoke([
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt }
-      ], { signal }) as any;
+      ], { 
+        signal,
+        runName: "Classifier: Intent Analysis" 
+      }) as any;
 
       const raw = result.raw;
       const usage = raw?.usage_metadata || (raw as any)?.additional_kwargs?.tokenUsage;
@@ -63,7 +66,9 @@ export class PromptAnalyser {
       const response = await model.invoke([
         new SystemMessage("Identify if the following content is a 'compose' (Docker Compose YAML), 'kong' (Kong Gateway decK state YAML), 'ruleset' (decK linting ruleset YAML), 'gateway_config' (Kong Gateway kong.conf properties file), or 'other'. Output ONLY the single word classification."),
         new HumanMessage(sample)
-      ]);
+      ], {
+        runName: "Classifier: File Type Identification"
+      });
 
       const result = (response.content as string).toLowerCase().trim() || 'other';
       if (result.includes('compose')) return 'compose';
