@@ -8,7 +8,9 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
 2.  **Surgical Pruning**: Tool results that are no longer relevant to the current turn are compressed or dropped.
 3.  **Token Budgeting**: Every turn is allocated a specific "Token Budget" across different layers (System, Thinking, History, Results).
 4.  **Just-in-Time (JIT) Injection**: System status (connectivity, docker health) is injected only when the "Context Watchdog" determines the state might have changed.
-5. **Metadata Anchoring**: Every prompt is anchored with high-fidelity metadata, including absolute current time (to resolve relative date mentions) and session-specific environment tags.
+5.  **Metadata Anchoring**: Every prompt is anchored with high-fidelity metadata, including absolute current time and session-specific environment tags.
+6.  **Modular Guidance**: Context-specific rules are loaded dynamically based on the files being touched (e.g., loading `*.yaml` rules only when editing configs).
+7.  **Automated Hooks**: Deterministic actions (like `decK lint`) are triggered by agent events to ensure configuration integrity.
 
 ---
 
@@ -57,3 +59,8 @@ Every turn follows a 4-step assembly process:
 
 ### Phase 3: JIT Context
 - [ ] Implement `StateWatcher` to only inject `get_kong_status` results into the prompt if the previous check was > 60 seconds ago.
+
+### Phase 4: Advanced Orchestration (Long-Term)
+- [ ] **Modular Rule Loader**: Implement path-based rule loading (e.g., `.kong-rules/docker.md` loaded only for compose files).
+- [ ] **Post-Edit Hooks**: Automatically trigger `decK lint` after any tool modifies a YAML file.
+- [ ] **Subagent Manager**: Implement a "Diagnostic Subagent" that runs long log-reading tasks in an isolated context window, returning only a high-level summary to the main session.
