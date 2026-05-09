@@ -69,6 +69,11 @@ The `thinking` tags can be quite verbose.
 *   **Implementation**: Model the relationship between Kong entities (Services, Routes, Plugins, Upstreams) in a graph format.
 *   **Benefit**: Allows the agent to perform "Relational Reasoning" (e.g., "If I delete this Service, which Routes will be orphaned?") without having to re-scan the entire workspace.
 
+#### 2.6 Episodic Memory (Success Patterns)
+*   **Implementation**: Automatically extract and store "Success Episodes"—sequences of tool calls that successfully resolved a complex task.
+*   **Pattern Matching**: When the agent encounters a similar problem in the future (e.g., another "Admin API 401 Unauthorized"), it retrieves the successful episode as a "few-shot" example.
+*   **Trial-and-Error Pruning**: Explicitly discard failed attempts and only store the final, verified solution path in long-term episodic memory.
+
 *   **⚠️ SECURITY UPDATE**: All internal agent memory (Chat History, Summaries, Vector Indexes) should reside in **External Storage** (VS Code's Global App Data) by default. The local workspace should ONLY contain files that are part of the active development cycle (e.g., `.staged` files for user-driven diffing).
 
 ### Tier 3: Semantic Retrieval (Long-Term)

@@ -13,6 +13,8 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
 7.  **Automated Hooks**: Deterministic actions (like `decK lint`) are triggered by agent events to ensure configuration integrity.
 8.  **Staleness Checks**: A mechanism to detect when a memory or tool result no longer applies to the current state of the codebase.
 9.  **File-Anchored Memory Injection**: Automatically surface memories that are linked to the specific files currently being read or modified by the agent.
+10. **Trial-and-Error Pruning**: Upon successful task completion, the engine compresses the intermediate failed attempts and only keeps the "Success Path" in the prompt context to keep reasoning clean.
+11. **Importance Weighting**: High-value discoveries (e.g., "The Admin API is on port 8444") are tagged with permanent high importance, ensuring they stay in the prompt even after multiple summarization cycles.
 
 ---
 
