@@ -128,10 +128,7 @@ export class Agent {
         
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
-        if (this.state.usageStats.totalTokens >= maxContext) {
-            this.resetContext();
-            onUpdate("⚠️ **Context Limit Exceeded**: The agent token usage surpassed the absolute limit. To prevent instability, your conversation history has been forcefully cleared. Starting a fresh context...\n\n");
-        }
+        await this.ensureContextStability(onUpdate);
 
         if (!this.initClient() || !this.model) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
@@ -312,7 +309,7 @@ export class Agent {
 
                 const rawMessages = this.state.messages.filter((m: any) =>
                     (m as any).role !== 'thinking' &&
-                    !(m instanceof SystemMessage) &&
+                    (!(m instanceof SystemMessage) || (m.content as string).includes('[PREVIOUS CONVERSATION SUMMARY]')) &&
                     (m as any).role !== 'off-topic' &&
                     (m as any).category !== 'off-topic'
                 );
@@ -341,7 +338,7 @@ export class Agent {
                     if (this.state.isCancelled) break;
 
                     if (this.state.usageStats.totalTokens >= (config.get<number>('maxContext') || 130000)) {
-                        onUpdate("\n\n⚠️ **Context Watchdog Triggered**: Context limit reached. Aborting.");
+                        onUpdate("\n\n⚠️ **Context Watchdog Triggered**: Context limit reached. I will summarize our history at the start of the next turn to recover space.");
                         persistState();
                         this.cancel();
                         return;
@@ -489,6 +486,36 @@ export class Agent {
             onUpdate(`Agent Timeout: ${e.message}`);
         } finally {
             if (timerId!) clearTimeout(timerId);
+        }
+    }
+
+    private async ensureContextStability(onUpdate: (content: string, type?: string) => void): Promise<void> {
+        const config = this.config;
+        const maxContext = config.get<number>('maxContext') || 130000;
+        
+        // Trigger summarization when we hit 85% of max context
+        if (this.state.usageStats.totalTokens >= maxContext * 0.85) {
+            onUpdate("🔄 **Optimizing Context**: You've reached 85% of the message limit. I'm summarizing the older part of our conversation to keep things running smoothly...\n\n");
+            
+            const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(this.state.messages, 0.4);
+            
+            if (toSummarize.length > 0) {
+                if (!this.initClient() || !this.model) return;
+
+                const summary = await PromptAnalyser.summarizeHistory(toSummarize, this.model);
+                const summaryMessage = new SystemMessage(`[PREVIOUS CONVERSATION SUMMARY]: ${summary}\n\nNote: The conversation above this point has been summarized to optimize performance.`);
+                
+                // New history: [System Prompt, Summary, ...Rest of kept messages]
+                if (toKeep.length > 0 && toKeep[0] instanceof SystemMessage) {
+                    this.state.messages = [toKeep[0], summaryMessage, ...toKeep.slice(1)];
+                } else {
+                    this.state.messages = [summaryMessage, ...toKeep];
+                }
+                
+                // Decrement total tokens by a heuristic (40% of current usage)
+                this.state.usageStats.totalTokens = Math.floor(this.state.usageStats.totalTokens * 0.6); 
+                onUpdate("✅ **Context Optimized**: Conversation compressed. Continuing...\n\n");
+            }
         }
     }
 }

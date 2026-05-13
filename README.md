@@ -8,7 +8,7 @@ An AI-powered VS Code extension that provides a declarative, GitOps-first interf
 - **GitOps-First Workflow**: Uses the official **decK CLI** for declarative configuration (`kong-deck-state.yml`).
 - **Flexible Connectivity**: Support for **Local** (Docker-based) and **Remote** (URL-based) Kong instances.
 - **Docker Integration**: Automated lifecycle management (Start/Stop/Logs) for local Kong and Postgres.
-- **Token & Context Tracking**: Real-time monitoring of token consumption and model context usage.
+- **Token & Context Tracking**: Real-time monitoring of token consumption with intelligent **Sliding Window Summarization** to prevent context loss.
 - **Enterprise Support**: Handles **Workspaces**, **RBAC Tokens**, and **TLS Verification** settings.
 - **Hardened Safety Gates**: Mandatory validation and diff previews with robust text-based fallback detection for sync/export/reset.
 - **Modular Architecture**: Decoupled core logic (State, History, Client, Stream) for high performance and stability.
@@ -148,6 +148,7 @@ The agent enforces a professional GitOps lifecycle:
 
 ## 🚀 Roadmap / Future Features
 
+- **Intelligent Context Management**: [PHASE 1 COMPLETE] Implemented sliding window summarization to prevent "context cliff" effects.
 - **Multiple Chat Sessions**: Support for switching between different Kong environments or tasks without losing context or mixing settings.
 - **SQLite Storage**: Migrating from VS Code `globalState` to a more robust local database for infinite chat history and faster searches.
 

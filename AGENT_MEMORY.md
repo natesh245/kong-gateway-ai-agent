@@ -97,9 +97,9 @@ The `thinking` tags can be quite verbose.
 ## 4. Implementation Roadmap
 
 ### Phase 1: Context Stability
-- [ ] Implement `SlidingWindowMemory` in `AgentHistory.ts`.
-- [ ] Add a `summarizeHistory` utility in `PromptAnalyser.ts`.
-- [ ] Replace `this.resetContext()` in `Agent.ts` with a call to the summarizer.
+- [x] Implement `SlidingWindowMemory` in `AgentHistory.ts`.
+- [x] Add a `summarizeHistory` utility in `PromptAnalyser.ts`.
+- [x] Replace `this.resetContext()` in `Agent.ts` with a call to the summarizer.
 
 ### Phase 2: Persistence
 - [ ] Create `MemoryManager.ts` to handle disk I/O for session state.

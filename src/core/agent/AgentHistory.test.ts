@@ -77,4 +77,26 @@ describe('AgentHistory', () => {
         const uiMessages = AgentHistory.toUI(messages);
         assert.strictEqual(uiMessages[0].content, "Some text");
     });
+
+    it('should split messages for summarization correctly', () => {
+        const messages = [
+            new SystemMessage("System"),
+            new HumanMessage("H1"),
+            new AIMessage({ content: "A1", tool_calls: [{ id: "c1", name: "t1", args: {} }] }),
+            new ToolMessage({ content: "R1", tool_call_id: "c1" }),
+            new HumanMessage("H2"),
+            new AIMessage("A2"),
+            new HumanMessage("H3"),
+            new AIMessage("A3")
+        ];
+
+        const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(messages, 0.4);
+        
+        // Content messages: H1, A1, R1, H2, A2, H3, A3 (7 total)
+        // 40% of 7 is 2.
+        // But R1 must be kept with A1.
+        assert.strictEqual(toSummarize.length, 3); // H1, A1, R1
+        assert.strictEqual(toKeep.length, 5); // System, H2, A2, H3, A3
+        assert.ok(toKeep[0] instanceof SystemMessage);
+    });
 });

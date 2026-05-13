@@ -178,4 +178,36 @@ export class AgentHistory {
             (m.additional_kwargs?.name === toolName)
         );
     }
+
+    /**
+     * Splits history into messages to be summarized and messages to be kept.
+     * We keep the system prompt and the last messages.
+     * @param messages The full message history
+     * @param summarizePercentage The percentage of messages (excluding system prompt) to summarize (e.g., 0.4 for 40%)
+     */
+    public static getMessagesForSummarization(messages: BaseMessage[], summarizePercentage: number = 0.4): { toSummarize: BaseMessage[], toKeep: BaseMessage[] } {
+        if (messages.length <= 6) { // Don't summarize if history is very short
+            return { toSummarize: [], toKeep: messages };
+        }
+
+        const hasSystemPrompt = messages[0] instanceof SystemMessage;
+        const systemPrompt = hasSystemPrompt ? messages[0] : null;
+        const contentMessages = hasSystemPrompt ? messages.slice(1) : messages;
+
+        let summarizeCount = Math.floor(contentMessages.length * summarizePercentage);
+        
+        // Safety: Ensure we don't end summarization in the middle of a tool call/response sequence.
+        // If the next message is a ToolMessage, it belongs to the previous AIMessage, so we must include it in summarization.
+        while (summarizeCount < contentMessages.length && 
+               (contentMessages[summarizeCount] instanceof ToolMessage)) {
+            summarizeCount++;
+        }
+
+        const toSummarize = contentMessages.slice(0, summarizeCount);
+        const toKeep = contentMessages.slice(summarizeCount);
+
+        const resultToKeep = systemPrompt ? [systemPrompt, ...toKeep] : toKeep;
+        
+        return { toSummarize, toKeep: resultToKeep };
+    }
 }
