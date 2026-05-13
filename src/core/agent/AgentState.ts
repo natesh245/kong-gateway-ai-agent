@@ -25,6 +25,7 @@ export class AgentState {
         totalTokens: 0,
         lastTurnUsage: { inputTokens: 0, outputTokens: 0, toolCalls: 0 }
     };
+    public previousTurnUsage = { inputTokens: 0, outputTokens: 0 };
 
     constructor(systemPrompt: string) {
         this.messages.push(new SystemMessage(systemPrompt));
@@ -57,6 +58,12 @@ export class AgentState {
         this.isCancelled = false;
         this.lastAnyToolTriggeredSafety = false;
         this.toolCallCount = 0;
+        
+        // Preserve last turn usage for stability checks before resetting
+        this.previousTurnUsage = {
+            inputTokens: this.usageStats.lastTurnUsage.inputTokens,
+            outputTokens: this.usageStats.lastTurnUsage.outputTokens
+        };
         this.usageStats.lastTurnUsage = { inputTokens: 0, outputTokens: 0, toolCalls: 0 };
     }
 

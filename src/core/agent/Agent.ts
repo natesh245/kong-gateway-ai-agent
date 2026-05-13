@@ -535,8 +535,9 @@ export class Agent {
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
         
-        // Trigger summarization when the last turn's context window hit 85% of max context
-        if (this.state.usageStats.lastTurnUsage.inputTokens >= maxContext * 0.85) {
+        // Trigger summarization when the PREVIOUS turn's context window (input + output) hit 85% of max context
+        const prevTurnTotal = this.state.previousTurnUsage.inputTokens + this.state.previousTurnUsage.outputTokens;
+        if (prevTurnTotal >= maxContext * 0.85) {
             onUpdate("🔄 **Optimizing Context**: You've reached 85% of the message limit. I'm summarizing the older part of our conversation to keep things running smoothly...\n\n");
             
             const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(this.state.messages, 0.4);
