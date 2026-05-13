@@ -597,17 +597,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async _loadHistory() {
-        const history = this.context.globalState.get<any[]>('kongAgentChatHistory', []);
-        if (history.length > 0) {
-            this._agent.setMessages(history);
+        // 1. Try loading from MemoryManager (disk)
+        const diskHistory = await this._agent.memory.loadChatHistory();
+        if (diskHistory.length > 0) {
+            this._agent.setMessages(diskHistory);
+            return;
+        }
+
+        // 2. Migration: Check globalState (legacy)
+        const legacyHistory = this.context.globalState.get<any[]>('kongAgentChatHistory', []);
+        if (legacyHistory.length > 0) {
+            this._agent.setMessages(legacyHistory);
+            // Save to disk immediately to complete migration
+            await this._agent.memory.saveChatHistory(this._agent.getMessages());
+            // Clear legacy history to avoid double migration
+            await this.context.globalState.update('kongAgentChatHistory', undefined);
         }
     }
 
     private async _saveHistory() {
-        const history = this._agent.getMessages();
-        // Limit history to last 50 messages to prevent state bloat
-        const limitedHistory = history.slice(-50);
-        await this.context.globalState.update('kongAgentChatHistory', limitedHistory);
+        // Now handled automatically by Agent.ts at the end of every turn
+        // But we keep this for any manual state changes or UI-only updates
+        await this._agent.memory.saveChatHistory(this._agent.getMessages());
     }
 
     private async _updateWebviewConfig(skipHistory: boolean = false) {

@@ -13,6 +13,7 @@ import {
 } from "langchain";
 
 import { ToolManager } from "./tools/ToolManager";
+import { MemoryManager } from './MemoryManager';
 import { IConfig, IAppPlatform } from "../interfaces/ICoreInterfaces";
 import { SanitizationUtil } from "../utils/SanitizationUtil";
 import { buildAgentTools, ToolContext } from "./AgentTools";
@@ -29,7 +30,8 @@ import { AgentWatchdog } from "../utils/AgentWatchdog";
 export class Agent {
     private model: any | null = null;
     private langchainAgent: any = null;
-    private state: AgentState;
+    public state: AgentState;
+    public memory: MemoryManager;
     private watchdog: AgentWatchdog;
 
     public get activeFiles() {
@@ -38,6 +40,7 @@ export class Agent {
 
     constructor(private config: IConfig, private toolManager: ToolManager, private platform: IAppPlatform) {
         this.state = new AgentState(SYSTEM_PROMPT);
+        this.memory = new MemoryManager(platform);
         this.watchdog = new AgentWatchdog();
         this.toolManager.storage.setAgent(this);
     }
@@ -55,7 +58,8 @@ export class Agent {
     }
 
     public resetContext(): void {
-        this.state.reset();
+        this.state = new AgentState(SYSTEM_PROMPT);
+        this.memory = new MemoryManager(this.platform);
         this.langchainAgent = null;
     }
 
@@ -201,6 +205,9 @@ export class Agent {
 
         // --- Run the LangChain Agent ---
         await this.runAgentTask(content, onUpdate);
+
+        // Final persistence after full agent turn
+        await this.memory.saveChatHistory(this.getMessages());
     }
 
     private async runAgentTask(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {

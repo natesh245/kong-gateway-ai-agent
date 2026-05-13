@@ -1,23 +1,20 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-suite('Extension Test Suite', () => {
-	vscode.window.showInformationMessage('Start all tests.');
-
-	test('Extension should be present', () => {
-		assert.ok(vscode.extensions.getExtension('natesh.kong-gateway-agent'));
+describe('Extension Test Suite', () => {
+	it('Extension should be present', () => {
+		const extension = vscode.extensions.all.find(e => e.packageJSON.name === 'kong-gateway-agent');
+		assert.ok(extension, 'Extension kong-gateway-agent should be found');
 	});
 
-	test('Should activate extension', async () => {
-		const extension = vscode.extensions.getExtension('natesh.kong-gateway-agent');
+	it('Should activate extension', async () => {
+		const extension = vscode.extensions.all.find(e => e.packageJSON.name === 'kong-gateway-agent');
 		await extension?.activate();
 		assert.strictEqual(extension?.isActive, true);
 	});
 
-	test('Kong Agent command should be registered', async () => {
-		const commands = await vscode.commands.getCommands(true);
-		// Check for some expected commands if they exist
-		// Add specific command checks here if applicable
+	it('Kong Agent command should be registered', async () => {
+		// Just a placeholder to ensure the suite runs
         assert.ok(true);
 	});
 });

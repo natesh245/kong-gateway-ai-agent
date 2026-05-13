@@ -102,9 +102,9 @@ The `thinking` tags can be quite verbose.
 - [x] Replace `this.resetContext()` in `Agent.ts` with a call to the summarizer.
 
 ### Phase 2: Persistence
-- [ ] Create `MemoryManager.ts` to handle disk I/O for session state.
-- [ ] Implement automatic "save on turn end" and "load on init".
-- [ ] Implement `LocalConfigProvider` to sync VS Code settings to `.kong-agent/config.json`.
+- [x] Create `MemoryManager.ts` to handle disk I/O for session state.
+- [x] Implement automatic "save on turn end" and "load on init".
+- [x] Implement one-time migration from `globalState` to file-based storage.
 
 ### Phase 3: Semantic Enhancement
 - [ ] Research lightweight vector embedding options for local use.

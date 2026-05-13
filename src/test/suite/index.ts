@@ -5,12 +5,11 @@ import { glob } from 'glob';
 export async function run(): Promise<void> {
 	// Create the mocha test
 	const mocha = new Mocha({
-		ui: 'tdd',
+		ui: 'bdd',
 		color: true
 	});
 
-	const testsRoot = path.resolve(__dirname, '..');
-
+	const testsRoot = path.resolve(__dirname, '../..'); // dist folder
 	const files = await glob('**/*.test.js', { cwd: testsRoot });
 
 	// Add files to the test suite
