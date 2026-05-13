@@ -11,7 +11,9 @@ An AI-powered VS Code extension that provides a declarative, GitOps-first interf
 - **Token & Context Tracking**: Real-time monitoring of token consumption with intelligent **Sliding Window Summarization** to prevent context loss.
 - **Enterprise Support**: Handles **Workspaces**, **RBAC Tokens**, and **TLS Verification** settings.
 - **Hardened Safety Gates**: Mandatory validation and diff previews with robust text-based fallback detection for sync/export/reset.
-- **Modular Architecture**: Decoupled core logic (State, History, Client, Stream) for high performance and stability.
+- **Semantic Memory (RAG)**: Long-term memory using a local vector index to recall technical details from summarized conversation history.
+- **Predictive Context Guardrails**: Proactive history summarization based on incoming prompt estimates to prevent mid-turn context overflows.
+- **Modular Architecture**: Decoupled core logic (State, History, Client, Semantic, Stream) for high performance and stability.
 - **Visual Excellence**: Modern, premium chat UI with "Thinking Process" toggles and error highlighting.
 - **Loop Protection**: Built-in watchdog to prevent infinite reasoning loops and tool call churning.
 
@@ -41,6 +43,7 @@ The agent is a specialized specialist for Kong Gateway operations, capable of pe
 ### 📂 Integrated Workspace Tools
 - **Surgical File Edits**: Modify specific parts of your configuration files with human-in-the-loop approval.
 - **Staged Changes**: View diffs of proposed file changes directly in the VS Code editor before accepting them.
+- **Semantic Recall**: Use the `recall_memory` tool to retrieve past technical decisions or configurations from the agent's long-term vector index.
 - **Git Integration**: Push and pull configuration changes to/from remote Git repositories.
 
 
@@ -149,8 +152,9 @@ The agent enforces a professional GitOps lifecycle:
 ## 🚀 Roadmap / Future Features
 
 - **Intelligent Context Management**: [PHASE 1 COMPLETE] Implemented sliding window summarization to prevent "context cliff" effects.
+- **Persistent Memory**: [PHASE 2 COMPLETE] Implementation of `MemoryManager` for robust disk-based chat history and fact storage.
+- **Semantic Enhancement (RAG)**: [PHASE 3 COMPLETE] Local vector indexing and semantic recall of summarized technical context.
 - **Multiple Chat Sessions**: Support for switching between different Kong environments or tasks without losing context or mixing settings.
-- **SQLite Storage**: [PHASE 2 COMPLETE] Implementation of `MemoryManager` for robust disk-based chat history and fact storage, including legacy data migration.
 
 ---
 

@@ -11,7 +11,8 @@ The Agent core has been refactored into a modular, decoupled architecture to imp
 3.  **`AgentHistory.ts`**: Handles marshaling between LangChain `BaseMessage` structures and the external JSON formats required by UIs. Includes advanced history analysis for safety gates.
 4.  **`AgentClient.ts`**: Manages LLM provider initialization (OpenRouter/Gemini), model discovery, and observability (LangSmith).
 5.  **`AgentStream.ts`**: A specialized processor for handling streaming AI output, including the extraction of `<thought>` tags for reasoning display.
-6.  **`ToolManager.ts`**: Coordinates specialized tool implementations (Docker, decK, Git, etc.).
+6.  **`SemanticManager.ts`**: Handles local vector indexing and similarity search for long-term technical memory (RAG).
+7.  **`ToolManager.ts`**: Coordinates specialized tool implementations (Docker, decK, Git, etc.).
 
 ---
 
@@ -30,9 +31,10 @@ A specialized utility that detects and prevents infinite reasoning loops or exce
 - Excessive turn counts that exceed safety limits.
 
 ### 3. Context & Token Monitoring
-The `AgentState` class tracks resource consumption in real-time:
+The `AgentState` class tracks resource consumption in real-time, while the `Agent` core enforces proactive stability:
 - **`inputTokens` / `outputTokens`**: Detailed usage metrics per turn and session.
-- **Context Limit Alerts**: Automatically detects context limits (e.g., 128k for GPT-4o, 1M for Gemini) and triggers warnings or halts when approaching thresholds.
+- **Predictive Guardrails**: Proactively estimates the token impact of new prompts and triggers summarization **before** calling the model if the projected context exceeds 85%.
+- **Semantic Memory (RAG)**: Integrates with `SemanticManager` to index conversation summaries, allowing the agent to use the `recall_memory` tool to find past technical context.
 
 ---
 
@@ -44,4 +46,5 @@ Tools are defined as standard LangChain `tool()` instances. The `ToolManager` co
 - **Docker Lifecycle**: Start/stop/status for Postgres and Kong containers.
 - **Declarative (decK)**: `validate`, `diff`, `sync`, `export`, and `reset` commands.
 - **Filesystem**: Managed reading and writing of configuration files with automatic staging and diffing.
+- **Memory (RAG)**: Semantic search and recall of past conversation summaries.
 - **GitOps**: Support for syncing local configurations with remote Git repositories.
