@@ -148,6 +148,7 @@ The agent enforces a professional GitOps lifecycle:
 
 ## 🚀 Roadmap / Future Features
 
+- **Intelligent Context Management**: [PHASE 1 COMPLETE] Implemented sliding window summarization to prevent "context cliff" effects.
 - **Multiple Chat Sessions**: Support for switching between different Kong environments or tasks without losing context or mixing settings.
 - **SQLite Storage**: Migrating from VS Code `globalState` to a more robust local database for infinite chat history and faster searches.
 

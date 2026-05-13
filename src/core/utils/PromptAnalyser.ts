@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 
 const classificationSchema = z.object({
   classification: z.enum(["GREET", "KONGR", "OFFT"]).describe("GREET for Greetings, KONGR for Technical Kong Related, OFFT for Off Topic")
@@ -84,5 +84,42 @@ export class PromptAnalyser {
   static getRefusalMessage(): string {
     return `I am here to help with Kong Gateway operations only. For questions about world leaders, general trivia, or non-Kong related tasks, I'd recommend checking the official documentation or appropriate resources.\n\n` +
            `Let me know how I can assist you with your **Kong Gateway setup**, **configuration**, or any **GitOps/decK** related tasks!`;
+  }
+
+  /**
+   * Generates a concise summary of the provided message history.
+   */
+  static async summarizeHistory(messages: BaseMessage[], model: any): Promise<string> {
+    if (messages.length === 0) return "";
+
+    const historyText = messages.map(m => {
+        let role = "Unknown";
+        if (m instanceof HumanMessage) role = "User";
+        else if (m instanceof AIMessage) role = "Assistant";
+        else if (m instanceof SystemMessage) role = "System";
+        else if (m instanceof ToolMessage) role = "Tool";
+        
+        const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+        return `${role}: ${content.substring(0, 500)}${content.length > 500 ? '...' : ''}`;
+    }).join("\n---\n");
+
+    const systemPrompt = "You are a history summarizer for a Kong Gateway specialist agent. " +
+                         "Summarize the following conversation history into a concise but technically accurate paragraph. " +
+                         "Focus on: what the user wanted, what actions were taken (Services/Routes/Plugins created/deleted), and any specific configuration details that are still relevant. " +
+                         "Do NOT include conversational filler. Keep it under 250 words.";
+
+    try {
+        const response = await model.invoke([
+            new SystemMessage(systemPrompt),
+            new HumanMessage(`CONVERSATION HISTORY TO SUMMARIZE:\n\n${historyText}`)
+        ], {
+            runName: "Summarizer: History Compression"
+        });
+
+        return response.content as string;
+    } catch (e) {
+        console.error("[PromptAnalyser] Summarization failed:", e);
+        return "The previous conversation history was compressed due to context limits. The agent continues with the current task.";
+    }
   }
 }
