@@ -309,7 +309,7 @@ export class Agent {
 
                 const rawMessages = this.state.messages.filter((m: any) =>
                     (m as any).role !== 'thinking' &&
-                    !(m instanceof SystemMessage) &&
+                    (!(m instanceof SystemMessage) || (m.content as string).includes('[PREVIOUS CONVERSATION SUMMARY]')) &&
                     (m as any).role !== 'off-topic' &&
                     (m as any).category !== 'off-topic'
                 );
