@@ -122,6 +122,18 @@ export class Agent {
         };
     }
 
+    private updateTurnUsage(input: number, output: number) {
+        const deltaIn = input - this.state.usageStats.lastTurnUsage.inputTokens;
+        const deltaOut = output - this.state.usageStats.lastTurnUsage.outputTokens;
+        
+        this.state.usageStats.inputTokens += deltaIn;
+        this.state.usageStats.outputTokens += deltaOut;
+        this.state.usageStats.totalTokens = this.state.usageStats.inputTokens + this.state.usageStats.outputTokens;
+        
+        this.state.usageStats.lastTurnUsage.inputTokens = input;
+        this.state.usageStats.lastTurnUsage.outputTokens = output;
+    }
+
     public async classifyFile(content: string): Promise<'compose' | 'kong' | 'ruleset' | 'gateway_config' | 'other'> {
         if (!this.initClient() || !this.model) return 'other';
         return await PromptAnalyser.classifyFile(content, this.model);
@@ -165,15 +177,7 @@ export class Agent {
         }
 
         if (classificationResult.usage) {
-            this.state.usageStats.inputTokens += classificationResult.usage.inputTokens;
-            this.state.usageStats.outputTokens += classificationResult.usage.outputTokens;
-            this.state.usageStats.totalTokens += (classificationResult.usage.inputTokens + classificationResult.usage.outputTokens);
-
-            this.state.usageStats.lastTurnUsage = {
-                inputTokens: classificationResult.usage.inputTokens,
-                outputTokens: classificationResult.usage.outputTokens,
-                toolCalls: 0
-            };
+            this.updateTurnUsage(classificationResult.usage.inputTokens, classificationResult.usage.outputTokens);
         }
 
         if (classificationResult.classification === 'OFFT') {
@@ -189,6 +193,7 @@ export class Agent {
                 }
             } as any));
             onUpdate(refusal);
+            this.state.endTurn();
             return;
         }
 
@@ -200,17 +205,19 @@ export class Agent {
                 additional_kwargs: { role: 'greeting' }
             }));
             onUpdate(greeting);
+            this.state.endTurn();
             return;
         }
 
         // --- Run the LangChain Agent ---
-        await this.runAgentTask(content, onUpdate);
+        await this.runAgentTask(content, onUpdate, classificationResult.usage);
 
         // Final persistence after full agent turn
+        this.state.endTurn();
         await this.memory.saveChatHistory(this.getMessages());
     }
 
-    private async runAgentTask(content: string, onUpdate: (content: string, type?: string) => void): Promise<void> {
+    private async runAgentTask(content: string, onUpdate: (content: string, type?: string) => void, classificationUsage?: any): Promise<void> {
         this.state.abortController = new AbortController();
         this.state.isCancelled = false;
 
@@ -302,7 +309,15 @@ export class Agent {
                             endTime: this.state.currentTurnEndTime
                         }
                     });
-                    this.state.messages.push(assistantMsg);
+
+                    // Avoid duplicate pushes by replacing the last message if it's an AIMessage in the current turn
+                    const lastMsg = this.state.messages[this.state.messages.length - 1];
+                    if (lastMsg instanceof AIMessage && (lastMsg.additional_kwargs?.startTime === this.state.currentTurnStartTime)) {
+                        this.state.messages[this.state.messages.length - 1] = assistantMsg;
+                    } else {
+                        this.state.messages.push(assistantMsg);
+                    }
+                    
                     streamState.fullContent = "";
                     streamState.fullReasoning = "";
                     collectedToolCalls = [];
@@ -340,6 +355,7 @@ export class Agent {
 
                 this.watchdog.reset();
                 let toolNames = new Map<string, string>();
+                const stepUsage = new Map<string, {input: number, output: number}>();
 
                 for await (const [mode, chunk] of stream) {
                     if (this.state.isCancelled) break;
@@ -386,11 +402,27 @@ export class Agent {
 
                         if (token.usage_metadata) {
                             const usage = token.usage_metadata;
-                            this.state.usageStats.inputTokens += usage.input_tokens || 0;
-                            this.state.usageStats.outputTokens += usage.output_tokens || 0;
-                            this.state.usageStats.totalTokens += usage.total_tokens || 0;
-                            this.state.usageStats.lastTurnUsage.inputTokens += usage.input_tokens || 0;
-                            this.state.usageStats.lastTurnUsage.outputTokens += usage.output_tokens || 0;
+                            const runId = metadata?.run_id || 'default';
+                            
+                            // Track usage per unique run ID in this turn
+                            if (!stepUsage.has(runId)) {
+                                stepUsage.set(runId, { input: 0, output: 0 });
+                            }
+                            
+                            const current = stepUsage.get(runId)!;
+                            current.input = Math.max(current.input, usage.input_tokens || 0);
+                            current.output = Math.max(current.output, usage.output_tokens || 0);
+
+                            // Recalculate turn totals (including classification tokens if any)
+                            let turnIn = classificationUsage?.inputTokens || 0;
+                            let turnOut = classificationUsage?.outputTokens || 0;
+                            
+                            for (const u of stepUsage.values()) {
+                                turnIn += u.input;
+                                turnOut += u.output;
+                            }
+                            
+                            this.updateTurnUsage(turnIn, turnOut);
                         }
                     } else if (mode === "updates") {
                         const updateChunk = chunk as Record<string, any>;

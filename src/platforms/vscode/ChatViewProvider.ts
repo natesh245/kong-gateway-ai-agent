@@ -145,6 +145,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         });
 
                         await this._saveHistory();
+                        await this._updateWebviewConfig(true);
                         break;
                     }
 
