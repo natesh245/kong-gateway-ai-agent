@@ -109,3 +109,14 @@ The `thinking` tags can be quite verbose.
 ### Phase 3: Semantic Enhancement
 - [ ] Research lightweight vector embedding options for local use.
 - [ ] Implement `ContextualRetrievalTool` to pull from history semantically when context is tight.
+
+---
+
+## 5. Future Hardening Considerations
+
+### 5.1 Predictive Context Guardrails
+*   **Problem**: Currently, the agent summarizes history *reactively* (based on the last turn's size). A sudden large input (e.g., pasting a 100k log file) can still trigger the mid-turn Watchdog.
+*   **Solution**: Implement a "Predictive Check" at the start of `processMessage`.
+    *   Estimate tokens of the new prompt (heuristic: `chars / 4`).
+    *   `ProjectedContext = LastTurnUsage + NewPromptEstimate`.
+    *   If `ProjectedContext > 85%`, trigger summarization **before** sending the prompt to the LLM.

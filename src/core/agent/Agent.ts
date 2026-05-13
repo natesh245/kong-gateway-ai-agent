@@ -113,7 +113,9 @@ export class Agent {
 
     public getUsageStats() {
         return {
-            ...this.state.usageStats,
+            inputTokens: this.state.usageStats.inputTokens,
+            outputTokens: this.state.usageStats.outputTokens,
+            totalTokens: this.state.usageStats.lastTurnUsage.inputTokens + this.state.usageStats.lastTurnUsage.outputTokens,
             lastTurnUsage: {
                 ...this.state.usageStats.lastTurnUsage,
                 toolCalls: this.state.toolCallCount
@@ -360,7 +362,8 @@ export class Agent {
                 for await (const [mode, chunk] of stream) {
                     if (this.state.isCancelled) break;
 
-                    if (this.state.usageStats.totalTokens >= (config.get<number>('maxContext') || 130000)) {
+                    // Watchdog: Check if the CURRENT turn's context window exceeds the limit
+                    if (this.state.usageStats.lastTurnUsage.inputTokens >= (config.get<number>('maxContext') || 130000)) {
                         onUpdate("\n\n⚠️ **Context Watchdog Triggered**: Context limit reached. I will summarize our history at the start of the next turn to recover space.");
                         persistState();
                         this.cancel();
@@ -532,8 +535,8 @@ export class Agent {
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
         
-        // Trigger summarization when we hit 85% of max context
-        if (this.state.usageStats.totalTokens >= maxContext * 0.85) {
+        // Trigger summarization when the last turn's context window hit 85% of max context
+        if (this.state.usageStats.lastTurnUsage.inputTokens >= maxContext * 0.85) {
             onUpdate("🔄 **Optimizing Context**: You've reached 85% of the message limit. I'm summarizing the older part of our conversation to keep things running smoothly...\n\n");
             
             const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(this.state.messages, 0.4);
@@ -551,8 +554,7 @@ export class Agent {
                     this.state.messages = [summaryMessage, ...toKeep];
                 }
                 
-                // Decrement total tokens by a heuristic (40% of current usage)
-                this.state.usageStats.totalTokens = Math.floor(this.state.usageStats.totalTokens * 0.6); 
+                
                 onUpdate("✅ **Context Optimized**: Conversation compressed. Continuing...\n\n");
             }
         }
