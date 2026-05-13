@@ -150,7 +150,8 @@ export class Agent {
         
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
-        await this.ensureContextStability(onUpdate);
+        const tokenEstimate = Math.ceil(content.length / 3.5);
+        await this.ensureContextStability(onUpdate, tokenEstimate);
 
         if (!this.initClient() || !this.model) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
@@ -535,13 +536,15 @@ export class Agent {
         }
     }
 
-    private async ensureContextStability(onUpdate: (content: string, type?: string) => void): Promise<void> {
+    private async ensureContextStability(onUpdate: (content: string, type?: string) => void, incomingTokenEstimate: number = 0): Promise<void> {
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
         
-        // Trigger summarization when the PREVIOUS turn's context window (input + output) hit 85% of max context
+        // Trigger summarization when the PROJECTED context (Previous turn + New prompt estimate) hits 85%
         const prevTurnTotal = this.state.previousTurnUsage.inputTokens + this.state.previousTurnUsage.outputTokens;
-        if (prevTurnTotal >= maxContext * 0.85) {
+        const projectedTotal = prevTurnTotal + incomingTokenEstimate;
+
+        if (projectedTotal >= maxContext * 0.85) {
             onUpdate("🔄 **Optimizing Context**: You've reached 85% of the message limit. I'm summarizing the older part of our conversation to keep things running smoothly...\n\n");
             
             const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(this.state.messages, 0.4);

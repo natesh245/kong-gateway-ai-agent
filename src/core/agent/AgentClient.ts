@@ -101,7 +101,7 @@ export class AgentClient {
     }
 
     /**
-     * Fetches available models from the provider.
+     * Initializes the embedding model based on configuration.
      */
     public static initEmbeddings(config: IConfig, platform: IAppPlatform): any | null {
         const provider = config.get<string>('provider') || 'openrouter';
