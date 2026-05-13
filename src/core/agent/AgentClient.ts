@@ -103,6 +103,44 @@ export class AgentClient {
     /**
      * Fetches available models from the provider.
      */
+    public static initEmbeddings(config: IConfig, platform: IAppPlatform): any | null {
+        const provider = config.get<string>('provider') || 'openrouter';
+
+        if (provider === 'gemini') {
+            const apiKey = config.get<string>('geminiApiKey');
+            if (!apiKey) return null;
+            try {
+                const { GoogleGenerativeAIEmbeddings } = require("@langchain/google-genai");
+                return new GoogleGenerativeAIEmbeddings({
+                    apiKey: apiKey,
+                    modelName: "text-embedding-004",
+                });
+            } catch (e) {
+                return null;
+            }
+        } else if (provider === 'openrouter') {
+            const apiKey = config.get<string>('openRouterApiKey');
+            if (!apiKey) return null;
+            try {
+                const { OpenAIEmbeddings } = require("@langchain/openai");
+                return new OpenAIEmbeddings({
+                    apiKey: apiKey,
+                    configuration: {
+                        baseURL: "https://openrouter.ai/api/v1",
+                        defaultHeaders: {
+                            "HTTP-Referer": platform.getAppReferer(),
+                            "X-Title": platform.getAppName()
+                        }
+                    },
+                    modelName: "openai/text-embedding-3-small"
+                });
+            } catch (e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     public static async fetchModels(config: IConfig, providerOverride?: string, apiKeyOverride?: string): Promise<string[]> {
         const provider = providerOverride || config.get<string>('provider') || 'openrouter';
 

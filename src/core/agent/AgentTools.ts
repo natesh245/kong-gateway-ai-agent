@@ -10,11 +10,14 @@ import { SanitizationUtil } from "../utils/SanitizationUtil";
 import { IConfig } from "../interfaces/ICoreInterfaces";
 import { AgentHistory } from "./AgentHistory";
 
+import { SemanticManager } from "./SemanticManager";
+
 /**
  * Context object passed to each tool, allowing access to agent internals.
  */
 export interface ToolContext {
     toolManager: ToolManager;
+    semanticManager: SemanticManager;
     config: IConfig;
     getMessages: () => BaseMessage[];
     abortSignal?: AbortSignal;
@@ -401,6 +404,23 @@ export function buildAgentTools(ctx: ToolContext) {
                 name: "reset_kong_instance",
                 description: "DESTRUCTIVE: Wipes ALL configuration from the live Kong Gateway. MANDATORY: You MUST run 'preview_reset_inventory' first and show the table to the user before asking for approval via '[APPROVAL_REQUIRED]'. NEVER skip the inventory phase before a reset.",
                 schema: z.object({}),
+            }
+        ),
+
+        // --- Memory / RAG ---
+        tool(
+            async ({ query }) => {
+                const results = await ctx.semanticManager.search(query, 3);
+                if (results.length === 0) return "No relevant historical information found.";
+                
+                return results.map((r, i) => `[Result ${i+1}] (Sim: ${r.similarity.toFixed(2)})\n${r.text}`).join("\n---\n");
+            },
+            {
+                name: "recall_memory",
+                description: "Searches the agent's long-term semantic memory for past technical decisions, configurations, or user preferences. Use this when you need to recall details that were discussed in earlier parts of the conversation that have since been summarized or truncated.",
+                schema: z.object({
+                    query: z.string().describe("The semantic search query (e.g. 'user preference for timeouts' or 'previous plugin configuration')"),
+                }),
             }
         ),
 

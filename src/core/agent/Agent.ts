@@ -26,6 +26,7 @@ import { AgentClient } from "./AgentClient";
 import { AgentStream } from "./AgentStream";
 import { MessageUtils } from "../utils/MessageUtils";
 import { AgentWatchdog } from "../utils/AgentWatchdog";
+import { SemanticManager } from "./SemanticManager";
 
 export class Agent {
     private model: any | null = null;
@@ -33,6 +34,7 @@ export class Agent {
     public state: AgentState;
     public memory: MemoryManager;
     private watchdog: AgentWatchdog;
+    private semanticManager: SemanticManager;
 
     public get activeFiles() {
         return this.state.activeFiles;
@@ -42,6 +44,7 @@ export class Agent {
         this.state = new AgentState(SYSTEM_PROMPT);
         this.memory = new MemoryManager(platform);
         this.watchdog = new AgentWatchdog();
+        this.semanticManager = new SemanticManager(config, platform);
         this.toolManager.storage.setAgent(this);
     }
 
@@ -81,6 +84,7 @@ export class Agent {
 
         const toolCtx: ToolContext = {
             toolManager: this.toolManager,
+            semanticManager: this.semanticManager,
             config: this.config,
             getMessages: () => this.state.messages,
             abortSignal: this.state.abortController?.signal,
@@ -546,6 +550,14 @@ export class Agent {
                 if (!this.initClient() || !this.model) return;
 
                 const summary = await PromptAnalyser.summarizeHistory(toSummarize, this.model);
+                
+                // Index the summary semantically for long-term recall
+                await this.semanticManager.add(summary, { 
+                    type: 'summary', 
+                    timestamp: Date.now(),
+                    turnCount: this.state.messages.length
+                });
+
                 const summaryMessage = new SystemMessage(`[PREVIOUS CONVERSATION SUMMARY]: ${summary}\n\nNote: The conversation above this point has been summarized to optimize performance.`);
                 
                 // New history: [System Prompt, Summary, ...Rest of kept messages]
