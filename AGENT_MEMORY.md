@@ -91,6 +91,7 @@ The `thinking` tags can be quite verbose.
     *   **Past Solutions**: Index successful tool execution sequences.
     *   **Kong Documentation**: Index relevant sections of Kong docs for RAG retrieval.
     *   **Large Configs**: If a `kong.yml` is too large for context, chunk it and retrieve relevant parts semantically.
+    *   **[NEW] Technical Reference (Doc-RAG)**: Ingest official Kong and decK documentation as a read-only semantic layer to eliminate schema hallucinations.
 
 ---
 
@@ -118,6 +119,8 @@ The `thinking` tags can be quite verbose.
 - [ ] Implement a `FactExtractor` to pull structured entities (versions, ports, envs) from history.
 - [ ] Store facts in a dedicated `facts.json` to supplement the fuzzy summaries.
 - [ ] Implement "Supersession" logic to update facts when the user changes configuration.
+- [ ] **Technical Reference (Doc-RAG)**: Implement a markdown ingestion engine to load official Kong/decK documentation into the vector store.
+    - *Scope*: Gateway API specs, decK command flags, and official plugin schemas.
 
 ### Phase 5: Episodic Memory & Procedural Learning [PENDING]
 - [ ] Index successful tool-call sequences as "Success Episodes."
