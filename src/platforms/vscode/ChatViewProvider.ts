@@ -477,6 +477,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
                         if (result === 'Clear Chat') {
                             this._agent.resetContext();
+                            await this._saveHistory();
                             await this._updateWebviewConfig();
                             webviewView.webview.postMessage({ type: 'performClear' });
                             this.platform.showInformationMessage('Kong Agent: Conversation context and UI have been reset.');
