@@ -55,18 +55,21 @@ Every turn follows a 4-step assembly process:
 
 ## 4. Implementation Roadmap
 
-### Phase 1: Budgeting & Monitoring
-- [ ] Implement `TokenCounter` utility to track real-time budget usage.
-- [ ] Add `ContextWarning` UI notification when the budget is 90% full.
+### Phase 1: Budgeting & Monitoring [COMPLETE]
+- [x] Implement `TokenCounter` utility to track real-time budget usage.
+- [x] Add `🔄 Optimizing Context` status bar and predictive overflow detection.
 
-### Phase 2: Active Pruning
-- [ ] Implement `ResultSummarizer` to compress "stale" tool outputs.
-- [ ] Develop `RelevanceScorer` to decide which history turns to keep in full.
+### Phase 2: Active Pruning & Compression [IN PROGRESS]
+- [x] **Predictive Guardrails**: Summarize history before large payloads (Implemented).
+- [x] **Similarity Gating**: Implement 0.40 threshold for RAG retrieval (Implemented).
+- [ ] **Result Compression**: Implement logic to replace "processed" large tool outputs with semantic summaries.
+- [ ] **Relevance Scorer**: Implement Z-score weighting to preserve "Important" old messages over "Recent" noise.
 
-### Phase 3: JIT Context
-- [ ] Implement `StateWatcher` to only inject `get_kong_status` results into the prompt if the previous check was > 60 seconds ago.
+### Phase 3: JIT Context & Staleness
+- [ ] **StateWatcher**: Only inject system health checks if the previous check is > 60s old.
+- [x] **Post-Edit Hooks**: Automatically trigger `decK lint` after configuration edits (Implemented).
 
 ### Phase 4: Advanced Orchestration (Long-Term)
-- [ ] **Modular Rule Loader**: Implement path-based rule loading (e.g., `.kong-rules/docker.md` loaded only for compose files).
-- [ ] **Post-Edit Hooks**: Automatically trigger `decK lint` after any tool modifies a YAML file.
-- [ ] **Subagent Manager**: Implement a "Diagnostic Subagent" that runs long log-reading tasks in an isolated context window, returning only a high-level summary to the main session.
+- [ ] **Modular Rule Loader**: Path-based dynamic rule loading.
+- [ ] **Subagent Manager**: Run long diagnostic tasks in isolated context windows.
+- [ ] **Episodic Learning**: Inject "Success Paths" as few-shot examples into the prompt.
