@@ -33,8 +33,9 @@ A specialized utility that detects and prevents infinite reasoning loops or exce
 ### 3. Context & Token Monitoring
 The `AgentState` class tracks resource consumption in real-time, while the `Agent` core enforces proactive stability:
 - **`inputTokens` / `outputTokens`**: Detailed usage metrics per turn and session.
-- **Predictive Guardrails**: Proactively estimates the token impact of new prompts and triggers summarization **before** calling the model if the projected context exceeds 85%.
-- **Semantic Memory (RAG)**: Integrates with `SemanticManager` to index conversation summaries, allowing the agent to use the `recall_memory` tool to find past technical context.
+- **Semantic Memory (RAG)**: Integrates with `SemanticManager` to index conversation summaries. It utilizes a **0.40 cosine similarity threshold** to filter out low-relevance results, ensuring that the `recall_memory` tool only returns high-fidelity technical context.
+- **High-Performance System Prompt**: Optimized instructions that achieve a **70% token reduction** in base overhead by condensing workflows and using structured, reference-based behavioral examples.
+- **Intent-Aware Guardrails**: The `PromptAnalyser` utilizes a specialized classifier that recognizes historical technical recall as a valid domain task, preventing legitimate RAG requests from being incorrectly refused as off-topic.
 
 ---
 

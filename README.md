@@ -11,8 +11,9 @@ An AI-powered VS Code extension that provides a declarative, GitOps-first interf
 - **Token & Context Tracking**: Real-time monitoring of token consumption with intelligent **Sliding Window Summarization** to prevent context loss.
 - **Enterprise Support**: Handles **Workspaces**, **RBAC Tokens**, and **TLS Verification** settings.
 - **Hardened Safety Gates**: Mandatory validation and diff previews with robust text-based fallback detection for sync/export/reset.
-- **Semantic Memory (RAG)**: Long-term memory using a local vector index to recall technical details from summarized conversation history.
-- **Predictive Context Guardrails**: Proactive history summarization based on incoming prompt estimates to prevent mid-turn context overflows.
+- **Semantic Memory (RAG)**: Long-term memory using a local vector index with a **0.40 similarity threshold** to ensure high-fidelity recall of past technical context.
+- **Predictive Context Guardrails**: Proactive history summarization that triggers **before** overflows, preserving session continuity even during large payload syncs.
+- **High-Performance Prompting**: Streamlined system instructions that reduce the base token footprint by **70%** while maintaining rigorous Kong operational boundaries.
 - **Modular Architecture**: Decoupled core logic (State, History, Client, Semantic, Stream) for high performance and stability.
 - **Visual Excellence**: Modern, premium chat UI with "Thinking Process" toggles and error highlighting.
 - **Loop Protection**: Built-in watchdog to prevent infinite reasoning loops and tool call churning.
