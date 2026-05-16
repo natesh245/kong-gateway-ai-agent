@@ -26,6 +26,7 @@ import { AgentClient } from "./AgentClient";
 import { AgentStream } from "./AgentStream";
 import { MessageUtils } from "../utils/MessageUtils";
 import { AgentWatchdog } from "../utils/AgentWatchdog";
+import { SemanticManager } from "./SemanticManager";
 
 export class Agent {
     private model: any | null = null;
@@ -33,6 +34,7 @@ export class Agent {
     public state: AgentState;
     public memory: MemoryManager;
     private watchdog: AgentWatchdog;
+    private semanticManager: SemanticManager;
 
     public get activeFiles() {
         return this.state.activeFiles;
@@ -42,6 +44,7 @@ export class Agent {
         this.state = new AgentState(SYSTEM_PROMPT);
         this.memory = new MemoryManager(platform);
         this.watchdog = new AgentWatchdog();
+        this.semanticManager = new SemanticManager(config, platform);
         this.toolManager.storage.setAgent(this);
     }
 
@@ -81,6 +84,7 @@ export class Agent {
 
         const toolCtx: ToolContext = {
             toolManager: this.toolManager,
+            semanticManager: this.semanticManager,
             config: this.config,
             getMessages: () => this.state.messages,
             abortSignal: this.state.abortController?.signal,
@@ -146,7 +150,8 @@ export class Agent {
         
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
-        await this.ensureContextStability(onUpdate);
+        const tokenEstimate = Math.ceil(content.length / 3.5);
+        await this.ensureContextStability(onUpdate, tokenEstimate);
 
         if (!this.initClient() || !this.model) {
             onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
@@ -531,13 +536,15 @@ export class Agent {
         }
     }
 
-    private async ensureContextStability(onUpdate: (content: string, type?: string) => void): Promise<void> {
+    private async ensureContextStability(onUpdate: (content: string, type?: string) => void, incomingTokenEstimate: number = 0): Promise<void> {
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
         
-        // Trigger summarization when the PREVIOUS turn's context window (input + output) hit 85% of max context
+        // Trigger summarization when the PROJECTED context (Previous turn + New prompt estimate) hits 85%
         const prevTurnTotal = this.state.previousTurnUsage.inputTokens + this.state.previousTurnUsage.outputTokens;
-        if (prevTurnTotal >= maxContext * 0.85) {
+        const projectedTotal = prevTurnTotal + incomingTokenEstimate;
+
+        if (projectedTotal >= maxContext * 0.85) {
             onUpdate("🔄 **Optimizing Context**: You've reached 85% of the message limit. I'm summarizing the older part of our conversation to keep things running smoothly...\n\n");
             
             const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(this.state.messages, 0.4);
@@ -546,6 +553,14 @@ export class Agent {
                 if (!this.initClient() || !this.model) return;
 
                 const summary = await PromptAnalyser.summarizeHistory(toSummarize, this.model);
+                
+                // Index the summary semantically for long-term recall
+                await this.semanticManager.add(summary, { 
+                    type: 'summary', 
+                    timestamp: Date.now(),
+                    turnCount: this.state.messages.length
+                });
+
                 const summaryMessage = new SystemMessage(`[PREVIOUS CONVERSATION SUMMARY]: ${summary}\n\nNote: The conversation above this point has been summarized to optimize performance.`);
                 
                 // New history: [System Prompt, Summary, ...Rest of kept messages]

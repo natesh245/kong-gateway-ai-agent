@@ -106,17 +106,34 @@ The `thinking` tags can be quite verbose.
 - [x] Implement automatic "save on turn end" and "load on init".
 - [x] Implement one-time migration from `globalState` to file-based storage.
 
-### Phase 3: Semantic Enhancement
-- [ ] Research lightweight vector embedding options for local use.
-- [ ] Implement `ContextualRetrievalTool` to pull from history semantically when context is tight.
+### Phase 3: Semantic Enhancement [COMPLETE]
+- [x] Research and implement local vector indexing in `SemanticManager.ts`.
+- [x] Integrate embedding API (Gemini/OpenRouter) in `AgentClient.ts`.
+- [x] Add `recall_memory` tool for explicit semantic retrieval (RAG).
+- [x] Implement **Predictive Context Guardrails** to proactively summarize before large payloads.
+- [x] **Harden RAG**: Implement a **0.40 similarity threshold** to eliminate memory noise.
+- [x] **Harden Intent**: Update `PromptAnalyser` to classify "Recall" requests as valid technical tasks.
+
+### Phase 4: Knowledge Extraction & Facts [PENDING]
+- [ ] Implement a `FactExtractor` to pull structured entities (versions, ports, envs) from history.
+- [ ] Store facts in a dedicated `facts.json` to supplement the fuzzy summaries.
+- [ ] Implement "Supersession" logic to update facts when the user changes configuration.
+
+### Phase 5: Episodic Memory & Procedural Learning [PENDING]
+- [ ] Index successful tool-call sequences as "Success Episodes."
+- [ ] Automatically inject relevant past solutions into the prompt as few-shot examples.
 
 ---
 
-## 5. Future Hardening Considerations
+## 5. Implementation Details
 
-### 5.1 Predictive Context Guardrails
-*   **Problem**: Currently, the agent summarizes history *reactively* (based on the last turn's size). A sudden large input (e.g., pasting a 100k log file) can still trigger the mid-turn Watchdog.
-*   **Solution**: Implement a "Predictive Check" at the start of `processMessage`.
-    *   Estimate tokens of the new prompt (heuristic: `chars / 4`).
-    *   `ProjectedContext = LastTurnUsage + NewPromptEstimate`.
-    *   If `ProjectedContext > 85%`, trigger summarization **before** sending the prompt to the LLM.
+### 5.1 Semantic Recall (RAG)
+The agent maintains a local `vector_index.json`. Every time context is optimized (summarized), the summary is indexed. The agent can use the `recall_memory` tool to search this index using cosine similarity.
+*   **Similarity Threshold**: To reduce token noise, results with a cosine similarity `< 0.40` are discarded.
+*   **Classification**: The intent gatekeeper allows "find", "recall", and "remember" queries if they relate to technical history.
+
+### 5.2 Predictive Guardrails
+To prevent mid-turn crashes, the agent estimates the token impact of every incoming prompt:
+1. `TokenEstimate = prompt.length / 3.5`
+2. `ProjectedContext = PreviousTurnUsage + TokenEstimate`
+3. If `ProjectedContext > 85%`, summarize **before** calling the LLM.

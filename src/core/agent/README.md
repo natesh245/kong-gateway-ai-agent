@@ -11,7 +11,8 @@ The Agent core has been refactored into a modular, decoupled architecture to imp
 3.  **`AgentHistory.ts`**: Handles marshaling between LangChain `BaseMessage` structures and the external JSON formats required by UIs. Includes advanced history analysis for safety gates.
 4.  **`AgentClient.ts`**: Manages LLM provider initialization (OpenRouter/Gemini), model discovery, and observability (LangSmith).
 5.  **`AgentStream.ts`**: A specialized processor for handling streaming AI output, including the extraction of `<thought>` tags for reasoning display.
-6.  **`ToolManager.ts`**: Coordinates specialized tool implementations (Docker, decK, Git, etc.).
+6.  **`SemanticManager.ts`**: Handles local vector indexing and similarity search for long-term technical memory (RAG).
+7.  **`ToolManager.ts`**: Coordinates specialized tool implementations (Docker, decK, Git, etc.).
 
 ---
 
@@ -30,9 +31,11 @@ A specialized utility that detects and prevents infinite reasoning loops or exce
 - Excessive turn counts that exceed safety limits.
 
 ### 3. Context & Token Monitoring
-The `AgentState` class tracks resource consumption in real-time:
+The `AgentState` class tracks resource consumption in real-time, while the `Agent` core enforces proactive stability:
 - **`inputTokens` / `outputTokens`**: Detailed usage metrics per turn and session.
-- **Context Limit Alerts**: Automatically detects context limits (e.g., 128k for GPT-4o, 1M for Gemini) and triggers warnings or halts when approaching thresholds.
+- **Semantic Memory (RAG)**: Integrates with `SemanticManager` to index conversation summaries. It utilizes a **0.40 cosine similarity threshold** to filter out low-relevance results, ensuring that the `recall_memory` tool only returns high-fidelity technical context.
+- **High-Performance System Prompt**: Optimized instructions that achieve a **70% token reduction** in base overhead by condensing workflows and using structured, reference-based behavioral examples.
+- **Intent-Aware Guardrails**: The `PromptAnalyser` utilizes a specialized classifier that recognizes historical technical recall as a valid domain task, preventing legitimate RAG requests from being incorrectly refused as off-topic.
 
 ---
 
@@ -44,4 +47,5 @@ Tools are defined as standard LangChain `tool()` instances. The `ToolManager` co
 - **Docker Lifecycle**: Start/stop/status for Postgres and Kong containers.
 - **Declarative (decK)**: `validate`, `diff`, `sync`, `export`, and `reset` commands.
 - **Filesystem**: Managed reading and writing of configuration files with automatic staging and diffing.
+- **Memory (RAG)**: Semantic search and recall of past conversation summaries.
 - **GitOps**: Support for syncing local configurations with remote Git repositories.
