@@ -17,18 +17,16 @@ export class PromptAnalyser {
       
       const systemPrompt = "You are a query classifier for a Kong Gateway specialist agent.\n\n" +
                            "CATEGORIES:\n" +
-                           "- GREET: Common greetings (e.g. 'hi', 'hello', 'hey', 'good morning'), simple pleasantries ('how are you doing?'), and isolated affirmations/denials (e.g., 'Yes', 'No', 'Proceed', 'Approve', 'Cancel' when NOT followed by a command).\n" +
-                           "- KONGR: TECHNICAL queries about Kong Gateway, status checks, Docker, decK (e.g., 'ruleset.yaml', 'kong-deck-state.yml'), GitOps, API management, or local config files (e.g., 'kong.conf'). Also includes requests to review, summarize, lint, or validate changes to these files.\n" +
-                           "- OFFT: Jokes, humor, poetry, general trivia, world events, or extensive small talk. \n\n" +
-                           "CRITICAL RULE: Technical questions and requests to review Kong files MUST be KONGR even if they seem generic. Greetings/Pleasantries are strictly GREET.\n\n" +
+                           "- GREET: Common greetings, pleasantries, or simple affirmations.\n" +
+                           "- KONGR: TECHNICAL queries about Kong Gateway, Docker, decK, GitOps, or configuration files. ALSO includes any requests to RECALL or FIND technical details, naming conventions, or project context from PREVIOUS conversations or sessions.\n" +
+                           "- OFFT: Jokes, world events, general programming (not Kong-related), or non-technical small talk.\n\n" +
+                           "CRITICAL RULE: Requests to 'find', 'remember', or 'recall' technical facts or conventions from the past MUST be KONGR.\n\n" +
                            "EXAMPLES:\n" +
-                           "- User: 'How do I add a service?' -> KONGR\n" +
-                           "- User: 'is kong running?' -> KONGR\n" +
-                           "- User: 'I have accepted changes to ruleset.yaml. Review them.' -> KONGR\n" +
-                           "- User: 'Hi' -> GREET\n" +
-                           "- User: 'Yes' -> GREET\n" +
-                           "- User: 'Tell me a joke.' -> OFFT\n" +
-                           "- User: 'Review my kong.conf changes' -> KONGR\n";
+                           "- 'What was our naming convention for services?' -> KONGR\n" +
+                           "- 'Find the service ID from earlier' -> KONGR\n" +
+                           "- 'Is Kong running?' -> KONGR\n" +
+                           "- 'How are you?' -> GREET\n" +
+                           "- 'Tell me a story' -> OFFT\n";
 
       const result = await structuredModel.invoke([
         { role: "system", content: systemPrompt },
