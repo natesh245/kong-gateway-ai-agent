@@ -124,9 +124,15 @@ export class Agent {
     }
 
     public getUsageStats() {
-        // Use the local TikToken estimate for real-time tracking in the UI.
-        // This responds instantly to tools and typing before the next LLM call.
-        const totalTokens = TokenCounter.countMessages(this.state.messages);
+        // We calculate the 'Payload Size' which includes:
+        // 1. Chat History (Variable)
+        // 2. System Prompt & Tool Definitions (Fixed Cost ~4-5k tokens)
+        const messagesEstimate = TokenCounter.countMessages(this.state.messages);
+        
+        // We use the last turn's total (In + Out) as a baseline for the Occupied Space.
+        // This ensures the % bar reflects the TRUE remaining capacity.
+        const lastTurnTotal = this.state.usageStats.lastTurnUsage.inputTokens + this.state.usageStats.lastTurnUsage.outputTokens;
+        const totalTokens = Math.max(messagesEstimate, lastTurnTotal);
         
         return {
             inputTokens: this.state.usageStats.inputTokens,
