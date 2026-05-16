@@ -137,3 +137,15 @@ To prevent mid-turn crashes, the agent estimates the token impact of every incom
 1. `TokenEstimate = prompt.length / 3.5`
 2. `ProjectedContext = PreviousTurnUsage + TokenEstimate`
 3. If `ProjectedContext > 85%`, summarize **before** calling the LLM.
+### 5.3 Non-Destructive Context Squeezing (Deterministic Pruning)
+To maximize token efficiency without losing technical detail, the agent employs a "Squeezer" filter during prompt assembly:
+1. **Threshold**: 2,000 characters.
+2. **Deterministic Truncation**: Keeps the first 500 (Head) and last 500 (Tail) characters.
+3. **Purity**: The internal `AgentState` is NEVER mutated by the squeezer. This ensures that the **LLM Summarizer** always sees the full-fidelity raw logs, while the **LLM Chat** only sees the compressed version.
+4. **Result**: Reclaims thousands of tokens per turn with zero impact on long-term memory accuracy.
+
+### 5.4 Importance-Based Relevance Scoring
+During summarization, the agent uses a weighted scoring mechanism:
+- **High Importance (Z=1.0)**: System Prompts, Connectivity Errors, Sync/Export Previews.
+- **Low Importance (Z=0.1)**: Greetings, off-topic chat, redundant status checks.
+Critical technical facts are prioritized for retention, ensuring they survive multiple summarization cycles.

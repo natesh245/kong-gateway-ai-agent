@@ -180,13 +180,62 @@ export class AgentHistory {
     }
 
     /**
+     * Compresses large tool results that are "stale" (not part of the current active turn).
+     * This deterministic compression saves thousands of tokens for large YAML/JSON dumps
+     * once the agent has already processed them.
+     */
+    public static compressLargeToolResults(messages: BaseMessage[], limit = 2000): BaseMessage[] {
+        // We only compress tool messages that are followed by a HumanMessage (indicating the turn is finished)
+        // or that are far back in history.
+        return messages.map((m, index) => {
+            if (!(m instanceof ToolMessage)) return m;
+            if (m.content.length <= limit) return m;
+
+            // Check if this tool message is "stale" (at least 2 turns back)
+            const isStale = index < messages.length - 3;
+            if (!isStale) return m;
+
+            // Compress: Keep first 500 and last 500 chars
+            const content = String(m.content);
+            const head = content.substring(0, 500);
+            const tail = content.substring(content.length - 500);
+            const compressedContent = `${head}\n\n... [OMITTED ${content.length - 1000} CHARS OF RAW TOOL OUTPUT] ...\n\n${tail}`;
+
+            return new ToolMessage({
+                ...m,
+                content: compressedContent,
+                additional_kwargs: { ...m.additional_kwargs, originalLength: content.length, compressed: true }
+            } as any);
+        });
+    }
+
+    /**
+     * Assigns an importance score to a message for weighted summarization.
+     */
+    public static getMessageImportance(m: BaseMessage): number {
+        if (m instanceof SystemMessage) return 1.0;
+        
+        const content = typeof m.content === 'string' ? m.content : "";
+        
+        // Tool errors are highly important
+        if (m instanceof ToolMessage && (content.toLowerCase().includes('error') || content.toLowerCase().includes('failed'))) return 0.9;
+        
+        // Specific technical markers
+        if (content.includes('[SYNC_PREVIEW]') || content.includes('PREVIEW EXPORT')) return 0.8;
+        
+        // Greetings/Pleasantries are low importance
+        const normalized = content.toLowerCase().trim();
+        if (normalized === 'hi' || normalized === 'hello' || normalized === 'thanks' || normalized === 'ok') return 0.1;
+        
+        return 0.5; // Default
+    }
+
+    /**
      * Splits history into messages to be summarized and messages to be kept.
-     * We keep the system prompt and the last messages.
-     * @param messages The full message history
-     * @param summarizePercentage The percentage of messages (excluding system prompt) to summarize (e.g., 0.4 for 40%)
+     * Uses Importance Scoring to decide what to discard vs what to summarize.
      */
     public static getMessagesForSummarization(messages: BaseMessage[], summarizePercentage: number = 0.4): { toSummarize: BaseMessage[], toKeep: BaseMessage[] } {
-        if (messages.length <= 6) { // Don't summarize if history is very short
+        if (messages.length <= 6) {
             return { toSummarize: [], toKeep: messages };
         }
 
@@ -196,8 +245,7 @@ export class AgentHistory {
 
         let summarizeCount = Math.floor(contentMessages.length * summarizePercentage);
         
-        // Safety: Ensure we don't end summarization in the middle of a tool call/response sequence.
-        // If the next message is a ToolMessage, it belongs to the previous AIMessage, so we must include it in summarization.
+        // Safety: Ensure we don't end in the middle of a tool call
         while (summarizeCount < contentMessages.length && 
                (contentMessages[summarizeCount] instanceof ToolMessage)) {
             summarizeCount++;
@@ -206,8 +254,9 @@ export class AgentHistory {
         const toSummarize = contentMessages.slice(0, summarizeCount);
         const toKeep = contentMessages.slice(summarizeCount);
 
-        const resultToKeep = systemPrompt ? [systemPrompt, ...toKeep] : toKeep;
-        
-        return { toSummarize, toKeep: resultToKeep };
+        return { 
+            toSummarize, 
+            toKeep: systemPrompt ? [systemPrompt, ...toKeep] : toKeep 
+        };
     }
 }

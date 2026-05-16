@@ -22,9 +22,10 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
 
 ## 2. Context Management Strategies
 
-### A. Dynamic Result Compression
-*   **Problem**: Large tool outputs (e.g., a full `kong.yml` dump) can consume 50k+ tokens.
-*   **Engine Logic**: If a tool result has been "processed" (the agent has already responded to it), the raw result is archived in long-term memory and replaced in the active prompt with a **Semantic Summary** (e.g., "Successfully read kong.yml; contains 5 Services and 10 Routes").
+### A. Deterministic Result Compression ("The Squeezer")
+*   **Problem**: Large tool outputs (e.g., a full `kong.yml` dump) can consume 50k+ tokens, drowning out critical reasoning.
+*   **Engine Logic**: If a tool result is **stale** (older than 2 messages) and exceeds **2,000 characters**, the engine deterministicly keeps the first 500 and last 500 characters, replacing the middle with a marker: `[OMITTED XXX CHARS]`.
+*   **Non-Destructive**: This compression is applied only at the moment of prompt assembly. The internal `AgentState` preserves the full-fidelity raw logs, ensuring that the **LLM Summarizer** always has access to the complete data for building accurate long-term memory.
 
 ### B. Priority-Based History Pruning (The "N-Back" Strategy)
 *   **Engine Logic**:
@@ -59,11 +60,11 @@ Every turn follows a 4-step assembly process:
 - [x] Implement `TokenCounter` utility to track real-time budget usage.
 - [x] Add `🔄 Optimizing Context` status bar and predictive overflow detection.
 
-### Phase 2: Active Pruning & Compression [IN PROGRESS]
+### Phase 2: Active Pruning & Compression [COMPLETE]
 - [x] **Predictive Guardrails**: Summarize history before large payloads (Implemented).
 - [x] **Similarity Gating**: Implement 0.40 threshold for RAG retrieval (Implemented).
-- [ ] **Result Compression**: Implement logic to replace "processed" large tool outputs with semantic summaries.
-- [ ] **Relevance Scorer**: Implement Z-score weighting to preserve "Important" old messages over "Recent" noise.
+- [x] **Result Compression**: Implement logic to replace "processed" large tool outputs with deterministic truncation.
+- [x] **Relevance Scorer**: Implement Importance-based weighting to preserve critical technical facts.
 
 ### Phase 3: JIT Context & Staleness
 - [ ] **StateWatcher**: Only inject system health checks if the previous check is > 60s old.

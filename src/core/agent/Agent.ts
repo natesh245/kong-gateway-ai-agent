@@ -343,7 +343,11 @@ export class Agent {
                     (m as any).category !== 'off-topic'
                 );
 
-                for (const m of rawMessages) {
+                // Deterministic Compression (Zero Cost)
+                // Compress any large tool results that are no longer part of the active turn
+                const compressedMessages = AgentHistory.compressLargeToolResults(rawMessages);
+
+                for (const m of compressedMessages) {
                     apiMessages.push(m);
                 }
 
@@ -540,7 +544,8 @@ export class Agent {
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
         
-        // Trigger summarization when the PROJECTED context (Previous turn + New prompt estimate) hits 85%
+        // --- STAGE 1: LLM Summarization (Predictive Guardrail) ---
+        // Trigger summarization when the PROJECTED context hits 85%
         const prevTurnTotal = this.state.previousTurnUsage.inputTokens + this.state.previousTurnUsage.outputTokens;
         const projectedTotal = prevTurnTotal + incomingTokenEstimate;
 
@@ -569,7 +574,6 @@ export class Agent {
                 } else {
                     this.state.messages = [summaryMessage, ...toKeep];
                 }
-                
                 
                 onUpdate("✅ **Context Optimized**: Conversation compressed. Continuing...\n\n");
             }
