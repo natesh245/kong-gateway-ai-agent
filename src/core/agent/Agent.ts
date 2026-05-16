@@ -61,6 +61,13 @@ export class Agent {
         this.state.messages = AgentHistory.fromUI(messages, SYSTEM_PROMPT);
     }
 
+    public setUsageStats(stats: any): void {
+        if (!stats) return;
+        this.state.usageStats.inputTokens = stats.inputTokens || 0;
+        this.state.usageStats.outputTokens = stats.outputTokens || 0;
+        this.state.usageStats.totalTokens = stats.totalTokens || 0;
+    }
+
     public resetContext(): void {
         this.state = new AgentState(SYSTEM_PROMPT);
         this.memory = new MemoryManager(this.platform);
@@ -117,10 +124,14 @@ export class Agent {
     }
 
     public getUsageStats() {
+        // Use the local TikToken estimate for real-time tracking in the UI.
+        // This responds instantly to tools and typing before the next LLM call.
+        const totalTokens = TokenCounter.countMessages(this.state.messages);
+        
         return {
             inputTokens: this.state.usageStats.inputTokens,
             outputTokens: this.state.usageStats.outputTokens,
-            totalTokens: this.state.usageStats.lastTurnUsage.inputTokens + this.state.usageStats.lastTurnUsage.outputTokens,
+            totalTokens: totalTokens, 
             lastTurnUsage: {
                 ...this.state.usageStats.lastTurnUsage,
                 toolCalls: this.state.toolCallCount
@@ -130,13 +141,16 @@ export class Agent {
     }
 
     private updateTurnUsage(input: number, output: number) {
-        const deltaIn = input - this.state.usageStats.lastTurnUsage.inputTokens;
-        const deltaOut = output - this.state.usageStats.lastTurnUsage.outputTokens;
+        // Calculate the increase since the last update in this specific turn
+        const deltaIn = Math.max(0, input - this.state.usageStats.lastTurnUsage.inputTokens);
+        const deltaOut = Math.max(0, output - this.state.usageStats.lastTurnUsage.outputTokens);
         
+        // Add the increase to the session-wide totals
         this.state.usageStats.inputTokens += deltaIn;
         this.state.usageStats.outputTokens += deltaOut;
         this.state.usageStats.totalTokens = this.state.usageStats.inputTokens + this.state.usageStats.outputTokens;
         
+        // Update the baseline for the current turn
         this.state.usageStats.lastTurnUsage.inputTokens = input;
         this.state.usageStats.lastTurnUsage.outputTokens = output;
     }
@@ -224,7 +238,7 @@ export class Agent {
 
         // Final persistence after full agent turn
         this.state.endTurn();
-        await this.memory.saveChatHistory(this.getMessages());
+        await this.memory.saveSessionState(this.getMessages(), { usageStats: this.getUsageStats() });
     }
 
     private async runAgentTask(content: string, onUpdate: (content: string, type?: string) => void, classificationUsage?: any): Promise<void> {

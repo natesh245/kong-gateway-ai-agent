@@ -43,8 +43,9 @@ describe('MemoryManager', () => {
             { role: 'assistant', content: 'Hi!' }
         ];
 
-        await memoryManager.saveChatHistory(history);
-        const loadedHistory = await memoryManager.loadChatHistory();
+        await memoryManager.saveSessionState(history);
+        const session = await memoryManager.loadSessionState();
+        const loadedHistory = session.history;
 
         assert.strictEqual(loadedHistory.length, 2);
         assert.strictEqual(loadedHistory[0].content, 'Hello');
@@ -63,15 +64,18 @@ describe('MemoryManager', () => {
     });
 
     it('should clear memory', async () => {
-        await memoryManager.saveChatHistory([{ role: 'user', content: 'test' }]);
-        await memoryManager.saveFacts(['fact']);
+        await memoryManager.saveSessionState([{ role: 'user', content: 'test' }]);
+        const session = await memoryManager.loadSessionState();
+        const history = session.history;
+        const facts = await memoryManager.loadFacts();
 
         await memoryManager.clearMemory();
 
-        const history = await memoryManager.loadChatHistory();
-        const facts = await memoryManager.loadFacts();
+        const sessionAfterClear = await memoryManager.loadSessionState();
+        const historyAfterClear = sessionAfterClear.history;
+        const factsAfterClear = await memoryManager.loadFacts();
 
-        assert.strictEqual(history.length, 0);
-        assert.strictEqual(facts.length, 0);
+        assert.strictEqual(historyAfterClear.length, 0);
+        assert.strictEqual(factsAfterClear.length, 0);
     });
 });

@@ -28,35 +28,46 @@ export class MemoryManager {
     }
 
     /**
-     * Saves chat history to disk.
-     * @param history Array of messages (BaseMessage[]) to save.
+     * Saves session state (history + metadata) to disk.
      */
-    public async saveChatHistory(history: any[]): Promise<void> {
+    public async saveSessionState(history: any[], metadata: any = {}): Promise<void> {
         try {
             this.ensureStorageExists();
-            // Important: history might be BaseMessage[], so we use the UI format for serialization
-            // We'll let the caller handle the conversion if needed, but for safety:
-            const data = JSON.stringify(history, null, 2);
+            const payload = {
+                history,
+                metadata,
+                lastUpdated: Date.now()
+            };
+            const data = JSON.stringify(payload, null, 2);
             await fs.promises.writeFile(this.historyFile, data, 'utf8');
         } catch (error) {
-            console.error('Failed to save chat history to disk:', error);
+            console.error('Failed to save session state to disk:', error);
         }
     }
 
     /**
-     * Loads chat history from disk.
-     * @returns Array of messages.
+     * Loads session state from disk.
      */
-    public async loadChatHistory(): Promise<any[]> {
+    public async loadSessionState(): Promise<{ history: any[], metadata: any }> {
         try {
             if (fs.existsSync(this.historyFile)) {
                 const data = await fs.promises.readFile(this.historyFile, 'utf8');
-                return JSON.parse(data);
+                const parsed = JSON.parse(data);
+                
+                // Compatibility check: if it's an old array-only format, wrap it
+                if (Array.isArray(parsed)) {
+                    return { history: parsed, metadata: {} };
+                }
+                
+                return {
+                    history: parsed.history || [],
+                    metadata: parsed.metadata || {}
+                };
             }
         } catch (error) {
-            console.error('Failed to load chat history from disk:', error);
+            console.error('Failed to load session state from disk:', error);
         }
-        return [];
+        return { history: [], metadata: {} };
     }
 
     /**
