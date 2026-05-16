@@ -31,6 +31,9 @@ The agent currently employs three distinct types of "memory":
 2. **Context Exhaustion (The "Cliff" Effect)**: When the context limit is hit, the agent loses all memory of the current task. There is no middle ground between "full history" and "no history."
 3. **State Decay**: The agent is told to "trust memory of the system state for 60 seconds," but there is no explicit mechanism to expire or refresh specific system facts.
 4. **Redundant Processing**: Re-discovering files on every turn is inefficient for large workspaces.
+5. **Watchdog Infinite Loops (Root Causes Found)**: 
+    *   **Baseline Stale-ness**: After summarization, the internal `lastTurnUsage` counter must be reset to the new compressed size. Failure to do so causes the Watchdog to trigger instantly on the next turn.
+    *   **Threshold Blocking**: Summarization thresholds based purely on message count (e.g., > 6 messages) fail in "heavy" short-lived sessions where a single large YAML dump can hit the 100% limit in just 2-3 turns.
 
 ---
 
@@ -38,11 +41,11 @@ The agent currently employs three distinct types of "memory":
 
 ### Tier 1: Intelligent Context Management (Short-Term)
 
-#### 1.1 Sliding Window Summarization & Recovery
-Instead of a hard reset, implement a sliding window with a fail-safe.
-*   **Mechanism**: When tokens reach 85% of `maxContext`, the oldest 40% of messages are sent to a "Summarizer" LLM.
-*   **Fail-Safe (Hard Truncation)**: If summarization fails (e.g., context is already at 100%) or if occupancy hits a **"Panic Threshold" (98%)**, the agent performs a deterministic truncation—discarding the oldest messages without an LLM call to force-clear context space.
-*   **Result**: The summarized (or truncated) context is injected as a single `SystemMessage` at the start of the chain, and the raw messages are purged.
+#### 1.1 Tiered Context Recovery (Summarization & Truncation)
+Instead of a hard reset, the agent employs a two-stage stabilization strategy:
+*   **Tier 1: Intelligent Summarization (85% Agent Limit)**: The agent attempts to condense the oldest 40% of history using an LLM. This preserves technical facts while reclaiming space.
+*   **Tier 2: Hard Truncation Fallback (Fail-safe)**: If summarization fails (e.g., the **LLM's physical context** is hit, or the provider errors), the agent performs a deterministic "Hard Truncation"—discarding the oldest messages without an LLM call.
+*   **Baseline Reset**: After either recovery method, the agent resets its internal token counters to prevent "Watchdog" infinite loops.
 
 #### 1.2 "Thinking" Compression
 The `thinking` tags can be quite verbose.
@@ -102,7 +105,9 @@ The `thinking` tags can be quite verbose.
 - [x] Implement `SlidingWindowMemory` in `AgentHistory.ts`.
 - [x] Add a `summarizeHistory` utility in `PromptAnalyser.ts`.
 - [x] Replace `this.resetContext()` in `Agent.ts` with a call to the summarizer.
-- [ ] Implement **Hard Truncation Fallback** to prevent infinite loops when context is 100% full.
+- [ ] Implement **Hard Truncation Fallback** to handle LLM-physical-limit breaches.
+- [ ] **Harden Baseline Reset**: Ensure `lastTurnUsage` is updated immediately after any context optimization to prevent watchdog loops.
+- [ ] **Relax Summarization Thresholds**: Trigger summarization for "heavy" histories regardless of low message count.
 
 ### Phase 2: Persistence
 - [x] Create `MemoryManager.ts` to handle disk I/O for session state.
