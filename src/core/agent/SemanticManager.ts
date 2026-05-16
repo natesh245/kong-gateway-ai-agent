@@ -78,7 +78,7 @@ export class SemanticManager {
     /**
      * Searches the index for the most relevant snippets.
      */
-    public async search(query: string, k: number = 3): Promise<any[]> {
+    public async search(query: string, k: number = 3, threshold: number = 0.4): Promise<any[]> {
         const model = this.initEmbeddings();
         if (!model || this.entries.length === 0) return [];
 
@@ -94,7 +94,10 @@ export class SemanticManager {
             // Sort by similarity descending
             results.sort((a, b) => b.similarity - a.similarity);
 
-            return results.slice(0, k);
+            // Filter results by threshold to reduce token noise from irrelevant snippets
+            const filteredResults = results.filter(r => r.similarity >= threshold);
+
+            return filteredResults.slice(0, k);
         } catch (e) {
             console.error('[SemanticManager] Search failed:', e);
             return [];
