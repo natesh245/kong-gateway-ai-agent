@@ -701,8 +701,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
         } else if (type === 'error') {
             webviewView.webview.postMessage({ type: 'addMessage', role: 'system', content: `❌ ${content}` });
-            webviewView.webview.postMessage({ type: 'toolStatus', status: '' });
+            webviewView.webview.postMessage({ type: 'toolStatus', status: 'Error' });
         } else if (type === 'finish') {
+            // Unlock UI but don't overwrite a persistent error status if it exists
             webviewView.webview.postMessage({ type: 'toolStatus', status: '' });
         } else if (type === 'toolInteraction') {
             try {

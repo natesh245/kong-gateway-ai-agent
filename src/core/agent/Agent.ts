@@ -156,7 +156,8 @@ export class Agent {
         await this.ensureContextStability(onUpdate, tokenEstimate);
 
         if (!this.initClient() || !this.model) {
-            onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
+            onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.", 'error');
+            onUpdate('', 'finish');
             return;
         }
 
