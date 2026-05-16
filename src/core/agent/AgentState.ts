@@ -52,7 +52,7 @@ export class AgentState {
         }
     }
 
-    public startTurn(startTime?: number): void {
+    public startTurn(startTime?: number, initialInputTokens: number = 0): void {
         this.currentTurnStartTime = startTime || Date.now();
         this.currentTurnEndTime = null;
         this.isCancelled = false;
@@ -64,7 +64,7 @@ export class AgentState {
             inputTokens: this.usageStats.lastTurnUsage.inputTokens,
             outputTokens: this.usageStats.lastTurnUsage.outputTokens
         };
-        this.usageStats.lastTurnUsage = { inputTokens: 0, outputTokens: 0, toolCalls: 0 };
+        this.usageStats.lastTurnUsage = { inputTokens: initialInputTokens, outputTokens: 0, toolCalls: 0 };
     }
 
     public endTurn(): void {

@@ -16,6 +16,7 @@ import { ToolManager } from "./tools/ToolManager";
 import { MemoryManager } from './MemoryManager';
 import { IConfig, IAppPlatform } from "../interfaces/ICoreInterfaces";
 import { SanitizationUtil } from "../utils/SanitizationUtil";
+import { TokenCounter } from "../utils/TokenCounter";
 import { buildAgentTools, ToolContext } from "./AgentTools";
 import { PromptAnalyser } from "../utils/PromptAnalyser";
 import { SYSTEM_PROMPT } from "./SystemPrompt";
@@ -146,11 +147,12 @@ export class Agent {
     }
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void, startTime?: number): Promise<void> {
-        this.state.startTurn(startTime);
+        const historyTokens = TokenCounter.countMessages(this.state.messages);
+        this.state.startTurn(startTime, historyTokens);
         
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
-        const tokenEstimate = Math.ceil(content.length / 3.5);
+        const tokenEstimate = TokenCounter.countString(content);
         await this.ensureContextStability(onUpdate, tokenEstimate);
 
         if (!this.initClient() || !this.model) {
@@ -534,9 +536,11 @@ export class Agent {
         try {
             await Promise.race([executionTask(), timeoutPromise]);
         } catch (e: any) {
-            onUpdate(`Agent Timeout: ${e.message}`);
+            onUpdate(`Agent Timeout: ${e.message}`, 'error');
         } finally {
             if (timerId!) clearTimeout(timerId);
+            // Mandatory unlock: notify UI that processing is finished regardless of success/failure
+            onUpdate('', 'finish');
         }
     }
 

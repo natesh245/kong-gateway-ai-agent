@@ -699,6 +699,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private _dispatchAgentUpdate(webviewView: vscode.WebviewView, messageId: string, content: string, type: string) {
         if (type === 'toolStatus') {
             webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
+        } else if (type === 'error') {
+            webviewView.webview.postMessage({ type: 'addMessage', role: 'system', content: `❌ ${content}` });
+            webviewView.webview.postMessage({ type: 'toolStatus', status: '' });
+        } else if (type === 'finish') {
+            webviewView.webview.postMessage({ type: 'toolStatus', status: '' });
         } else if (type === 'toolInteraction') {
             try {
                 const interactionData = JSON.parse(content);
