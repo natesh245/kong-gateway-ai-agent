@@ -119,10 +119,17 @@ The `thinking` tags can be quite verbose.
 - [ ] Implement a `FactExtractor` to pull structured entities (versions, ports, envs) from history.
 - [ ] Store facts in a dedicated `facts.json` to supplement the fuzzy summaries.
 - [ ] Implement "Supersession" logic to update facts when the user changes configuration.
-- [ ] **Technical Reference (Doc-RAG)**: Implement a markdown ingestion engine to load official Kong/decK documentation into the vector store.
-    - *Scope*: Gateway API specs, decK command flags, and official plugin schemas.
 
-### Phase 5: Episodic Memory & Procedural Learning [PENDING]
+### Phase 5: Memory Lifecycle & Journaling [PENDING]
+- [ ] **Session Journaling**: Automatically generate and store a semantic summary in the vector store before a user performs a "Clear Chat" action.
+- [ ] **Memory TTL Pruning**: Implement time-based expiration for vector entries (default 7 days) to maintain index performance.
+
+### Phase 6: Technical Reference (Doc-RAG) [PENDING]
+- [ ] **Ingestion Engine**: Implement a markdown ingestion logic to load official Kong/decK documentation into the vector store.
+    - *Scope*: Gateway API specs, decK command flags, and official plugin schemas.
+- [ ] **Version-Aware Retrieval**: Tag documentation with versions to allow the agent to filter by the user's active Kong version.
+
+### Phase 7: Episodic Memory & Procedural Learning [PENDING]
 - [ ] Index successful tool-call sequences as "Success Episodes."
 - [ ] Automatically inject relevant past solutions into the prompt as few-shot examples.
 

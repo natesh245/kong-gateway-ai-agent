@@ -33,6 +33,8 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
     *   **Compressed Path**: Turns 6-20 are summarized.
     *   **Discard Path**: Turns 20+ are archived for RAG retrieval only.
 
+
+
 ### C. Budget Allocation (The "Token Pie")
 For a 128k context model, the engine enforces strict limits:
 *   **System Prompt & State**: 5,000 tokens.
@@ -40,6 +42,10 @@ For a 128k context model, the engine enforces strict limits:
 *   **Recent History**: 20,000 tokens.
 *   **Reasoning/Thinking Space**: 10,000 tokens.
 *   **Buffer for Output**: 33,000 tokens.
+
+### D. Session Journaling (The "Post-Mortem")
+*   **Engine Logic**: Before a "Clear Chat" or "Hard Reset" event, the engine triggers a final `summarizeHistory()` call. 
+*   **Purpose**: This preserves the "Lessons Learned" (e.g., successful config patterns) as a semantic embedding in the vector store before the raw logs are deleted.
 
 ---
 
@@ -66,8 +72,10 @@ Every turn follows a 4-step assembly process:
 - [x] **Result Compression**: Implement logic to replace "processed" large tool outputs with deterministic truncation.
 - [x] **Relevance Scorer**: Implement Importance-based weighting to preserve critical technical facts.
 
-### Phase 3: JIT Context & Staleness
+### Phase 3: JIT Context & Memory Lifecycle
 - [ ] **StateWatcher**: Only inject system health checks if the previous check is > 60s old.
+- [ ] **Session Journaling**: Automatically generate and store a semantic summary in the vector store before a user performs a "Clear Chat" action.
+- [ ] **Memory TTL Pruning**: Implement time-based expiration for vector entries (default 7 days) to maintain index performance.
 - [x] **Post-Edit Hooks**: Automatically trigger `decK lint` after configuration edits (Implemented).
 
 ### Phase 4: Advanced Orchestration (Long-Term)
