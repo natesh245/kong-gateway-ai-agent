@@ -38,10 +38,11 @@ The agent currently employs three distinct types of "memory":
 
 ### Tier 1: Intelligent Context Management (Short-Term)
 
-#### 1.1 Sliding Window Summarization
-Instead of a hard reset, implement a sliding window.
-*   **Mechanism**: When tokens reach 80% of `maxContext`, the oldest 40% of messages are sent to a "Summarizer" LLM.
-*   **Result**: The summarized context is injected as a single `SystemMessage` or `HumanMessage` at the start of the chain, and the raw messages are purged.
+#### 1.1 Sliding Window Summarization & Recovery
+Instead of a hard reset, implement a sliding window with a fail-safe.
+*   **Mechanism**: When tokens reach 85% of `maxContext`, the oldest 40% of messages are sent to a "Summarizer" LLM.
+*   **Fail-Safe (Hard Truncation)**: If summarization fails (e.g., context is already at 100%) or if occupancy hits a **"Panic Threshold" (98%)**, the agent performs a deterministic truncation—discarding the oldest messages without an LLM call to force-clear context space.
+*   **Result**: The summarized (or truncated) context is injected as a single `SystemMessage` at the start of the chain, and the raw messages are purged.
 
 #### 1.2 "Thinking" Compression
 The `thinking` tags can be quite verbose.
@@ -101,6 +102,7 @@ The `thinking` tags can be quite verbose.
 - [x] Implement `SlidingWindowMemory` in `AgentHistory.ts`.
 - [x] Add a `summarizeHistory` utility in `PromptAnalyser.ts`.
 - [x] Replace `this.resetContext()` in `Agent.ts` with a call to the summarizer.
+- [ ] Implement **Hard Truncation Fallback** to prevent infinite loops when context is 100% full.
 
 ### Phase 2: Persistence
 - [x] Create `MemoryManager.ts` to handle disk I/O for session state.

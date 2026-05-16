@@ -32,6 +32,10 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
     *   **Critical Path**: The last 3-5 turns are kept in full fidelity.
     *   **Compressed Path**: Turns 6-20 are summarized.
     *   **Discard Path**: Turns 20+ are archived for RAG retrieval only.
+|
+### D. Panic Recovery (Hard Truncation)
+*   **Problem**: If the context is already 100% full, the LLM cannot even perform a summarization, leading to a permanent error loop.
+*   **Engine Logic**: If summarization fails or occupancy hits **98%**, the engine bypasses the LLM and performs a **Hard Truncation** (deterministic discard of oldest messages) to force-clear space and restore conversation stability.
 
 
 
@@ -71,6 +75,7 @@ Every turn follows a 4-step assembly process:
 - [x] **Similarity Gating**: Implement 0.40 threshold for RAG retrieval (Implemented).
 - [x] **Result Compression**: Implement logic to replace "processed" large tool outputs with deterministic truncation.
 - [x] **Relevance Scorer**: Implement Importance-based weighting to preserve critical technical facts.
+- [ ] **Panic Recovery**: Implement Hard Truncation fallback for 100% context scenarios.
 
 ### Phase 3: JIT Context & Memory Lifecycle
 - [ ] **StateWatcher**: Only inject system health checks if the previous check is > 60s old.
