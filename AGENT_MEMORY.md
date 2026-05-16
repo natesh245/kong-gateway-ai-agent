@@ -43,9 +43,10 @@ The agent currently employs three distinct types of "memory":
 
 #### 1.1 Tiered Context Recovery (Summarization & Truncation)
 Instead of a hard reset, the agent employs a two-stage stabilization strategy:
-*   **Tier 1: Intelligent Summarization (85% Agent Limit)**: The agent attempts to condense the oldest 40% of history using an LLM. This preserves technical facts while reclaiming space.
-*   **Tier 2: Hard Truncation Fallback (Fail-safe)**: If summarization fails (e.g., the **LLM's physical context** is hit, or the provider errors), the agent performs a deterministic "Hard Truncation"—discarding the oldest messages without an LLM call.
-*   **Baseline Reset**: After either recovery method, the agent resets its internal token counters to prevent "Watchdog" infinite loops.
+*   **Tier 1: Intelligent Summarization (85% Agent Limit)**: The agent attempts to condense history using an LLM. **(Validated: Working as expected)**.
+*   **Tier 2: Hard Truncation Fallback (Fail-safe)**: If summarization fails (e.g., the **LLM's physical context** is hit), the agent performs a deterministic truncation.
+*   **Baseline Reset**: After recovery, the agent resets internal token counters to prevent "Watchdog" infinite loops. **(Primary identified bug)**.
+*   **UI Observability**: The "🔄 Optimizing Context" status should be visible in the Activity Bar/Status Bar during the process. **(Identified UI issue)**.
 
 #### 1.2 "Thinking" Compression
 The `thinking` tags can be quite verbose.
