@@ -49,20 +49,64 @@ interface Config {
 }
 
 interface UsageStats {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    contextLimit?: number;
+    session: {
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+    };
+    context: {
+        occupied: number;
+        limit: number;
+        percent: number;
+    };
 }
 
 export const App: React.FC = () => {
     const vscode = getVsCodeApi();
     const savedState = vscode.getState() || {};
 
+    // Persistence & Migration
+    const normalizeUsage = (stats: any): UsageStats => {
+        if (!stats) return { 
+            session: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+            context: { occupied: 0, limit: 0, percent: 0 }
+        };
+
+        // Migration: If old format (flat) detected
+        if (stats.inputTokens !== undefined && !stats.session) {
+            return {
+                session: {
+                    inputTokens: stats.inputTokens || 0,
+                    outputTokens: stats.outputTokens || 0,
+                    totalTokens: stats.totalTokens || 0
+                },
+                context: {
+                    occupied: stats.totalTokens || 0,
+                    limit: stats.contextLimit || 130000,
+                    percent: stats.contextLimit ? ((stats.totalTokens || 0) / stats.contextLimit) * 100 : 0
+                }
+            };
+        }
+
+        // Return new format with defaults
+        return {
+            session: {
+                inputTokens: stats.session?.inputTokens || 0,
+                outputTokens: stats.session?.outputTokens || 0,
+                totalTokens: stats.session?.totalTokens || 0
+            },
+            context: {
+                occupied: stats.context?.occupied || 0,
+                limit: stats.context?.limit || 130000,
+                percent: stats.context?.percent || 0
+            }
+        };
+    };
+
     // State
     const [messages, setMessages] = useState<Message[]>(savedState.messages || []);
     const [config, setConfig] = useState<Config>(savedState.config || {});
-    const [usageStats, setUsageStats] = useState<UsageStats>(savedState.usageStats || { inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+    const [usageStats, setUsageStats] = useState<UsageStats>(normalizeUsage(savedState.usageStats));
     const [availableModels, setAvailableModels] = useState<string[]>(savedState.models || []);
     const [managedFiles, setManagedFiles] = useState<string[]>(savedState.files || []);
     const [detectedFiles, setDetectedFiles] = useState<{ compose?: string, config?: string, gateway_config?: string, ruleset?: string }>(savedState.detectedFiles || {});
@@ -232,7 +276,7 @@ export const App: React.FC = () => {
 
                     setConfig(prev => ({ ...prev, ...updateData }));
                     
-                    if (m.usageStats) setUsageStats(m.usageStats);
+                    if (m.usageStats) setUsageStats(normalizeUsage(m.usageStats));
                     if (m.models) setAvailableModels(m.models);
                     if (m.files) setManagedFiles(m.files);
                     if (m.detectedFiles) setDetectedFiles(m.detectedFiles);
@@ -342,7 +386,7 @@ export const App: React.FC = () => {
                     break;
 
                 case 'updateUsage':
-                    if (m.stats) setUsageStats(m.stats);
+                    if (m.stats) setUsageStats(normalizeUsage(m.stats));
                     break;
 
                 case 'performClear':
@@ -491,10 +535,7 @@ export const App: React.FC = () => {
                     <StatsBar
                         provider={config.provider || 'openrouter'}
                         model={config.model || ''}
-                        inputTokens={usageStats.inputTokens}
-                        outputTokens={usageStats.outputTokens}
-                        totalTokens={usageStats.totalTokens}
-                        contextLimit={usageStats.contextLimit}
+                        usage={usageStats}
                         isTyping={isTyping}
                     />
                     <InputBar onSend={handleSendAction} isTyping={isTyping} disabled={isInitialLoad} />

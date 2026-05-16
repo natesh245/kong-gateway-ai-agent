@@ -3,29 +3,35 @@ import React from 'react';
 interface StatsBarProps {
     provider: string;
     model: string;
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    contextLimit?: number;
+    usage: {
+        session: {
+            inputTokens: number;
+            outputTokens: number;
+            totalTokens: number;
+        };
+        context: {
+            occupied: number;
+            limit: number;
+            percent: number;
+        };
+    };
     isTyping: boolean;
 }
 
 export const StatsBar: React.FC<StatsBarProps> = ({ 
     provider, 
     model, 
-    inputTokens, 
-    outputTokens, 
-    totalTokens,
-    contextLimit,
+    usage,
     isTyping
 }) => {
     
     const formatTokens = (num: number) => {
+        if (!num || num < 0) return '0';
         if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
         return num.toString();
     };
 
-    const usagePercent = contextLimit ? Math.min(100, Math.max(0, (totalTokens / contextLimit) * 100)) : 0;
+    const usagePercent = usage?.context?.percent || 0;
     
     const getContextPillStyle = () => {
         if (usagePercent > 90) return { borderColor: '#f44747' };
@@ -43,10 +49,10 @@ export const StatsBar: React.FC<StatsBarProps> = ({
             </div>
             <span className="model-info">{model || 'No Model Selected'}</span>
             <div className="stats-container">
-                <span title="Prompt Tokens">In: <span>{formatTokens(inputTokens)}</span></span>
-                <span title="Completion Tokens">Out: <span>{formatTokens(outputTokens)}</span></span>
-                {contextLimit && (
-                    <span title="Context Usage" className="context-pill" style={getContextPillStyle()}>
+                <span title="Cumulative Session Input">Session In: <span>{formatTokens(usage?.session?.inputTokens)}</span></span>
+                <span title="Cumulative Session Output">Session Out: <span>{formatTokens(usage?.session?.outputTokens)}</span></span>
+                {usage?.context?.limit > 0 && (
+                    <span title={`Context Usage: ${usage?.context?.occupied || 0} / ${usage?.context?.limit} tokens`} className="context-pill" style={getContextPillStyle()}>
                         Context: <span>{usagePercent.toFixed(usagePercent < 1 ? 1 : 0)}</span>%
                     </span>
                 )}

@@ -63,9 +63,17 @@ export class Agent {
 
     public setUsageStats(stats: any): void {
         if (!stats) return;
-        this.state.usageStats.inputTokens = stats.inputTokens || 0;
-        this.state.usageStats.outputTokens = stats.outputTokens || 0;
-        this.state.usageStats.totalTokens = stats.totalTokens || 0;
+        
+        // Handle migration from old schema if necessary
+        if (stats.inputTokens !== undefined && stats.session === undefined) {
+            this.state.usageStats.session.inputTokens = stats.inputTokens || 0;
+            this.state.usageStats.session.outputTokens = stats.outputTokens || 0;
+            this.state.usageStats.session.totalTokens = stats.totalTokens || 0;
+        } else if (stats.session) {
+            this.state.usageStats.session.inputTokens = stats.session.inputTokens || 0;
+            this.state.usageStats.session.outputTokens = stats.session.outputTokens || 0;
+            this.state.usageStats.session.totalTokens = stats.session.totalTokens || 0;
+        }
     }
 
     public resetContext(): void {
@@ -124,39 +132,51 @@ export class Agent {
     }
 
     public getUsageStats() {
-        // We calculate the 'Payload Size' which includes:
-        // 1. Chat History (Variable)
-        // 2. System Prompt & Tool Definitions (Fixed Cost ~4-5k tokens)
-        const messagesEstimate = TokenCounter.countMessages(this.state.messages);
+        const contextLimit = this.config.get<number>('maxContext') || 130000;
         
-        // We use the last turn's total (In + Out) as a baseline for the Occupied Space.
-        // This ensures the % bar reflects the TRUE remaining capacity.
-        const lastTurnTotal = this.state.usageStats.lastTurnUsage.inputTokens + this.state.usageStats.lastTurnUsage.outputTokens;
-        const totalTokens = Math.max(messagesEstimate, lastTurnTotal);
-        
+        // Context Occupancy: Ground truth is the last turn's input (which includes history + system + new)
+        const occupied = this.state.usageStats.lastTurnUsage.inputTokens; 
+        const percent = contextLimit > 0 ? (occupied / contextLimit) * 100 : 0;
+
         return {
-            inputTokens: this.state.usageStats.inputTokens,
-            outputTokens: this.state.usageStats.outputTokens,
-            totalTokens: totalTokens, 
+            session: {
+                inputTokens: this.state.usageStats.session.inputTokens,
+                outputTokens: this.state.usageStats.session.outputTokens,
+                totalTokens: this.state.usageStats.session.inputTokens + this.state.usageStats.session.outputTokens
+            },
+            context: {
+                occupied: occupied,
+                limit: contextLimit,
+                percent: percent
+            },
             lastTurnUsage: {
                 ...this.state.usageStats.lastTurnUsage,
                 toolCalls: this.state.toolCallCount
-            },
-            contextLimit: this.config.get<number>('maxContext') || 130000
+            }
         };
     }
 
     private updateTurnUsage(input: number, output: number) {
-        // Calculate the increase since the last update in this specific turn
-        const deltaIn = Math.max(0, input - this.state.usageStats.lastTurnUsage.inputTokens);
-        const deltaOut = Math.max(0, output - this.state.usageStats.lastTurnUsage.outputTokens);
+        // --- BASELINE CORRECTION ---
+        // If this is the first update of the session (root input is 0),
+        // we include the entire reported input as the initial session baseline.
+        // This ensures the system prompt and history setup are counted.
+        if (this.state.usageStats.session.inputTokens === 0 && input > 0) {
+            this.state.usageStats.session.inputTokens = input;
+            this.state.usageStats.session.outputTokens = output;
+        } else {
+            // Calculate the increase since the last update in this specific turn
+            const deltaIn = Math.max(0, input - this.state.usageStats.lastTurnUsage.inputTokens);
+            const deltaOut = Math.max(0, output - this.state.usageStats.lastTurnUsage.outputTokens);
+            
+            // Add the increase to the session-wide totals
+            this.state.usageStats.session.inputTokens += deltaIn;
+            this.state.usageStats.session.outputTokens += deltaOut;
+        }
+
+        this.state.usageStats.session.totalTokens = this.state.usageStats.session.inputTokens + this.state.usageStats.session.outputTokens;
         
-        // Add the increase to the session-wide totals
-        this.state.usageStats.inputTokens += deltaIn;
-        this.state.usageStats.outputTokens += deltaOut;
-        this.state.usageStats.totalTokens = this.state.usageStats.inputTokens + this.state.usageStats.outputTokens;
-        
-        // Update the baseline for the current turn
+        // Update the baseline for the current turn tracking
         this.state.usageStats.lastTurnUsage.inputTokens = input;
         this.state.usageStats.lastTurnUsage.outputTokens = output;
     }
