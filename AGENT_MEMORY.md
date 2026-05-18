@@ -102,13 +102,13 @@ The `thinking` tags can be quite verbose.
 
 ## 4. Implementation Roadmap
 
-### Phase 1: Context Stability
+### Phase 1: Context Stability [COMPLETE]
 - [x] Implement `SlidingWindowMemory` in `AgentHistory.ts`.
 - [x] Add a `summarizeHistory` utility in `PromptAnalyser.ts`.
 - [x] Replace `this.resetContext()` in `Agent.ts` with a call to the summarizer.
-- [ ] Implement **Hard Truncation Fallback** to handle LLM-physical-limit breaches.
-- [ ] **Harden Baseline Reset**: Ensure `lastTurnUsage` is updated immediately after any context optimization to prevent watchdog loops.
-- [ ] **Relax Summarization Thresholds**: Trigger summarization for "heavy" histories regardless of low message count.
+- [x] Implement **Hard Truncation Fallback** to handle LLM-physical-limit breaches.
+- [x] **Harden Baseline Reset**: Calculate starting turn tokens precisely using `prevInput + prevOutput + tokenEstimate` to prevent UI drop loops.
+- [x] **Aggressive Summarization**: Summarize the entire history EXCEPT the most recent turn to ensure heavy payloads are captured.
 
 ### Phase 2: Persistence
 - [x] Create `MemoryManager.ts` to handle disk I/O for session state.

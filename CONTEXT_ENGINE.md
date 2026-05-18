@@ -75,9 +75,9 @@ Every turn follows a 4-step assembly process:
 - [x] **Similarity Gating**: Implement 0.40 threshold for RAG retrieval (Implemented).
 - [x] **Result Compression**: Implement logic to replace "processed" large tool outputs with deterministic truncation.
 - [x] **Relevance Scorer**: Implement Importance-based weighting to preserve critical technical facts.
-- [ ] **Baseline Hardening**: Prevent infinite watchdog loops via state-reset logic.
-- [ ] **Aggressive Thresholds**: Implement token-weighted summarization triggers.
-- [ ] **Panic Recovery**: Implement Hard Truncation fallback for 100% context scenarios.
+- [x] **Baseline Hardening**: Fixed context percent drops via exact previous-turn baseline tracking and removed stale watchdog stream limits.
+- [x] **Aggressive Thresholds**: Replaced percentage-based summarization with an aggressive target that summarizes everything EXCEPT the final turn.
+- [x] **Panic Recovery**: Implement Hard Truncation fallback for 100% context scenarios.
 
 ### Phase 3: JIT Context & Memory Lifecycle
 - [ ] **StateWatcher**: Only inject system health checks if the previous check is > 60s old.
