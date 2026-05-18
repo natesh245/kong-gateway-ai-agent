@@ -35,8 +35,12 @@ The Drift Engine operates as a background observer with four main steps:
 - [ ] Create a `DriftWatcher` service that runs in the background of the VS Code extension.
 - [ ] Implement a `DriftAnalysisTool` that can perform a quiet `deck diff` between the snapshot and live state.
 
-### Phase 3: Interactive Reconciliation (Long-Term)
-- [ ] **One-Click Reconciliation**: Provide a tool for the user to "Adopt" the external changes (update the local files to match live) or "Revert" them (re-sync the local files to live).
+### Phase 3: Interactive & Automated Reconciliation (Long-Term)
+- [ ] **Interactive Diff Dashboard**: A rich webview showing side-by-side local desired state vs live state (ArgoCD "App Details" style).
+- [ ] **One-Click Reconciliation Modes**:
+    *   **Heal (Push)**: Overwrite the live gateway with local workspace configuration.
+    *   **Adopt (Pull)**: Pull live gateway changes back into the local `kong-deck-state.yml` to keep local Git in sync.
+- [ ] **Automated Self-Healing**: Background reconciliation that triggers automatically when drift is detected.
 - [ ] **Audit Trail**: Maintain a history of external drifts to identify if specific upstream services are being modified too frequently by "shadow IT."
 
 ### Phase 4: Headless & Remote Notifications (Future)
@@ -46,11 +50,23 @@ The Drift Engine operates as a background observer with four main steps:
 
 ---
 
-## 3. Configuration Settings
-Users can tune the Drift Engine via VS Code settings:
-*   `kongAgent.driftDetection.enabled`: Boolean (Default: false)
-*   `kongAgent.driftDetection.interval`: Minutes (Default: 5)
-*   `kongAgent.driftDetection.sensitivity`: "High" (any change) | "Low" (only structural changes)
+## 3. Configuration Settings: ArgoCD-Inspired Control Plane
+
+Users can tune the Drift Engine via VS Code settings to control background check behavior, pruning, and self-healing:
+
+### A. General Behavior
+*   `kongAgent.driftDetection.enabled`: `boolean` (Default: `false`) — Enables/disables the background drift checking service.
+*   `kongAgent.driftDetection.interval`: `integer` (Default: `5`) — Polling frequency in minutes.
+
+### B. Reconciliation Modes (The ArgoCD Approach)
+*   `kongAgent.driftDetection.reconciliationMode`: `"manual"` | `"self-healing"` | `"auto-adopt"` (Default: `"manual"`)
+    *   `"manual"`: Drift triggers a standard IDE notification with a "Review Changes" visual diff action.
+    *   `"self-healing"` (Auto-Revert): The agent silently runs `deck sync` to overwrite any live configuration changes, forcing it back to the Git state.
+    *   `"auto-adopt"` (Auto-Import): The agent automatically writes live gateway modifications back into the local files and schedules a git commit/alert.
+
+### C. Resource Boundaries
+*   `kongAgent.driftDetection.pruneEnabled`: `boolean` (Default: `true`) — If `false`, reconciliation will add/update resources but will *never* delete live entities that are missing in the local config files.
+*   `kongAgent.driftDetection.ignoredPaths`: `string[]` (Default: `[]`) — Fine-grained drift exclusions (e.g. `$.services[*].tags` or `$.routes[*].plugins[?(@.name=='rate-limiting')]`). Allows users to ignore non-functional or dynamically changing fields to prevent notification noise.
 
 ---
 
