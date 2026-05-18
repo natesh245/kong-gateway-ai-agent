@@ -36,6 +36,10 @@ This document serves as a high-level index for the long-term architectural goals
 *   **Focus**: Active resilience, error categorization, and auto-correction loops.
 *   **Key Goals**: Parsing raw CLI/API errors into structured diagnostics, synthesizing ready-to-apply corrective patches, and maintaining human-in-the-loop safety gates for all self-repairs.
 
+### 9. [Full-Screen Dashboard](file:///Users/natesh/projects/kong-gateway-agent/FULLSCREEN_CHAT.md)
+*   **Focus**: Dynamic dashboard layouts, split-screen diagnostics, and editor-tab integration.
+*   **Key Goals**: Launching tabbed Webview panels in VS Code, rendering multi-pane adaptive dashboards (chat stream + interactive diffs/health panels), and bidirectional live state synchronization.
+
 ---
 
 ## 🚀 Vision
