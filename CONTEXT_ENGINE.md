@@ -85,9 +85,25 @@ Every turn follows a 4-step assembly process:
 - [ ] **Session Journaling**: Automatically generate and store a semantic summary in the vector store before a user performs a "Clear Chat" action.
 - [ ] **Memory TTL Pruning**: Implement time-based expiration for vector entries (default 7 days) to maintain index performance.
 - [x] **Post-Edit Hooks**: Automatically trigger `decK lint` after configuration edits (Implemented).
+- [ ] **Context Control Plane**: Implement VS Code settings for controlling token budget distributions and context thresholds.
 
 ### Phase 4: Advanced Orchestration (Long-Term)
 - [ ] **Tool-Aware Truncation**: Update the summarizer to extract the Head and Tail of tool results instead of blindly truncating from the start.
 - [ ] **Modular Rule Loader**: Path-based dynamic rule loading.
 - [ ] **Subagent Manager**: Run long diagnostic tasks in isolated context windows.
 - [ ] **Episodic Learning**: Inject "Success Paths" as few-shot examples into the prompt.
+
+---
+
+## 5. Configuration Settings: Context Control Plane
+
+Users can fully control token allocations and threshold limits for prompt assembly via VS Code settings:
+
+### A. Context Sizing & Budgeting
+*   `kongAgent.maxContext`: `integer` (Default: `130000`) — The physical character/token window limit configured for the active LLM. 
+*   `kongAgent.context.maxHistoryContextTokens`: `integer` (Default: `20000`) — The maximum size of the conversation window before proactive history summarization triggers.
+*   `kongAgent.context.maxToolOutputTokens`: `integer` (Default: `60000`) — The maximum token size allocated strictly to incoming raw tool outputs in prompt assembly.
+
+### B. Compression Gating
+*   `kongAgent.context.summarizationThreshold`: `number` (Default: `0.85`) — The percentage limit (0.0 to 1.0) of maximum context where history summarization activates.
+*   `kongAgent.context.squeezerThreshold`: `integer` (Default: `2000`) — The maximum character limit for an individual tool result. Outputs exceeding this are deterministically squeezed into a Head/Tail layout to save token space.
