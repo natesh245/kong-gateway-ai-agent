@@ -117,6 +117,7 @@ The `thinking` tags can be quite verbose.
 - [x] Create `MemoryManager.ts` to handle disk I/O for session state.
 - [x] Implement automatic "save on turn end" and "load on init".
 - [x] Implement one-time migration from `globalState` to file-based storage.
+- [ ] **Memory Control Plane**: Implement VS Code configuration settings to allow users to toggle memory features, set custom paths, tune RAG thresholds, and set TTL limits.
 
 ### Phase 3: Semantic Enhancement [COMPLETE]
 - [x] Research and implement local vector indexing in `SemanticManager.ts`.
@@ -171,3 +172,27 @@ During summarization, the agent uses a weighted scoring mechanism:
 - **High Importance (Z=1.0)**: System Prompts, Connectivity Errors, Sync/Export Previews.
 - **Low Importance (Z=0.1)**: Greetings, off-topic chat, redundant status checks.
 Critical technical facts are prioritized for retention, ensuring they survive multiple summarization cycles.
+
+---
+
+## 6. Configuration Settings: Memory Control Plane
+
+Users can fully control how conversational history, vector embeddings, and extracted facts are handled via VS Code settings:
+
+### A. General & Storage Controls
+*   `kongAgent.memory.enabled`: `boolean` (Default: `true`) — Toggles local vector and fact database usage. If `false`, the agent behaves in a fully stateless "ephemeral" session where conversation history is held strictly in-memory (RAM) during the active session and is completely vaporized on editor reload/exit with no trace left on disk.
+*   `kongAgent.memory.storagePath`: `string` (Default: `""`) — Allows users to customize where history, facts, and embeddings are saved. If empty, defaults securely to VS Code's global application data directory.
+
+### B. Proactive Summarization Controls
+*   `kongAgent.memory.summarizationThreshold`: `number` (Default: `0.85`) — The percentage limit (0.0 to 1.0) of maximum context where proactive history summarization triggers. 
+*   `kongAgent.memory.maxHistoryContextTokens`: `integer` (Default: `20000`) — The hard ceiling of token budget allocated strictly to active conversation history before compression triggers.
+
+### C. Semantic Recall (RAG) Controls
+*   `kongAgent.memory.ragEnabled`: `boolean` (Default: `true`) — Toggles automatic vector memory retrieval during chats.
+*   `kongAgent.memory.ragSimilarityThreshold`: `number` (Default: `0.40`) — Minimum cosine similarity score (0.0 to 1.0) required to inject a RAG memory, filtering out irrelevant context.
+*   `kongAgent.memory.ragMaxResults`: `integer` (Default: `3`) — Maximum number of relevant semantic blocks injected into the prompt per turn.
+
+### D. Facts & Episodic Controls
+*   `kongAgent.memory.factExtractionEnabled`: `boolean` (Default: `true`) — Toggles the background extraction of structural facts (ports, services, domains) into `facts.json`.
+*   `kongAgent.memory.episodicMemoryEnabled`: `boolean` (Default: `true`) — Toggles indexing and retrieval of successful tool call workflows.
+*   `kongAgent.memory.memoryTtlDays`: `integer` (Default: `7`) — Number of days to keep vector summaries before automatic garbage collection triggers to maintain search performance.
