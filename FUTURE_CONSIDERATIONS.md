@@ -40,6 +40,10 @@ This document serves as a high-level index for the long-term architectural goals
 *   **Focus**: Dynamic dashboard layouts, split-screen diagnostics, and editor-tab integration.
 *   **Key Goals**: Launching tabbed Webview panels in VS Code, rendering multi-pane adaptive dashboards (chat stream + interactive diffs/health panels), and bidirectional live state synchronization.
 
+### 10. [Standalone Desktop Application](file:///Users/natesh/projects/kong-gateway-agent/DESKTOP_APPLICATION.md)
+*   **Focus**: Cross-platform portability, native OS wrappers, and standalone dashboarding.
+*   **Key Goals**: Integrating Rust-backed Tauri shells with React frontends, mapping platform-agnostic `IAppPlatform` interfaces to native OS app data paths and system tray utilities, and embedding Monaco Editors for in-app code edits and diff validations.
+
 ---
 
 ## 🚀 Vision
