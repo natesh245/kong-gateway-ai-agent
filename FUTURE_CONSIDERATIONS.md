@@ -16,9 +16,9 @@ This document serves as a high-level index for the long-term architectural goals
 *   **Focus**: Pre-processing user intent and file types.
 *   **Key Goals**: Multi-label intent classification, low-latency local routing, and context-aware analysis.
 
-### 4. [Secret Scanner](file:///Users/natesh/projects/kong-gateway-agent/SECRET_SCANNER.md)
-*   **Focus**: Security guardrails and data redaction.
-*   **Key Goals**: Real-time inbound/outbound masking, and integration with 3rd-party audit tools like Gitleaks or Trufflehog.
+### 4. [Secret Manager](file:///Users/natesh/projects/kong-gateway-agent/SECRET_MANAGER.md)
+*   **Focus**: Active security guardrails, data redaction, and credentials governance.
+*   **Key Goals**: Real-time inbound/outbound masking, decK security linter rules, Docker Compose `.env` validation, and integration with 3rd-party audit tools like Gitleaks or Trufflehog.
 
 ### 5. [Agent Harness](file:///Users/natesh/projects/kong-gateway-agent/AGENT_HARNESS.md)
 *   **Focus**: Testing, evaluation, and operational resilience.
