@@ -243,12 +243,22 @@ export class AgentHistory {
         const systemPrompt = hasSystemPrompt ? messages[0] : null;
         const contentMessages = hasSystemPrompt ? messages.slice(1) : messages;
 
-        let summarizeCount = Math.floor(contentMessages.length * summarizePercentage);
+        // Aggressive Token Recovery: Since we only trigger this when near the context limit, 
+        // we must summarize enough to matter. Summarize everything EXCEPT the last complete turn.
+        let summarizeCount = contentMessages.length - 1;
         
-        // Safety: Ensure we don't end in the middle of a tool call
-        while (summarizeCount < contentMessages.length && 
-               (contentMessages[summarizeCount] instanceof ToolMessage)) {
-            summarizeCount++;
+        // Walk backwards to find the start of the current turn (the last HumanMessage)
+        while (summarizeCount > 0 && !(contentMessages[summarizeCount] instanceof HumanMessage)) {
+            summarizeCount--;
+        }
+        
+        // Fallback if no HumanMessage is found or it's a very weird state
+        if (summarizeCount <= 0) {
+            summarizeCount = Math.max(1, Math.floor(contentMessages.length * summarizePercentage));
+            while (summarizeCount < contentMessages.length && 
+                   (contentMessages[summarizeCount] instanceof ToolMessage)) {
+                summarizeCount++;
+            }
         }
 
         const toSummarize = contentMessages.slice(0, summarizeCount);

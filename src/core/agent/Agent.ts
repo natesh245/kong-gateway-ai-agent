@@ -187,12 +187,15 @@ export class Agent {
     }
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void, startTime?: number): Promise<void> {
-        const historyTokens = TokenCounter.countMessages(this.state.messages);
-        this.state.startTurn(startTime, historyTokens);
-        
-        const config = this.config;
-        const maxContext = config.get<number>('maxContext') || 130000;
+        const prevInput = this.state.usageStats.lastTurnUsage.inputTokens;
+        const prevOutput = this.state.usageStats.lastTurnUsage.outputTokens;
         const tokenEstimate = TokenCounter.countString(content);
+        
+        // The new turn's input is exactly the previous turn's input + output + the new user prompt
+        const baselineTokens = prevInput > 0 ? (prevInput + prevOutput + tokenEstimate) : TokenCounter.countMessages(this.state.messages) + tokenEstimate;
+        
+        this.state.startTurn(startTime, baselineTokens);
+        
         await this.ensureContextStability(onUpdate, tokenEstimate);
 
         if (!this.initClient() || !this.model) {
@@ -587,8 +590,8 @@ export class Agent {
         const projectedTotal = prevTurnTotal + incomingTokenEstimate;
 
         if (projectedTotal >= maxContext * 0.85) {
-            onUpdate("Optimizing Context: Summarizing older conversation...", "toolStatus");
             onUpdate("🔄 **Optimizing Context**: You've reached 85% of the message limit. I'm summarizing the older part of our conversation to keep things running smoothly...\n\n");
+            onUpdate("Optimizing Context: Summarizing older conversation...", "toolStatus");
             
             const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(this.state.messages, 0.4);
             
