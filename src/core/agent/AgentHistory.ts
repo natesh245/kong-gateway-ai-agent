@@ -259,4 +259,27 @@ export class AgentHistory {
             toKeep: systemPrompt ? [systemPrompt, ...toKeep] : toKeep 
         };
     }
+
+    /**
+     * Deterministically truncates history by discarding the oldest messages.
+     * This is a "Zero-Cost" operation (no LLM) used as a fail-safe when context is 100% full.
+     */
+    public static hardTruncate(messages: BaseMessage[], discardPercentage: number = 0.5): BaseMessage[] {
+        if (messages.length <= 4) return messages;
+
+        const hasSystemPrompt = messages[0] instanceof SystemMessage;
+        const systemPrompt = hasSystemPrompt ? messages[0] : null;
+        const contentMessages = hasSystemPrompt ? messages.slice(1) : messages;
+
+        let discardCount = Math.floor(contentMessages.length * discardPercentage);
+        
+        // Safety: Ensure we don't end in the middle of a tool call
+        while (discardCount < contentMessages.length && 
+               (contentMessages[discardCount] instanceof ToolMessage)) {
+            discardCount++;
+        }
+
+        const toKeep = contentMessages.slice(discardCount);
+        return systemPrompt ? [systemPrompt, ...toKeep] : toKeep;
+    }
 }

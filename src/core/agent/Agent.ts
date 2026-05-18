@@ -414,14 +414,6 @@ export class Agent {
                 for await (const [mode, chunk] of stream) {
                     if (this.state.isCancelled) break;
 
-                    // Watchdog: Check if the CURRENT turn's context window exceeds the limit
-                    if (this.state.usageStats.lastTurnUsage.inputTokens >= (config.get<number>('maxContext') || 130000)) {
-                        onUpdate("\n\n⚠️ **Context Watchdog Triggered**: Context limit reached. I will summarize our history at the start of the next turn to recover space.");
-                        persistState();
-                        this.cancel();
-                        return;
-                    }
-
                     if (mode === "messages") {
                         const [token, metadata] = chunk as [any, any];
                         const type = (token as any)._getType?.() || (token as any).type;
@@ -595,6 +587,7 @@ export class Agent {
         const projectedTotal = prevTurnTotal + incomingTokenEstimate;
 
         if (projectedTotal >= maxContext * 0.85) {
+            onUpdate("Optimizing Context: Summarizing older conversation...", "toolStatus");
             onUpdate("🔄 **Optimizing Context**: You've reached 85% of the message limit. I'm summarizing the older part of our conversation to keep things running smoothly...\n\n");
             
             const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(this.state.messages, 0.4);
@@ -602,25 +595,54 @@ export class Agent {
             if (toSummarize.length > 0) {
                 if (!this.initClient() || !this.model) return;
 
-                const summary = await PromptAnalyser.summarizeHistory(toSummarize, this.model);
-                
-                // Index the summary semantically for long-term recall
-                await this.semanticManager.add(summary, { 
-                    type: 'summary', 
-                    timestamp: Date.now(),
-                    turnCount: this.state.messages.length
-                });
+                try {
+                    const summary = await PromptAnalyser.summarizeHistory(toSummarize, this.model);
+                    
+                    // Index the summary semantically for long-term recall
+                    await this.semanticManager.add(summary, { 
+                        type: 'summary', 
+                        timestamp: Date.now(),
+                        turnCount: this.state.messages.length
+                    });
 
-                const summaryMessage = new SystemMessage(`[PREVIOUS CONVERSATION SUMMARY]: ${summary}\n\nNote: The conversation above this point has been summarized to optimize performance.`);
-                
-                // New history: [System Prompt, Summary, ...Rest of kept messages]
-                if (toKeep.length > 0 && toKeep[0] instanceof SystemMessage) {
-                    this.state.messages = [toKeep[0], summaryMessage, ...toKeep.slice(1)];
-                } else {
-                    this.state.messages = [summaryMessage, ...toKeep];
+                    const summaryMessage = new SystemMessage(`[PREVIOUS CONVERSATION SUMMARY]: ${summary}\n\nNote: The conversation above this point has been summarized to optimize performance.`);
+                    
+                    // New history: [System Prompt, Summary, ...Rest of kept messages]
+                    if (toKeep.length > 0 && toKeep[0] instanceof SystemMessage) {
+                        this.state.messages = [toKeep[0], summaryMessage, ...toKeep.slice(1)];
+                    } else {
+                        this.state.messages = [summaryMessage, ...toKeep];
+                    }
+
+                    // --- CRITICAL FIX: RESET BASELINE ---
+                    const newHistoryTokens = TokenCounter.countMessages(this.state.messages);
+                    this.state.usageStats.lastTurnUsage.inputTokens = newHistoryTokens;
+                    this.state.usageStats.lastTurnUsage.outputTokens = 0;
+                    
+                    onUpdate("✅ **Context Optimized**: Conversation compressed. Continuing...\n\n");
+                } catch (e: any) {
+                    console.error("Context optimization failed:", e);
+                    // FALLBACK: If summarization fails, perform hard truncation to break the loop
+                    onUpdate("⚠️ **Optimization Failed**: The context is too full to summarize. Performing hard truncation instead...\n\n");
+                    this.state.messages = AgentHistory.hardTruncate(this.state.messages, 0.4);
+                    
+                    const newHistoryTokens = TokenCounter.countMessages(this.state.messages);
+                    this.state.usageStats.lastTurnUsage.inputTokens = newHistoryTokens;
+                    this.state.usageStats.lastTurnUsage.outputTokens = 0;
+                    
+                    onUpdate("✅ **Context Recovered**: Conversation truncated. Continuing...\n\n");
                 }
+            } else if (projectedTotal >= maxContext * 1.0) {
+                // LAST RESORT: If we are at 100%+ and can't summarize (too few messages), 
+                // we MUST truncate to break the watchdog loop.
+                onUpdate("⚠️ **Critical Context**: Context limit reached with too few messages to summarize. Recovering space...\n\n");
+                this.state.messages = AgentHistory.hardTruncate(this.state.messages, 0.2); // Smaller discard
                 
-                onUpdate("✅ **Context Optimized**: Conversation compressed. Continuing...\n\n");
+                const newHistoryTokens = TokenCounter.countMessages(this.state.messages);
+                this.state.usageStats.lastTurnUsage.inputTokens = newHistoryTokens;
+                this.state.usageStats.lastTurnUsage.outputTokens = 0;
+                
+                onUpdate("✅ **Space Recovered**: Continuing...\n\n");
             }
         }
     }
