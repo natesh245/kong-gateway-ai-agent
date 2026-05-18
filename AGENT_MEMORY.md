@@ -78,11 +78,14 @@ The `thinking` tags can be quite verbose.
 *   **Implementation**: Model the relationship between Kong entities (Services, Routes, Plugins, Upstreams) in a graph format.
 *   **Benefit**: Allows the agent to perform "Relational Reasoning" (e.g., "If I delete this Service, which Routes will be orphaned?") without having to re-scan the entire workspace.
 
-#### 2.6 Episodic Memory (Success Patterns)
-*   **Implementation**: Automatically extract and store "Success Episodes"—sequences of tool calls that successfully resolved a complex task.
-*   **Causal Linking**: Each episode stores the **Intent -> Action -> Result** chain, helping the agent understand *why* a specific solution worked.
-*   **Pattern Matching**: When the agent encounters a similar problem in the future, it retrieves the successful episode as a "few-shot" example.
-*   **Trial-and-Error Pruning**: Explicitly discard failed attempts and only store the final, verified solution path in long-term episodic memory.
+#### 2.6 Episodic Memory (Tool Execution & Success Patterns)
+*   **Current State (Textual Truncation)**: Currently, when context overflows, previous tool calls and results are fed to the summarizer, but the raw output is blindly truncated to the first 500 characters. This risks losing critical data (like error messages at the end of a long JSON dump).
+*   **Target State (Structured Episodic Extraction)**: Automatically extract and store "Success/Failure Episodes"—structured sequences of tool calls that resolved a specific task.
+*   **Implementation Plan**:
+    1. **Tool-Aware Slicing**: Instead of truncating tool results to `0-500` chars during summarization, extract the *head* and *tail* of the result (e.g., first 250, last 250) since critical errors are often at the bottom.
+    2. **Causal Linking**: Each episode stores the **Intent -> Tool Used -> Argument -> Final Result** chain, helping the agent understand *why* a specific solution worked.
+    3. **Pattern Matching**: When the agent encounters a similar problem in the future, it retrieves the successful episode as a "few-shot" example.
+    4. **Trial-and-Error Pruning**: Explicitly discard the intermediate failed attempts and only store the final, verified solution path in long-term episodic memory.
 
 *   **⚠️ SECURITY UPDATE**: All internal agent memory (Chat History, Summaries, Vector Indexes) should reside in **External Storage** (VS Code's Global App Data) by default. The local workspace should ONLY contain files that are part of the active development cycle (e.g., `.staged` files for user-driven diffing).
 
@@ -138,6 +141,7 @@ The `thinking` tags can be quite verbose.
 - [ ] **Version-Aware Retrieval**: Tag documentation with versions to allow the agent to filter by the user's active Kong version.
 
 ### Phase 7: Episodic Memory & Procedural Learning [PENDING]
+- [ ] **Tool-Aware Slicing**: Update the summarizer pipeline to extract the Head (e.g. 250 chars) and Tail (e.g. 250 chars) of tool outputs rather than blindly truncating the front.
 - [ ] Index successful tool-call sequences as "Success Episodes."
 - [ ] Automatically inject relevant past solutions into the prompt as few-shot examples.
 

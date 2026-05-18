@@ -60,6 +60,7 @@ Every turn follows a 4-step assembly process:
 1.  **Harvesting**: Retrieve raw messages from `AgentHistory`.
 2.  **Ranking**: The "Context Watchdog" scores each message/file based on its relevance to the current user intent (e.g., if the user is asking about "Routes", prioritize Route-related tool results).
 3.  **Pruning**: Information below a certain relevance threshold is compressed or dropped to fit the Token Budget.
+    *   *Tool Result Pruning*: Instead of blind text truncation (e.g., `0-500` chars) before sending to the Summarizer, the engine extracts the *Head* and *Tail* (e.g., first 250, last 250 chars) of tool outputs. This prevents critical errors, which typically appear at the bottom of long logs, from being lost during context compression.
 4.  **Injection**: Dynamic context (Detected files, Mode, Ports) is added as a fresh header to ensure the agent uses the absolute latest system state.
 
 ---
@@ -86,6 +87,7 @@ Every turn follows a 4-step assembly process:
 - [x] **Post-Edit Hooks**: Automatically trigger `decK lint` after configuration edits (Implemented).
 
 ### Phase 4: Advanced Orchestration (Long-Term)
+- [ ] **Tool-Aware Truncation**: Update the summarizer to extract the Head and Tail of tool results instead of blindly truncating from the start.
 - [ ] **Modular Rule Loader**: Path-based dynamic rule loading.
 - [ ] **Subagent Manager**: Run long diagnostic tasks in isolated context windows.
 - [ ] **Episodic Learning**: Inject "Success Paths" as few-shot examples into the prompt.
