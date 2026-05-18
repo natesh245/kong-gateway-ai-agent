@@ -32,6 +32,10 @@ This document serves as a high-level index for the long-term architectural goals
 *   **Focus**: Concurrent task management and thread isolation.
 *   **Key Goals**: Session sidebar, auto-titling, and isolated staged changes per thread.
 
+### 8. [Diagnostics & Self-Healing Engine](file:///Users/natesh/projects/kong-gateway-agent/DIAGNOSTICS_HEALING.md)
+*   **Focus**: Active resilience, error categorization, and auto-correction loops.
+*   **Key Goals**: Parsing raw CLI/API errors into structured diagnostics, synthesizing ready-to-apply corrective patches, and maintaining human-in-the-loop safety gates for all self-repairs.
+
 ---
 
 ## 🚀 Vision
