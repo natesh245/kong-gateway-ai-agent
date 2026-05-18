@@ -29,6 +29,7 @@ The manager operates at four critical interception points:
 *   **Docker Compose Configurations (`docker-compose.yml`)**:
     *   **Rule**: Plaintext environment credentials (e.g. `KONG_PASSWORD`, `POSTGRES_PASSWORD`) must be externalized.
     *   **Enforcement**: The agent's file analyzer scans docker-compose files to ensure all credentials are mapped to `.env` variables (e.g., `KONG_PASSWORD=${KONG_PASSWORD}`) rather than inlining raw strings.
+    *   **Location**: The `.env` file containing these actual secret assignments must reside securely in the configured local workspace path (`storagePath`) alongside the `docker-compose.yml` file, ensuring Docker Compose resolves them correctly at runtime and the agent can securely verify their presence without storing them in the repository.
 
 ---
 
