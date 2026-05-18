@@ -1,10 +1,10 @@
-# Secret Scanner: Multi-Layer Security Guardrail
+# Secret Manager: Multi-Layer Security Guardrail
 
-The Secret Scanner is a security layer designed to detect and redact sensitive information (API keys, tokens, passwords) across all data flows between the user, the workspace, and the LLM.
+The Secret Manager is a security layer designed to detect, redact, and securely manage sensitive information (API keys, tokens, passwords) across all data flows between the user, the workspace, and the LLM.
 
 ## 1. Security Architecture
 
-The scanner operates at three critical interception points:
+The manager operates at four critical interception points:
 
 ### A. Inbound (Prompt) Protection
 *   **Target**: User input messages.
@@ -21,9 +21,18 @@ The scanner operates at three critical interception points:
 *   **Goal**: Ensure the agent doesn't repeat or "hallucinate" a secret in its final response to the user.
 *   **Action**: Scan the final response stream. If a high-entropy string matching a secret pattern is detected, the stream is interrupted or masked.
 
+### D. Workspace Integrity & Linter Policies
+*   **Kong decK Configurations (`kong.yml`)**:
+    *   **Rule**: Plaintext secrets (passwords, tokens, database URIs, API keys) must **never** be hardcoded. 
+    *   **Enforcement**: By default, the decK linter ruleset `ruleset.yaml` includes a strict `no-hardcoded-credentials` rule. This validates that any property containing `secret`, `password`, `token`, or `key` is resolved dynamically.
+    *   **Format**: Secrets must utilize **Kong Vault** `env-vault` references (`{vault://env/SECRET_NAME}`) or decK environment variable templates (`${{env "SECRET_NAME"}}`).
+*   **Docker Compose Configurations (`docker-compose.yml`)**:
+    *   **Rule**: Plaintext environment credentials (e.g. `KONG_PASSWORD`, `POSTGRES_PASSWORD`) must be externalized.
+    *   **Enforcement**: The agent's file analyzer scans docker-compose files to ensure all credentials are mapped to `.env` variables (e.g., `KONG_PASSWORD=${KONG_PASSWORD}`) rather than inlining raw strings.
+
 ---
 
-## 2. Detection Mechanisms
+## 2. Detection & Management Mechanisms
 
 1.  **Regex-Based (Pattern Matching)**:
     *   **Kong Specific**: Admin tokens, RBAC tokens, consumer credentials.
@@ -32,29 +41,33 @@ The scanner operates at three critical interception points:
     *   Detect high-entropy strings that don't match known English words, which often indicate generated keys or passwords.
 3.  **Keyword-Based**:
     *   Scanning for sensitive labels like `password:`, `secret:`, `token:`, `private_key:`.
+4.  **Vault Reference Enforcement**:
+    *   Promotes safe development by recommending Kong Vault syntax (`{vault://...}`) or local `.env` variables.
 
 ---
 
 ## 3. Implementation Roadmap
 
-### Phase 1: Basic Redaction (Short-Term)
-- [ ] Implement `SecretScanner` utility using regex patterns for Kong and common cloud providers.
-- [ ] Integrate scanner into `StorageTool.ts` to redact content *before* it is cached or sent to the agent.
+### Phase 1: Basic Redaction & Linter Security (Short-Term)
+- [ ] Implement `SecretManager` utility using regex patterns for Kong and common cloud providers.
+- [ ] Integrate manager into `StorageTool.ts` to redact content *before* it is cached or sent to the agent.
 - [ ] Add `redact_secrets` middleware to the LangChain pipeline.
+- [ ] **Default Credentials Ruleset**: Add strict `no-hardcoded-credentials` decK lint rules to block hardcoded values in generated workspace rulesets (Design Complete).
 
-### Phase 2: Active Prompt Guarding (Medium-Term)
+### Phase 2: Active Prompt Guarding & Environment Validation (Medium-Term)
 - [ ] Implement pre-flight prompt scanning in `Agent.ts`.
 - [ ] Create a "Safe Mode" UI toggle that enables/disables strict secret blocking.
 - [ ] Develop a `SafeDiff` utility to ensure secrets aren't exposed in diff views.
+- [ ] **Docker Compose Security Checker**: Verify environment blocks in Docker Compose files to ensure all credentials map dynamically to `.env` variables rather than being inlined.
 
 ### Phase 3: Advanced Entropy & 3rd-Party Integration (Long-Term)
 - [ ] **Gitleaks/Trufflehog Integration**: Integrate with established 3rd-party scanners to perform full workspace audits.
 - [ ] **Pre-Commit Hook Simulation**: Allow the agent to run a secret scan on any file before it is "accepted" or "synced" to the gateway.
-- [ ] **Secret State Tracking**: If the agent *needs* a token to perform an operation, the scanner ensures it only uses the token in the tool execution and never logs it.
+- [ ] **Secret State Tracking**: If the agent *needs* a token to perform an operation, the manager ensures it only uses the token in the tool execution and never logs it.
 
 ---
 
-## 5. 3rd-Party Integration: Gitleaks / Trufflehog
+## 4. 3rd-Party Integration: Gitleaks / Trufflehog
 
 To provide industrial-grade scanning, the Agent will support integration with **Gitleaks** or **Trufflehog**:
 
