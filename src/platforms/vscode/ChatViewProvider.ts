@@ -8,13 +8,13 @@ import { PortUtil } from '../../core/utils/PortUtil';
 import { IConfig, IAppPlatform } from '../../core/interfaces/ICoreInterfaces';
 import { MessageUtils } from '../../core/utils/MessageUtils';
 
-
 export class ChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kongAgentChat';
     private _view?: vscode.WebviewView;
     private _agent: Agent;
     private _watcher?: vscode.FileSystemWatcher;
     private _debounceTimer?: NodeJS.Timeout;
+    private _loadHistoryPromise: Promise<void>;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -27,7 +27,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.toolManager.storage.setAgent(this._agent);
         this.toolManager.initializeCache();
         this._setupWatcher();
-        this._loadHistory();
+        this._loadHistoryPromise = this._loadHistory();
 
 
         // Listen for configuration changes to sync the webview automatically
@@ -119,7 +119,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
                 case 'ready':
-                    // Push the 'Instant' data first
+                    // Wait for history to finish loading before pushing the config
+                    await this._loadHistoryPromise;
                     this._updateWebviewConfig();
                     break;
                 case 'prompt':
@@ -477,6 +478,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
                         if (result === 'Clear Chat') {
                             this._agent.resetContext();
+                            await this._saveHistory();
                             await this._updateWebviewConfig();
                             webviewView.webview.postMessage({ type: 'performClear' });
                             this.platform.showInformationMessage('Kong Agent: Conversation context and UI have been reset.');
@@ -599,9 +601,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     private async _loadHistory() {
         // 1. Try loading from MemoryManager (disk)
-        const diskHistory = await this._agent.memory.loadChatHistory();
-        if (diskHistory.length > 0) {
-            this._agent.setMessages(diskHistory);
+        const session = await this._agent.memory.loadSessionState();
+        if (session.history.length > 0) {
+            this._agent.setMessages(session.history);
+            this._agent.setUsageStats(session.metadata?.usageStats);
             return;
         }
 
@@ -609,17 +612,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const legacyHistory = this.context.globalState.get<any[]>('kongAgentChatHistory', []);
         if (legacyHistory.length > 0) {
             this._agent.setMessages(legacyHistory);
-            // Save to disk immediately to complete migration
-            await this._agent.memory.saveChatHistory(this._agent.getMessages());
+            // Save to disk immediately in the new format
+            await this._saveHistory();
             // Clear legacy history to avoid double migration
             await this.context.globalState.update('kongAgentChatHistory', undefined);
         }
     }
 
     private async _saveHistory() {
-        // Now handled automatically by Agent.ts at the end of every turn
-        // But we keep this for any manual state changes or UI-only updates
-        await this._agent.memory.saveChatHistory(this._agent.getMessages());
+        const history = this._agent.getMessages();
+        const usageStats = this._agent.getUsageStats();
+        await this._agent.memory.saveSessionState(history, { usageStats });
     }
 
     private async _updateWebviewConfig(skipHistory: boolean = false) {
@@ -698,6 +701,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private _dispatchAgentUpdate(webviewView: vscode.WebviewView, messageId: string, content: string, type: string) {
         if (type === 'toolStatus') {
             webviewView.webview.postMessage({ type: 'toolStatus', status: content || 'Analyzing request...' });
+        } else if (type === 'error') {
+            webviewView.webview.postMessage({ type: 'addMessage', role: 'system', content: `❌ ${content}` });
+            webviewView.webview.postMessage({ type: 'toolStatus', status: 'Error' });
+        } else if (type === 'finish') {
+            // Unlock UI but don't overwrite a persistent error status if it exists
+            webviewView.webview.postMessage({ type: 'toolStatus', status: '' });
         } else if (type === 'toolInteraction') {
             try {
                 const interactionData = JSON.parse(content);

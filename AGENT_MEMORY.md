@@ -31,6 +31,9 @@ The agent currently employs three distinct types of "memory":
 2. **Context Exhaustion (The "Cliff" Effect)**: When the context limit is hit, the agent loses all memory of the current task. There is no middle ground between "full history" and "no history."
 3. **State Decay**: The agent is told to "trust memory of the system state for 60 seconds," but there is no explicit mechanism to expire or refresh specific system facts.
 4. **Redundant Processing**: Re-discovering files on every turn is inefficient for large workspaces.
+5. **Watchdog Infinite Loops (Root Causes Found)**: 
+    *   **Baseline Stale-ness**: After summarization, the internal `lastTurnUsage` counter must be reset to the new compressed size. Failure to do so causes the Watchdog to trigger instantly on the next turn.
+    *   **Threshold Blocking**: Summarization thresholds based purely on message count (e.g., > 6 messages) fail in "heavy" short-lived sessions where a single large YAML dump can hit the 100% limit in just 2-3 turns.
 
 ---
 
@@ -38,10 +41,12 @@ The agent currently employs three distinct types of "memory":
 
 ### Tier 1: Intelligent Context Management (Short-Term)
 
-#### 1.1 Sliding Window Summarization
-Instead of a hard reset, implement a sliding window.
-*   **Mechanism**: When tokens reach 80% of `maxContext`, the oldest 40% of messages are sent to a "Summarizer" LLM.
-*   **Result**: The summarized context is injected as a single `SystemMessage` or `HumanMessage` at the start of the chain, and the raw messages are purged.
+#### 1.1 Tiered Context Recovery (Summarization & Truncation)
+Instead of a hard reset, the agent employs a two-stage stabilization strategy:
+*   **Tier 1: Intelligent Summarization (85% Agent Limit)**: The agent attempts to condense history using an LLM. **(Validated: Working as expected)**.
+*   **Tier 2: Hard Truncation Fallback (Fail-safe)**: If summarization fails (e.g., the **LLM's physical context** is hit), the agent performs a deterministic truncation.
+*   **Baseline Reset**: After recovery, the agent resets internal token counters to prevent "Watchdog" infinite loops. **(Primary identified bug)**.
+*   **UI Observability**: The "🔄 Optimizing Context" status should be visible in the Activity Bar/Status Bar during the process. **(Identified UI issue)**.
 
 #### 1.2 "Thinking" Compression
 The `thinking` tags can be quite verbose.
@@ -73,11 +78,14 @@ The `thinking` tags can be quite verbose.
 *   **Implementation**: Model the relationship between Kong entities (Services, Routes, Plugins, Upstreams) in a graph format.
 *   **Benefit**: Allows the agent to perform "Relational Reasoning" (e.g., "If I delete this Service, which Routes will be orphaned?") without having to re-scan the entire workspace.
 
-#### 2.6 Episodic Memory (Success Patterns)
-*   **Implementation**: Automatically extract and store "Success Episodes"—sequences of tool calls that successfully resolved a complex task.
-*   **Causal Linking**: Each episode stores the **Intent -> Action -> Result** chain, helping the agent understand *why* a specific solution worked.
-*   **Pattern Matching**: When the agent encounters a similar problem in the future, it retrieves the successful episode as a "few-shot" example.
-*   **Trial-and-Error Pruning**: Explicitly discard failed attempts and only store the final, verified solution path in long-term episodic memory.
+#### 2.6 Episodic Memory (Tool Execution & Success Patterns)
+*   **Current State (Textual Truncation)**: Currently, when context overflows, previous tool calls and results are fed to the summarizer, but the raw output is blindly truncated to the first 500 characters. This risks losing critical data (like error messages at the end of a long JSON dump).
+*   **Target State (Structured Episodic Extraction)**: Automatically extract and store "Success/Failure Episodes"—structured sequences of tool calls that resolved a specific task.
+*   **Implementation Plan**:
+    1. **Tool-Aware Slicing**: Instead of truncating tool results to `0-500` chars during summarization, extract the *head* and *tail* of the result (e.g., first 250, last 250) since critical errors are often at the bottom.
+    2. **Causal Linking**: Each episode stores the **Intent -> Tool Used -> Argument -> Final Result** chain, helping the agent understand *why* a specific solution worked.
+    3. **Pattern Matching**: When the agent encounters a similar problem in the future, it retrieves the successful episode as a "few-shot" example.
+    4. **Trial-and-Error Pruning**: Explicitly discard the intermediate failed attempts and only store the final, verified solution path in long-term episodic memory.
 
 *   **⚠️ SECURITY UPDATE**: All internal agent memory (Chat History, Summaries, Vector Indexes) should reside in **External Storage** (VS Code's Global App Data) by default. The local workspace should ONLY contain files that are part of the active development cycle (e.g., `.staged` files for user-driven diffing).
 
@@ -91,15 +99,19 @@ The `thinking` tags can be quite verbose.
     *   **Past Solutions**: Index successful tool execution sequences.
     *   **Kong Documentation**: Index relevant sections of Kong docs for RAG retrieval.
     *   **Large Configs**: If a `kong.yml` is too large for context, chunk it and retrieve relevant parts semantically.
+    *   **[NEW] Technical Reference (Doc-RAG)**: Ingest official Kong and decK documentation as a read-only semantic layer to eliminate schema hallucinations.
 
 ---
 
 ## 4. Implementation Roadmap
 
-### Phase 1: Context Stability
+### Phase 1: Context Stability [COMPLETE]
 - [x] Implement `SlidingWindowMemory` in `AgentHistory.ts`.
 - [x] Add a `summarizeHistory` utility in `PromptAnalyser.ts`.
 - [x] Replace `this.resetContext()` in `Agent.ts` with a call to the summarizer.
+- [x] Implement **Hard Truncation Fallback** to handle LLM-physical-limit breaches.
+- [x] **Harden Baseline Reset**: Calculate starting turn tokens precisely using `prevInput + prevOutput + tokenEstimate` to prevent UI drop loops.
+- [x] **Aggressive Summarization**: Summarize the entire history EXCEPT the most recent turn to ensure heavy payloads are captured.
 
 ### Phase 2: Persistence
 - [x] Create `MemoryManager.ts` to handle disk I/O for session state.
@@ -119,7 +131,17 @@ The `thinking` tags can be quite verbose.
 - [ ] Store facts in a dedicated `facts.json` to supplement the fuzzy summaries.
 - [ ] Implement "Supersession" logic to update facts when the user changes configuration.
 
-### Phase 5: Episodic Memory & Procedural Learning [PENDING]
+### Phase 5: Memory Lifecycle & Journaling [PENDING]
+- [ ] **Session Journaling**: Automatically generate and store a semantic summary in the vector store before a user performs a "Clear Chat" action.
+- [ ] **Memory TTL Pruning**: Implement time-based expiration for vector entries (default 7 days) to maintain index performance.
+
+### Phase 6: Technical Reference (Doc-RAG) [PENDING]
+- [ ] **Ingestion Engine**: Implement a markdown ingestion logic to load official Kong/decK documentation into the vector store.
+    - *Scope*: Gateway API specs, decK command flags, and official plugin schemas.
+- [ ] **Version-Aware Retrieval**: Tag documentation with versions to allow the agent to filter by the user's active Kong version.
+
+### Phase 7: Episodic Memory & Procedural Learning [PENDING]
+- [ ] **Tool-Aware Slicing**: Update the summarizer pipeline to extract the Head (e.g. 250 chars) and Tail (e.g. 250 chars) of tool outputs rather than blindly truncating the front.
 - [ ] Index successful tool-call sequences as "Success Episodes."
 - [ ] Automatically inject relevant past solutions into the prompt as few-shot examples.
 
@@ -137,3 +159,15 @@ To prevent mid-turn crashes, the agent estimates the token impact of every incom
 1. `TokenEstimate = prompt.length / 3.5`
 2. `ProjectedContext = PreviousTurnUsage + TokenEstimate`
 3. If `ProjectedContext > 85%`, summarize **before** calling the LLM.
+### 5.3 Non-Destructive Context Squeezing (Deterministic Pruning)
+To maximize token efficiency without losing technical detail, the agent employs a "Squeezer" filter during prompt assembly:
+1. **Threshold**: 2,000 characters.
+2. **Deterministic Truncation**: Keeps the first 500 (Head) and last 500 (Tail) characters.
+3. **Purity**: The internal `AgentState` is NEVER mutated by the squeezer. This ensures that the **LLM Summarizer** always sees the full-fidelity raw logs, while the **LLM Chat** only sees the compressed version.
+4. **Result**: Reclaims thousands of tokens per turn with zero impact on long-term memory accuracy.
+
+### 5.4 Importance-Based Relevance Scoring
+During summarization, the agent uses a weighted scoring mechanism:
+- **High Importance (Z=1.0)**: System Prompts, Connectivity Errors, Sync/Export Previews.
+- **Low Importance (Z=0.1)**: Greetings, off-topic chat, redundant status checks.
+Critical technical facts are prioritized for retention, ensuring they survive multiple summarization cycles.

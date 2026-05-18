@@ -16,6 +16,7 @@ import { ToolManager } from "./tools/ToolManager";
 import { MemoryManager } from './MemoryManager';
 import { IConfig, IAppPlatform } from "../interfaces/ICoreInterfaces";
 import { SanitizationUtil } from "../utils/SanitizationUtil";
+import { TokenCounter } from "../utils/TokenCounter";
 import { buildAgentTools, ToolContext } from "./AgentTools";
 import { PromptAnalyser } from "../utils/PromptAnalyser";
 import { SYSTEM_PROMPT } from "./SystemPrompt";
@@ -58,6 +59,21 @@ export class Agent {
 
     public setMessages(messages: any[]): void {
         this.state.messages = AgentHistory.fromUI(messages, SYSTEM_PROMPT);
+    }
+
+    public setUsageStats(stats: any): void {
+        if (!stats) return;
+        
+        // Handle migration from old schema if necessary
+        if (stats.inputTokens !== undefined && stats.session === undefined) {
+            this.state.usageStats.session.inputTokens = stats.inputTokens || 0;
+            this.state.usageStats.session.outputTokens = stats.outputTokens || 0;
+            this.state.usageStats.session.totalTokens = stats.totalTokens || 0;
+        } else if (stats.session) {
+            this.state.usageStats.session.inputTokens = stats.session.inputTokens || 0;
+            this.state.usageStats.session.outputTokens = stats.session.outputTokens || 0;
+            this.state.usageStats.session.totalTokens = stats.session.totalTokens || 0;
+        }
     }
 
     public resetContext(): void {
@@ -116,26 +132,51 @@ export class Agent {
     }
 
     public getUsageStats() {
+        const contextLimit = this.config.get<number>('maxContext') || 130000;
+        
+        // Context Occupancy: Ground truth is the last turn's input (which includes history + system + new)
+        const occupied = this.state.usageStats.lastTurnUsage.inputTokens; 
+        const percent = contextLimit > 0 ? (occupied / contextLimit) * 100 : 0;
+
         return {
-            inputTokens: this.state.usageStats.inputTokens,
-            outputTokens: this.state.usageStats.outputTokens,
-            totalTokens: this.state.usageStats.lastTurnUsage.inputTokens + this.state.usageStats.lastTurnUsage.outputTokens,
+            session: {
+                inputTokens: this.state.usageStats.session.inputTokens,
+                outputTokens: this.state.usageStats.session.outputTokens,
+                totalTokens: this.state.usageStats.session.inputTokens + this.state.usageStats.session.outputTokens
+            },
+            context: {
+                occupied: occupied,
+                limit: contextLimit,
+                percent: percent
+            },
             lastTurnUsage: {
                 ...this.state.usageStats.lastTurnUsage,
                 toolCalls: this.state.toolCallCount
-            },
-            contextLimit: this.config.get<number>('maxContext') || 130000
+            }
         };
     }
 
     private updateTurnUsage(input: number, output: number) {
-        const deltaIn = input - this.state.usageStats.lastTurnUsage.inputTokens;
-        const deltaOut = output - this.state.usageStats.lastTurnUsage.outputTokens;
+        // --- BASELINE CORRECTION ---
+        // If this is the first update of the session (root input is 0),
+        // we include the entire reported input as the initial session baseline.
+        // This ensures the system prompt and history setup are counted.
+        if (this.state.usageStats.session.inputTokens === 0 && input > 0) {
+            this.state.usageStats.session.inputTokens = input;
+            this.state.usageStats.session.outputTokens = output;
+        } else {
+            // Calculate the increase since the last update in this specific turn
+            const deltaIn = Math.max(0, input - this.state.usageStats.lastTurnUsage.inputTokens);
+            const deltaOut = Math.max(0, output - this.state.usageStats.lastTurnUsage.outputTokens);
+            
+            // Add the increase to the session-wide totals
+            this.state.usageStats.session.inputTokens += deltaIn;
+            this.state.usageStats.session.outputTokens += deltaOut;
+        }
+
+        this.state.usageStats.session.totalTokens = this.state.usageStats.session.inputTokens + this.state.usageStats.session.outputTokens;
         
-        this.state.usageStats.inputTokens += deltaIn;
-        this.state.usageStats.outputTokens += deltaOut;
-        this.state.usageStats.totalTokens = this.state.usageStats.inputTokens + this.state.usageStats.outputTokens;
-        
+        // Update the baseline for the current turn tracking
         this.state.usageStats.lastTurnUsage.inputTokens = input;
         this.state.usageStats.lastTurnUsage.outputTokens = output;
     }
@@ -146,15 +187,20 @@ export class Agent {
     }
 
     public async processMessage(content: string, onUpdate: (content: string, type?: string) => void, startTime?: number): Promise<void> {
-        this.state.startTurn(startTime);
+        const prevInput = this.state.usageStats.lastTurnUsage.inputTokens;
+        const prevOutput = this.state.usageStats.lastTurnUsage.outputTokens;
+        const tokenEstimate = TokenCounter.countString(content);
         
-        const config = this.config;
-        const maxContext = config.get<number>('maxContext') || 130000;
-        const tokenEstimate = Math.ceil(content.length / 3.5);
+        // The new turn's input is exactly the previous turn's input + output + the new user prompt
+        const baselineTokens = prevInput > 0 ? (prevInput + prevOutput + tokenEstimate) : TokenCounter.countMessages(this.state.messages) + tokenEstimate;
+        
+        this.state.startTurn(startTime, baselineTokens);
+        
         await this.ensureContextStability(onUpdate, tokenEstimate);
 
         if (!this.initClient() || !this.model) {
-            onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.");
+            onUpdate("Error: LLM client initialization failed. Please check your provider and API key settings in the application settings.", 'error');
+            onUpdate('', 'finish');
             return;
         }
 
@@ -221,7 +267,7 @@ export class Agent {
 
         // Final persistence after full agent turn
         this.state.endTurn();
-        await this.memory.saveChatHistory(this.getMessages());
+        await this.memory.saveSessionState(this.getMessages(), { usageStats: this.getUsageStats() });
     }
 
     private async runAgentTask(content: string, onUpdate: (content: string, type?: string) => void, classificationUsage?: any): Promise<void> {
@@ -343,7 +389,11 @@ export class Agent {
                     (m as any).category !== 'off-topic'
                 );
 
-                for (const m of rawMessages) {
+                // Deterministic Compression (Zero Cost)
+                // Compress any large tool results that are no longer part of the active turn
+                const compressedMessages = AgentHistory.compressLargeToolResults(rawMessages);
+
+                for (const m of compressedMessages) {
                     apiMessages.push(m);
                 }
 
@@ -366,14 +416,6 @@ export class Agent {
 
                 for await (const [mode, chunk] of stream) {
                     if (this.state.isCancelled) break;
-
-                    // Watchdog: Check if the CURRENT turn's context window exceeds the limit
-                    if (this.state.usageStats.lastTurnUsage.inputTokens >= (config.get<number>('maxContext') || 130000)) {
-                        onUpdate("\n\n⚠️ **Context Watchdog Triggered**: Context limit reached. I will summarize our history at the start of the next turn to recover space.");
-                        persistState();
-                        this.cancel();
-                        return;
-                    }
 
                     if (mode === "messages") {
                         const [token, metadata] = chunk as [any, any];
@@ -530,9 +572,11 @@ export class Agent {
         try {
             await Promise.race([executionTask(), timeoutPromise]);
         } catch (e: any) {
-            onUpdate(`Agent Timeout: ${e.message}`);
+            onUpdate(`Agent Timeout: ${e.message}`, 'error');
         } finally {
             if (timerId!) clearTimeout(timerId);
+            // Mandatory unlock: notify UI that processing is finished regardless of success/failure
+            onUpdate('', 'finish');
         }
     }
 
@@ -540,38 +584,68 @@ export class Agent {
         const config = this.config;
         const maxContext = config.get<number>('maxContext') || 130000;
         
-        // Trigger summarization when the PROJECTED context (Previous turn + New prompt estimate) hits 85%
+        // --- STAGE 1: LLM Summarization (Predictive Guardrail) ---
+        // Trigger summarization when the PROJECTED context hits 85%
         const prevTurnTotal = this.state.previousTurnUsage.inputTokens + this.state.previousTurnUsage.outputTokens;
         const projectedTotal = prevTurnTotal + incomingTokenEstimate;
 
         if (projectedTotal >= maxContext * 0.85) {
             onUpdate("🔄 **Optimizing Context**: You've reached 85% of the message limit. I'm summarizing the older part of our conversation to keep things running smoothly...\n\n");
+            onUpdate("Optimizing Context: Summarizing older conversation...", "toolStatus");
             
             const { toSummarize, toKeep } = AgentHistory.getMessagesForSummarization(this.state.messages, 0.4);
             
             if (toSummarize.length > 0) {
                 if (!this.initClient() || !this.model) return;
 
-                const summary = await PromptAnalyser.summarizeHistory(toSummarize, this.model);
-                
-                // Index the summary semantically for long-term recall
-                await this.semanticManager.add(summary, { 
-                    type: 'summary', 
-                    timestamp: Date.now(),
-                    turnCount: this.state.messages.length
-                });
+                try {
+                    const summary = await PromptAnalyser.summarizeHistory(toSummarize, this.model);
+                    
+                    // Index the summary semantically for long-term recall
+                    await this.semanticManager.add(summary, { 
+                        type: 'summary', 
+                        timestamp: Date.now(),
+                        turnCount: this.state.messages.length
+                    });
 
-                const summaryMessage = new SystemMessage(`[PREVIOUS CONVERSATION SUMMARY]: ${summary}\n\nNote: The conversation above this point has been summarized to optimize performance.`);
-                
-                // New history: [System Prompt, Summary, ...Rest of kept messages]
-                if (toKeep.length > 0 && toKeep[0] instanceof SystemMessage) {
-                    this.state.messages = [toKeep[0], summaryMessage, ...toKeep.slice(1)];
-                } else {
-                    this.state.messages = [summaryMessage, ...toKeep];
+                    const summaryMessage = new SystemMessage(`[PREVIOUS CONVERSATION SUMMARY]: ${summary}\n\nNote: The conversation above this point has been summarized to optimize performance.`);
+                    
+                    // New history: [System Prompt, Summary, ...Rest of kept messages]
+                    if (toKeep.length > 0 && toKeep[0] instanceof SystemMessage) {
+                        this.state.messages = [toKeep[0], summaryMessage, ...toKeep.slice(1)];
+                    } else {
+                        this.state.messages = [summaryMessage, ...toKeep];
+                    }
+
+                    // --- CRITICAL FIX: RESET BASELINE ---
+                    const newHistoryTokens = TokenCounter.countMessages(this.state.messages);
+                    this.state.usageStats.lastTurnUsage.inputTokens = newHistoryTokens;
+                    this.state.usageStats.lastTurnUsage.outputTokens = 0;
+                    
+                    onUpdate("✅ **Context Optimized**: Conversation compressed. Continuing...\n\n");
+                } catch (e: any) {
+                    console.error("Context optimization failed:", e);
+                    // FALLBACK: If summarization fails, perform hard truncation to break the loop
+                    onUpdate("⚠️ **Optimization Failed**: The context is too full to summarize. Performing hard truncation instead...\n\n");
+                    this.state.messages = AgentHistory.hardTruncate(this.state.messages, 0.4);
+                    
+                    const newHistoryTokens = TokenCounter.countMessages(this.state.messages);
+                    this.state.usageStats.lastTurnUsage.inputTokens = newHistoryTokens;
+                    this.state.usageStats.lastTurnUsage.outputTokens = 0;
+                    
+                    onUpdate("✅ **Context Recovered**: Conversation truncated. Continuing...\n\n");
                 }
+            } else if (projectedTotal >= maxContext * 1.0) {
+                // LAST RESORT: If we are at 100%+ and can't summarize (too few messages), 
+                // we MUST truncate to break the watchdog loop.
+                onUpdate("⚠️ **Critical Context**: Context limit reached with too few messages to summarize. Recovering space...\n\n");
+                this.state.messages = AgentHistory.hardTruncate(this.state.messages, 0.2); // Smaller discard
                 
+                const newHistoryTokens = TokenCounter.countMessages(this.state.messages);
+                this.state.usageStats.lastTurnUsage.inputTokens = newHistoryTokens;
+                this.state.usageStats.lastTurnUsage.outputTokens = 0;
                 
-                onUpdate("✅ **Context Optimized**: Conversation compressed. Continuing...\n\n");
+                onUpdate("✅ **Space Recovered**: Continuing...\n\n");
             }
         }
     }

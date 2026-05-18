@@ -1,10 +1,21 @@
 import { BaseMessage, SystemMessage } from "@langchain/core/messages";
 
 export interface UsageStats {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    lastTurnUsage: { inputTokens: number, outputTokens: number, toolCalls: number }
+    session: {
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+    };
+    context: {
+        occupied: number;
+        limit: number;
+        percent: number;
+    };
+    lastTurnUsage: { 
+        inputTokens: number; 
+        outputTokens: number; 
+        toolCalls: number;
+    };
 }
 
 export class AgentState {
@@ -20,9 +31,8 @@ export class AgentState {
     public activeFiles: { compose?: string, config?: string, gateway_config?: string, ruleset?: string } = {};
     
     public usageStats: UsageStats = {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
+        session: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        context: { occupied: 0, limit: 0, percent: 0 },
         lastTurnUsage: { inputTokens: 0, outputTokens: 0, toolCalls: 0 }
     };
     public previousTurnUsage = { inputTokens: 0, outputTokens: 0 };
@@ -37,9 +47,8 @@ export class AgentState {
         this.isCancelled = false;
         this.toolCallCount = 0;
         this.usageStats = {
-            inputTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0,
+            session: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+            context: { occupied: 0, limit: 0, percent: 0 },
             lastTurnUsage: { inputTokens: 0, outputTokens: 0, toolCalls: 0 }
         };
     }
@@ -52,7 +61,7 @@ export class AgentState {
         }
     }
 
-    public startTurn(startTime?: number): void {
+    public startTurn(startTime?: number, initialInputTokens: number = 0): void {
         this.currentTurnStartTime = startTime || Date.now();
         this.currentTurnEndTime = null;
         this.isCancelled = false;
@@ -64,7 +73,7 @@ export class AgentState {
             inputTokens: this.usageStats.lastTurnUsage.inputTokens,
             outputTokens: this.usageStats.lastTurnUsage.outputTokens
         };
-        this.usageStats.lastTurnUsage = { inputTokens: 0, outputTokens: 0, toolCalls: 0 };
+        this.usageStats.lastTurnUsage = { inputTokens: initialInputTokens, outputTokens: 0, toolCalls: 0 };
     }
 
     public endTurn(): void {

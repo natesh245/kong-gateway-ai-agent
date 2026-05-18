@@ -17,20 +17,27 @@ The Context Engine is the logic layer responsible for selecting, pruning, and fo
 11. **Importance Weighting**: High-value discoveries (e.g., "The Admin API is on port 8444") are tagged with permanent high importance, ensuring they stay in the prompt even after multiple summarization cycles.
 12. **Associative Retrieval**: When a specific memory is triggered, the engine automatically pulls in "linked" memories.
 13. **Z-Score Normalization**: Combine Recency, Importance, and Relevance signals using Z-scores to prevent any single score from disproportionately influencing the final ranking.
+14. **Post-Optimization Baseline Reset**: Immediately after any context reduction (summarization or truncation), the internal token counters must be reset to the new reality to prevent stale watchdog triggers.
+15. **Volume-Aware Triggering**: Context optimization must be triggered based on total token weight, not just message count, to prevent "heavy" short sessions from hitting a wall.
 
 ---
 
 ## 2. Context Management Strategies
 
-### A. Dynamic Result Compression
-*   **Problem**: Large tool outputs (e.g., a full `kong.yml` dump) can consume 50k+ tokens.
-*   **Engine Logic**: If a tool result has been "processed" (the agent has already responded to it), the raw result is archived in long-term memory and replaced in the active prompt with a **Semantic Summary** (e.g., "Successfully read kong.yml; contains 5 Services and 10 Routes").
+### A. Deterministic Result Compression ("The Squeezer")
+*   **Problem**: Large tool outputs (e.g., a full `kong.yml` dump) can consume 50k+ tokens, drowning out critical reasoning.
+*   **Engine Logic**: If a tool result is **stale** (older than 2 messages) and exceeds **2,000 characters**, the engine deterministicly keeps the first 500 and last 500 characters, replacing the middle with a marker: `[OMITTED XXX CHARS]`.
+*   **Non-Destructive**: This compression is applied only at the moment of prompt assembly. The internal `AgentState` preserves the full-fidelity raw logs, ensuring that the **LLM Summarizer** always has access to the complete data for building accurate long-term memory.
 
 ### B. Priority-Based History Pruning (The "N-Back" Strategy)
 *   **Engine Logic**:
     *   **Critical Path**: The last 3-5 turns are kept in full fidelity.
     *   **Compressed Path**: Turns 6-20 are summarized.
-    *   **Discard Path**: Turns 20+ are archived for RAG retrieval only.
+### D. Tiered Recovery (Fail-safe)
+*   **Intelligent Recovery**: Attempt `summarizeHistory()` first to preserve facts.
+*   **Hard Fallback**: If the **LLM Context** is physically exceeded (or the Agent limit is set too high), the engine performs a **Hard Truncation** (deterministic discard) as a last resort to restore session stability.
+
+
 
 ### C. Budget Allocation (The "Token Pie")
 For a 128k context model, the engine enforces strict limits:
@@ -39,6 +46,10 @@ For a 128k context model, the engine enforces strict limits:
 *   **Recent History**: 20,000 tokens.
 *   **Reasoning/Thinking Space**: 10,000 tokens.
 *   **Buffer for Output**: 33,000 tokens.
+
+### D. Session Journaling (The "Post-Mortem")
+*   **Engine Logic**: Before a "Clear Chat" or "Hard Reset" event, the engine triggers a final `summarizeHistory()` call. 
+*   **Purpose**: This preserves the "Lessons Learned" (e.g., successful config patterns) as a semantic embedding in the vector store before the raw logs are deleted.
 
 ---
 
@@ -49,24 +60,34 @@ Every turn follows a 4-step assembly process:
 1.  **Harvesting**: Retrieve raw messages from `AgentHistory`.
 2.  **Ranking**: The "Context Watchdog" scores each message/file based on its relevance to the current user intent (e.g., if the user is asking about "Routes", prioritize Route-related tool results).
 3.  **Pruning**: Information below a certain relevance threshold is compressed or dropped to fit the Token Budget.
+    *   *Tool Result Pruning*: Instead of blind text truncation (e.g., `0-500` chars) before sending to the Summarizer, the engine extracts the *Head* and *Tail* (e.g., first 250, last 250 chars) of tool outputs. This prevents critical errors, which typically appear at the bottom of long logs, from being lost during context compression.
 4.  **Injection**: Dynamic context (Detected files, Mode, Ports) is added as a fresh header to ensure the agent uses the absolute latest system state.
 
 ---
 
 ## 4. Implementation Roadmap
 
-### Phase 1: Budgeting & Monitoring
-- [ ] Implement `TokenCounter` utility to track real-time budget usage.
-- [ ] Add `ContextWarning` UI notification when the budget is 90% full.
+### Phase 1: Budgeting & Monitoring [COMPLETE]
+- [x] Implement `TokenCounter` utility to track real-time budget usage.
+- [x] Add `🔄 Optimizing Context` status bar and predictive overflow detection.
 
-### Phase 2: Active Pruning
-- [ ] Implement `ResultSummarizer` to compress "stale" tool outputs.
-- [ ] Develop `RelevanceScorer` to decide which history turns to keep in full.
+### Phase 2: Active Pruning & Compression [COMPLETE]
+- [x] **Predictive Guardrails**: Summarize history before large payloads (Implemented).
+- [x] **Similarity Gating**: Implement 0.40 threshold for RAG retrieval (Implemented).
+- [x] **Result Compression**: Implement logic to replace "processed" large tool outputs with deterministic truncation.
+- [x] **Relevance Scorer**: Implement Importance-based weighting to preserve critical technical facts.
+- [x] **Baseline Hardening**: Fixed context percent drops via exact previous-turn baseline tracking and removed stale watchdog stream limits.
+- [x] **Aggressive Thresholds**: Replaced percentage-based summarization with an aggressive target that summarizes everything EXCEPT the final turn.
+- [x] **Panic Recovery**: Implement Hard Truncation fallback for 100% context scenarios.
 
-### Phase 3: JIT Context
-- [ ] Implement `StateWatcher` to only inject `get_kong_status` results into the prompt if the previous check was > 60 seconds ago.
+### Phase 3: JIT Context & Memory Lifecycle
+- [ ] **StateWatcher**: Only inject system health checks if the previous check is > 60s old.
+- [ ] **Session Journaling**: Automatically generate and store a semantic summary in the vector store before a user performs a "Clear Chat" action.
+- [ ] **Memory TTL Pruning**: Implement time-based expiration for vector entries (default 7 days) to maintain index performance.
+- [x] **Post-Edit Hooks**: Automatically trigger `decK lint` after configuration edits (Implemented).
 
 ### Phase 4: Advanced Orchestration (Long-Term)
-- [ ] **Modular Rule Loader**: Implement path-based rule loading (e.g., `.kong-rules/docker.md` loaded only for compose files).
-- [ ] **Post-Edit Hooks**: Automatically trigger `decK lint` after any tool modifies a YAML file.
-- [ ] **Subagent Manager**: Implement a "Diagnostic Subagent" that runs long log-reading tasks in an isolated context window, returning only a high-level summary to the main session.
+- [ ] **Tool-Aware Truncation**: Update the summarizer to extract the Head and Tail of tool results instead of blindly truncating from the start.
+- [ ] **Modular Rule Loader**: Path-based dynamic rule loading.
+- [ ] **Subagent Manager**: Run long diagnostic tasks in isolated context windows.
+- [ ] **Episodic Learning**: Inject "Success Paths" as few-shot examples into the prompt.
